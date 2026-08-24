@@ -510,3 +510,65 @@ candidate_ids = repository.delete_all(record=record)
 session.commit()
 cleanup = cleanup_unreferenced_source_files(session, candidate_ids)
 ```
+
+## Scenario: Workspace Event Dictionary Is Not AI Context
+
+### 1. Scope / Trigger
+
+- Trigger: building SQL or answer context for Smart Q&A, normal chat, the analysis assistant, dashboard SQL generation, or another consumer of the shared business SQL context.
+- Workspace event dictionary records remain management metadata. They are not an AI semantic source and must not be projected into prompts or request-level schema text.
+
+### 2. Signatures
+
+- AI-safe configuration: `project_tracking_config_for_ai_context(config) -> TenantTrackingConfigDTO`.
+- Prompt projection: `build_tracking_prompt_context(config, validation_warnings=None, *, datasource_type=None, question=None, data_skill_text=None) -> tuple[str, list[str]]`.
+- Schema projection: `get_ai_table_schema(session, current_user, ds, question, embedding=True, table_list=None, data_skill_text=None, tenant_id=None) -> tuple[str, list]`.
+- Smart Q&A post-check: `_event_availability_for_sql(service, sql) -> list[_EventAvailability]`.
+
+### 3. Contracts
+
+- `<Workspace-Tracking-Rules>` may contain non-event workspace table and field descriptions, generic field-role mappings, SQL constraints, and workspace notes.
+- It must not serialize event names, event-name mappings, event groups, event-specific defaults, or event properties from `TenantTrackingConfigDTO`.
+- Workspace `m-schema` must not append `Request event attribute schema`, `# Event:`, `Required predicate`, or JSON expressions derived from the event dictionary.
+- When `<Configured-Event-Names>` is absent, event-availability post-checks must remain inactive. They must not compensate by scanning physical event tables or inferring event names from similar fields.
+- Event storage, management APIs, catalog APIs, permissions, and Excel import/export remain unchanged. Event text explicitly supplied by the user, Data Skills, knowledge, or ordinary table/field metadata follows the rules of that independent source.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Workspace dictionary contains `ShopBuyItem` and `ShopBuyComplete` | Neither event name appears in tracking Prompt or dictionary-derived `m-schema` |
+| The same workspace also contains non-event table/field metadata and SQL rules | Preserve those entries in shared AI context |
+| Generated SQL contains an event predicate but the configured-event marker is absent | Skip event-availability probing and rewriting |
+| A Data Skill or user question explicitly names an event | Preserve that independent context; do not scrub the text globally |
+| An administrator edits, imports, exports, or browses events | Keep the existing management behavior and permissions |
+
+### 5. Good/Base/Bad Cases
+
+- Good: all shared AI entry points receive the same event-free workspace context while administrators can still maintain and export the event catalog.
+- Base: a workspace with only table/field descriptions continues to produce the same useful schema and tracking rules.
+- Bad: removing event sections from one assistant only, projecting matching event properties into `m-schema`, or querying physical event values after the marker disappears.
+
+### 6. Tests Required
+
+- Prompt regression: assert configured event names, mappings, groups, defaults, and properties are absent while non-event metadata remains.
+- Schema regression: assert event projection is not invoked and no event predicate or request-event section is appended.
+- Shared-entry regression: cover each shared business SQL context consumer or prove they all call the same sanitized builders.
+- Smart Q&A regression: assert removal of the marker cannot trigger a physical event-table query.
+- Management regression: keep event catalog, configuration persistence, and Excel import/export tests passing.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+if requested_event:
+    schema += project_event_schema_fields(tracking_config, physical_schema, question)
+```
+
+#### Correct
+
+```python
+tracking_context, summary = build_tracking_prompt_context(tracking_config)
+# Event catalog data stays in management APIs and is not projected into AI context.
+```

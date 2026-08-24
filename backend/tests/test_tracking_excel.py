@@ -1512,7 +1512,7 @@ def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_cont
     assert "<Workspace-Tracking-Rules>" in context
     assert "event_log.event_props.amount" in context
     assert 'expression=NULLIF(("event_log"."event_props"::jsonb ->> \'amount\'), \'\')::numeric' in context
-    assert "pay_success" in context
+    assert "pay_success" not in context
     assert "支付金额统一使用 event_props.amount" in context
     assert any("event_props.amount" in item for item in summary)
 

@@ -727,8 +727,12 @@ def _event_availability_for_sql(service: Any, sql: str) -> list[_EventAvailabili
     """
     是什么：对 SQL 中请求的所有事件值进行存在性校验并分类。
     谁调用：_rewrite_sql_for_missing_events、_cleanup_missing_event_result 等事件缺失处理逻辑调用。
-    做了什么：提取事件谓词，按 (schema, table, event_field) 分组查库，根据 strict/unknown 策略把每个值标记为缺失、存在或未知。
+    做了什么：仅在上下文明示事件目录时提取并校验事件谓词；事件字典通道关闭时直接跳过，不回退扫描物理事件表。
     """
+    tracking_config = getattr(getattr(service, "chat_question", None), "tracking_config", "") or ""
+    if "<Configured-Event-Names>" not in tracking_config:
+        return []
+
     predicates = _extract_requested_event_predicates(sql, service)
     if not predicates:
         return []

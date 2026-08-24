@@ -233,6 +233,7 @@ class FakeSmartQAService:
         self.chat_question = SimpleNamespace(
             question="test question",
             data_skill="",
+            tracking_config="<Configured-Event-Names>[]</Configured-Event-Names>",
             ai_modal_id=None,
             ai_modal_name=None,
         )
@@ -1612,6 +1613,26 @@ def test_event_availability_checks_values_in_batches(monkeypatch: pytest.MonkeyP
     assert availability[0].missing_values == {"event_b"}
 
 
+def test_event_availability_skips_physical_probe_without_event_dictionary_context(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """事件字典 AI 通道关闭后，不得改为扫描物理事件表。"""
+    service = FakeSmartQAService()
+    service.chat_question.tracking_config = "<Workspace-Tracking-Rules>字段说明</Workspace-Tracking-Rules>"
+
+    def _should_not_probe(**_kwargs):
+        raise AssertionError("disabled event dictionary context must not probe datasource")
+
+    monkeypatch.setattr(graph, "_event_values_exist_in_datasource", _should_not_probe)
+
+    availability = graph._event_availability_for_sql(
+        service,
+        "SELECT count(*) FROM event WHERE event_name = 'ShopBuyItem'",
+    )
+
+    assert availability == []
+
+
 def test_event_availability_trusts_configured_tracking_events(monkeypatch: pytest.MonkeyPatch):
     """
     是什么：工作空间事件字典已声明的事件值不再额外扫物理事件表确认。
@@ -1620,6 +1641,7 @@ def test_event_availability_trusts_configured_tracking_events(monkeypatch: pytes
     service = FakeSmartQAService()
     service.ds = SimpleNamespace(id=3, type="mysql", type_name="MySQL")
     service.chat_question.tracking_config = '''
+    <Configured-Event-Names>["UserRegister"]</Configured-Event-Names>
     - 默认事件名字段: `event`
     ## 事件名映射
     [{"events":["UserRegister"],"metric":"new_user_registration"}]
@@ -1645,6 +1667,7 @@ def test_event_availability_trusts_event_name_tracking_mapping(monkeypatch: pyte
     service = FakeSmartQAService()
     service.ds = SimpleNamespace(id=6, type="mysql", type_name="MySQL")
     service.chat_question.tracking_config = '''
+    <Configured-Event-Names>["UserActive"]</Configured-Event-Names>
     - 默认事件名字段: `event`
     ## 事件名映射
     [{"event_name":"UserActive","event_display_name":"当日活跃"}]

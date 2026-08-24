@@ -1,10 +1,11 @@
 """
-脚本说明：验证工作空间埋点配置在 SQL 生成时按问题投影，不修改原始数据字典。
+脚本说明：验证工作空间事件字典不进入 AI 上下文，非事件字段规则仍按问题投影。
 """
 from __future__ import annotations
 
 from copy import deepcopy
 
+from apps.system.crud import tracking_config as tracking_config_crud
 from apps.system.crud.tracking_config import build_tracking_prompt_context
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigDTO,
@@ -62,83 +63,97 @@ def _tracking_config() -> TenantTrackingConfigDTO:
         ],
         event_name_mappings=[
             {
-                "event_name": "login",
-                "event_display_name": "登录",
-                "event_category": "基础事件",
+                "event_name": "ShopBuyItem",
+                "event_display_name": "商店购买真实使用",
+                "event_category": "商店事件",
                 "properties": [
-                    {"property_name": "duration_seconds", "property_display_name": "停留时长"},
+                    {"property_name": "item_id", "property_display_name": "商品 ID"},
                 ],
             },
             {
-                "event_name": "pay_success",
-                "event_display_name": "支付成功",
-                "event_category": "付费事件",
+                "event_name": "ShopBuyComplete",
+                "event_display_name": "商店购买完成",
+                "event_category": "商店事件",
                 "properties": [
-                    {"property_name": "transaction_id", "property_display_name": "订单号"},
+                    {"property_name": "order_id", "property_display_name": "订单号"},
                 ],
             },
         ],
+        event_groups=[
+            TenantTrackingEventGroupDTO(
+                tenant_id=1,
+                group_key="shop_purchase",
+                group_name="商店购买流程",
+                event_names=["ShopBuyItem", "ShopBuyComplete"],
+                enabled=True,
+            )
+        ],
+        sql_rules="订单金额统一使用 event_props.amount。",
+        notes="字段定义由当前工作空间维护。",
     )
 
 
-def test_tracking_prompt_keeps_only_matched_event_properties_without_mutating_config() -> None:
+def test_tracking_prompt_omits_event_dictionary_without_mutating_config() -> None:
     """
-    是什么：问题命中登录事件时，只投影登录属性，完整事件配置仍保持不变。
+    是什么：事件名、属性和分组不进入 AI Prompt，原始管理配置保持不变。
     """
     config = _tracking_config()
     original_mappings = deepcopy(config.event_name_mappings)
+    original_groups = deepcopy(config.event_groups)
 
-    context, _summary = build_tracking_prompt_context(config, question="分析登录停留时长")
+    context, summary = build_tracking_prompt_context(config, question="商店购买相关事件有哪些")
 
-    assert "duration_seconds" in context
-    assert "transaction_id" not in context
-    assert "pay_success" in context
+    assert "<Workspace-Tracking-Rules>" in context
+    assert "<Configured-Event-Names>" not in context
+    assert "## 事件名映射" not in context
+    assert "## 事件分组" not in context
+    assert "## 默认字段" not in context
+    for event_text in (
+        "ShopBuyItem",
+        "ShopBuyComplete",
+        "商店购买真实使用",
+        "商店购买完成",
+        "item_id",
+        "order_id",
+        "shop_purchase",
+        "商店购买流程",
+    ):
+        assert event_text not in context
+        assert all(event_text not in item for item in summary)
+    assert "订单金额统一使用 event_props.amount" in context
+    assert "字段定义由当前工作空间维护" in context
     assert config.event_name_mappings == original_mappings
+    assert config.event_groups == original_groups
 
 
-def test_tracking_prompt_omits_event_properties_when_question_has_no_event_match() -> None:
-    """
-    是什么：未命中任何事件时仍保留轻量事件目录，但不注入无关事件属性。
-    """
-    context, _summary = build_tracking_prompt_context(_tracking_config(), question="最近 30 天 LTV")
-
-    assert "login" in context
-    assert "pay_success" in context
-    assert "duration_seconds" not in context
-    assert "transaction_id" not in context
-    assert "`event_log.uid`" in context
-
-
-def test_tracking_prompt_keeps_lightweight_match_when_full_properties_exceed_budget() -> None:
-    """
-    是什么：命中事件的属性超出预算时，仍保留事件目录，不能让事件从上下文中静默消失。
-    """
-    config = _tracking_config()
-    config.event_name_mappings[0]["properties"] = [
-        {"property_name": "oversized_property", "description": "x" * 20_000},
-    ]
-
-    context, _summary = build_tracking_prompt_context(config, question="分析登录事件")
-
-    assert "login" in context
-    assert "oversized_property" not in context
-
-
-def test_tracking_prompt_keeps_complete_event_inventory_when_details_fill_budget() -> None:
-    """
-    是什么：事件详情占满投影预算时，完整事件目录仍应作为独立紧凑清单保留。
-    """
-    config = _tracking_config()
-    config.event_name_mappings[1]["properties"] = [
-        {"property_name": "large_property", "description": "x" * 15_500},
-    ]
-
-    context, _summary = build_tracking_prompt_context(
-        config,
-        question="分析支付成功事件",
+def test_tracking_prompt_omits_event_specific_schema_warnings(monkeypatch) -> None:
+    """事件默认配置的 schema 漂移不得通过校验 warning 重新进入 Prompt。"""
+    config = _tracking_config().model_copy(
+        update={
+            "default_event_table": "missing_event_table",
+            "default_event_name_field": "ShopBuyItem",
+        }
+    )
+    monkeypatch.setattr(tracking_config_crud, "get_tracking_config", lambda *_args: config)
+    monkeypatch.setattr(
+        tracking_config_crud,
+        "datasource_physical_schema",
+        lambda *_args: {"event_log": {"uid", "event_name", "event_props"}},
     )
 
-    assert '<Configured-Event-Names>["login","pay_success"]</Configured-Event-Names>' in context
+    context, summary = tracking_config_crud.find_tracking_prompt_context(
+        object(),
+        tenant_id=1,
+        datasource_id=2,
+        datasource_type="postgresql",
+        question="分析支付金额",
+    )
+
+    assert "missing_event_table" not in context
+    assert "ShopBuyItem" not in context
+    assert all("missing_event_table" not in item for item in summary)
+    assert all("ShopBuyItem" not in item for item in summary)
+    assert "订单金额统一使用 event_props.amount" in context
 
 
 def test_tracking_prompt_projects_only_default_and_question_matched_fields_without_mutating_config() -> None:
@@ -169,39 +184,3 @@ def test_tracking_prompt_keeps_data_skill_referenced_field_when_question_uses_bu
 
     assert "`event_log.event_props.amount`" in context
     assert "`event_log.event_props.battle_result`" not in context
-
-
-def test_tracking_prompt_includes_only_enabled_event_groups_without_mutating_config() -> None:
-    config = _tracking_config().model_copy(
-        update={
-            "event_groups": [
-                TenantTrackingEventGroupDTO(
-                    tenant_id=1,
-                    group_key="payment_process",
-                    group_name="支付流程事件",
-                    description="只统计流程量",
-                    event_names=["pay_success"],
-                    sort_order=20,
-                    enabled=True,
-                ),
-                TenantTrackingEventGroupDTO(
-                    tenant_id=1,
-                    group_key="disabled_group",
-                    group_name="停用分组",
-                    event_names=["login"],
-                    sort_order=10,
-                    enabled=False,
-                ),
-            ]
-        }
-    )
-    original_mappings = deepcopy(config.event_name_mappings)
-
-    context, summary = build_tracking_prompt_context(config)
-
-    assert "## 事件分组" in context
-    assert "payment_process" in context
-    assert "pay_success" in context
-    assert "disabled_group" not in context
-    assert any("事件分组" in item and "payment_process" in item for item in summary)
-    assert config.event_name_mappings == original_mappings

@@ -118,12 +118,6 @@ def test_dictionary_schema_uses_explicit_tenant_for_cached_metadata(monkeypatch)
         ),
     )
     monkeypatch.setattr(datasource_crud, "datasource_physical_schema", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr(
-        datasource_crud,
-        "project_event_schema_fields",
-        lambda *_args, **_kwargs: SimpleNamespace(warnings=[], fields=[], datasource_type="pg"),
-    )
-
     def _cached_tables(**kwargs):
         cached_tenants.append(kwargs.get("tenant_id"))
         return [

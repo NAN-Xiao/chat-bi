@@ -36,7 +36,6 @@ from common.sql_json_paths import canonical_json_field_name, normalize_json_path
 from common.utils.snowflake import snowflake
 from common.utils.time import get_timestamp
 
-TRACKING_EVENT_MAPPING_PROMPT_BUDGET = 16_000
 TRACKING_FIELD_PROMPT_BUDGET = 16_000
 _DATASOURCE_REFERENCE_PATTERN = re.compile(
     r"\bdatasource[\s_-]*id[`'\"]?\s*(?:=|:|：)\s*[`'\"]?(\d+)\b",
@@ -218,18 +217,6 @@ def _event_names_from_mapping(item: Any) -> list[str]:
     return merged
 
 
-def _configured_event_names(config: TenantTrackingConfigDTO) -> list[str]:
-    names: list[str] = []
-    seen: set[str] = set()
-    for mapping in config.event_name_mappings or []:
-        for event_name in _event_names_from_mapping(mapping):
-            if event_name in seen:
-                continue
-            seen.add(event_name)
-            names.append(event_name)
-    return names
-
-
 def _tracking_event_properties(
     mapping: dict[str, Any],
     *,
@@ -399,6 +386,23 @@ class TrackingSchemaValidation:
     warnings: list[str]
     invalid_tables: list[str]
     invalid_fields: list[str]
+
+
+def project_tracking_config_for_ai_context(
+    config: TenantTrackingConfigDTO,
+) -> TenantTrackingConfigDTO:
+    """Return a copy containing only workspace metadata allowed in AI context."""
+    if hasattr(config, "model_copy"):
+        projected = config.model_copy(deep=True)
+    else:
+        projected = copy.deepcopy(config)
+    projected.default_event_table = None
+    projected.default_subject_field = None
+    projected.default_event_name_field = None
+    projected.default_event_time_field = None
+    projected.event_name_mappings = []
+    projected.event_groups = []
+    return projected
 
 
 def datasource_physical_schema(session: Session, datasource_id: int | None) -> dict[str, set[str]]:
@@ -969,105 +973,6 @@ def _format_json_for_prompt(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-def _event_mapping_match_texts(mapping: dict[str, Any]) -> list[str]:
-    texts: list[str] = []
-    for key in ("event_name", "event_display_name", "event_category", "metric", "description"):
-        value = mapping.get(key)
-        if isinstance(value, str) and value.strip():
-            texts.append(value.strip())
-    for key in ("events", "aliases"):
-        value = mapping.get(key)
-        if isinstance(value, list):
-            texts.extend(str(item).strip() for item in value if str(item).strip())
-    for property_item in mapping.get("properties") or []:
-        if not isinstance(property_item, dict):
-            continue
-        for key in ("property_name", "property_display_name", "description", "aliases"):
-            value = property_item.get(key)
-            if isinstance(value, list):
-                texts.extend(str(item).strip() for item in value if str(item).strip())
-            elif isinstance(value, str) and value.strip():
-                texts.append(value.strip())
-    return texts
-
-
-def _event_mapping_matches_question(mapping: dict[str, Any], question: str) -> bool:
-    normalized_question = question.casefold().strip()
-    if not normalized_question:
-        return False
-    for text in _event_mapping_match_texts(mapping):
-        normalized_text = text.casefold().strip()
-        if len(normalized_text) >= 2 and normalized_text in normalized_question:
-            return True
-    return False
-
-
-def _lightweight_event_mapping(mapping: dict[str, Any]) -> dict[str, Any]:
-    projected = {
-        key: mapping[key]
-        for key in ("event_name", "event_display_name", "event_category")
-        if mapping.get(key) not in (None, "", [], {})
-    }
-    if projected:
-        return projected
-    return {
-        key: copy.deepcopy(mapping[key])
-        for key in ("metric", "events", "description")
-        if mapping.get(key) not in (None, "", [], {})
-    }
-
-
-def _event_mapping_prompt_chars(mapping: dict[str, Any]) -> int:
-    return len(_format_json_for_prompt(mapping))
-
-
-def _project_event_name_mappings(
-    mappings: list[Any],
-    question: str | None,
-    *,
-    data_skill_text: str | None = None,
-    budget: int = TRACKING_EVENT_MAPPING_PROMPT_BUDGET,
-) -> list[Any]:
-    mappings = _sanitize_event_name_mappings(mappings)
-    if not question or not question.strip():
-        return copy.deepcopy(mappings)
-
-    ranked: list[tuple[int, int, dict[str, Any]]] = []
-    passthrough: list[Any] = []
-    for index, item in enumerate(mappings):
-        if not isinstance(item, dict):
-            passthrough.append(copy.deepcopy(item))
-            continue
-        question_match = _event_mapping_matches_question(item, question)
-        data_skill_match = _event_mapping_matches_question(item, data_skill_text or "")
-        priority = 2 if question_match else 1 if data_skill_match else 0
-        ranked.append((priority, index, item))
-
-    selected: list[Any] = []
-    used_chars = 0
-
-    def add(item: Any) -> bool:
-        nonlocal used_chars
-        serialized = _format_json_for_prompt(item)
-        separator_chars = 1 if selected else 0
-        if used_chars + separator_chars + len(serialized) > budget:
-            return False
-        selected.append(item)
-        used_chars += separator_chars + len(serialized)
-        return True
-
-    for priority, _index, mapping in sorted(ranked, key=lambda item: (-item[0], item[1])):
-        if priority:
-            if not add(copy.deepcopy(mapping)):
-                add(_lightweight_event_mapping(mapping))
-    for priority, _index, mapping in ranked:
-        if not priority:
-            add(_lightweight_event_mapping(mapping))
-    for item in passthrough:
-        add(item)
-    return selected
-
-
 def _tracking_field_match_texts(field: TenantTrackingFieldDTO) -> list[str]:
     texts: list[str] = []
     for value in (
@@ -1210,23 +1115,6 @@ def _project_tracking_fields(
     return selected
 
 
-def _event_groups_for_prompt(config: TenantTrackingConfigDTO) -> list[dict[str, Any]]:
-    """生成稳定、独立的启用事件分组上下文。"""
-    groups = sorted(
-        [group for group in config.event_groups or [] if group.enabled],
-        key=lambda group: (group.sort_order, group.group_key),
-    )
-    return [
-        {
-            "group_key": group.group_key,
-            "group_name": group.group_name,
-            **({"description": group.description} if group.description else {}),
-            "event_names": list(group.event_names),
-        }
-        for group in groups
-    ]
-
-
 def build_tracking_prompt_context(
     config: TenantTrackingConfigDTO,
     validation_warnings: list[str] | None = None,
@@ -1236,10 +1124,11 @@ def build_tracking_prompt_context(
     data_skill_text: str | None = None,
 ) -> tuple[str, list[str]]:
     """
-    是什么：build_tracking_prompt_context 是一个可以复用的小步骤，负责系统管理相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
+    为 AI 构建工作空间级表、字段和 SQL 规则上下文。
+
+    事件字典由管理与目录接口维护，不再作为 AI Prompt 的语义来源。
     """
+    config = project_tracking_config_for_ai_context(config)
     if datasource_type:
         config, compile_warnings = compile_tracking_config_expressions(config, datasource_type)
         validation_warnings = list(validation_warnings or []) + compile_warnings
@@ -1249,7 +1138,7 @@ def build_tracking_prompt_context(
 
     lines: list[str] = [
         "<Workspace-Tracking-Rules>",
-        "以下是当前工作空间维护的打点/事件字段规范。它只约束当前工作空间；生成 SQL 时必须结合当前数据库 Schema 使用。",
+        "以下是当前工作空间维护的表、字段和 SQL 规则。它只约束当前工作空间；生成 SQL 时必须结合当前数据库 Schema 使用。",
         "如果这里配置的表或字段没有出现在当前 Schema 中，不得编造字段，应说明缺少可用字段或请求补充配置。",
     ]
     summary_parts = []
@@ -1258,47 +1147,11 @@ def build_tracking_prompt_context(
         for warning in validation_warnings[:20]:
             lines.append(f"- {warning}")
             summary_parts.append(f"schema校验: {warning}")
-    defaults = [
-        ("默认事件表", config.default_event_table),
-        ("默认主体字段", config.default_subject_field),
-        ("默认事件名字段", config.default_event_name_field),
-        ("默认事件时间字段", config.default_event_time_field),
-    ]
-    default_lines = [f"- {label}: `{value}`" for label, value in defaults if value]
-    if default_lines:
-        lines.append("\n## 默认字段")
-        lines.extend(default_lines)
-        summary_parts.extend(default_lines)
     if config.field_role_mappings:
         value = _format_json_for_prompt(config.field_role_mappings)
         lines.append("\n## 字段角色映射")
         lines.append(value)
         summary_parts.append(f"字段角色映射: {value}")
-    if config.event_name_mappings:
-        configured_event_names = _configured_event_names(config)
-        if configured_event_names:
-            lines.append("\n## 已登记事件名")
-            lines.append(
-                "<Configured-Event-Names>"
-                f"{_format_json_for_prompt(configured_event_names)}"
-                "</Configured-Event-Names>"
-            )
-        value = _format_json_for_prompt(
-            _project_event_name_mappings(
-                config.event_name_mappings,
-                question,
-                data_skill_text=data_skill_text,
-            )
-        )
-        lines.append("\n## 事件名映射")
-        lines.append(value)
-        summary_parts.append(f"事件名映射: {value}")
-    event_groups = _event_groups_for_prompt(config)
-    if event_groups:
-        value = _format_json_for_prompt(event_groups)
-        lines.append("\n## 事件分组")
-        lines.append(value)
-        summary_parts.append(f"事件分组: {value}")
     if config.sql_rules:
         lines.append("\n## SQL 约束")
         lines.append(config.sql_rules)
@@ -1360,7 +1213,9 @@ def find_tracking_prompt_context(
     """
     if tenant_id is None:
         return "", []
-    config = get_tracking_config(session, int(tenant_id), datasource_id)
+    config = project_tracking_config_for_ai_context(
+        get_tracking_config(session, int(tenant_id), datasource_id)
+    )
     validation_warnings: list[str] = []
     if datasource_id is not None:
         physical_schema = datasource_physical_schema(session, int(datasource_id))

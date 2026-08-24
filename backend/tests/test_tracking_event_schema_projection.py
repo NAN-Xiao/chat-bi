@@ -8,7 +8,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.system.schemas.tenant_schema import TenantTrackingConfigDTO
+from apps.system.schemas.tenant_schema import (
+    TenantTrackingConfigDTO,
+    TenantTrackingFieldDTO,
+)
 
 
 def _projection_module():
@@ -250,7 +253,7 @@ class _DictionarySession:
         return _Rows([])
 
 
-def test_workspace_dictionary_schema_appends_request_event_projection(monkeypatch) -> None:
+def test_workspace_dictionary_schema_does_not_append_request_event_projection(monkeypatch) -> None:
     from apps.datasource.crud import datasource as datasource_crud
 
     config = _config(
@@ -262,21 +265,59 @@ def test_workspace_dictionary_schema_appends_request_event_projection(monkeypatc
             ],
         }
     )
-    cached_fields = [
-        SimpleNamespace(field_name="event", field_type="text"),
-        SimpleNamespace(field_name="personal", field_type="json"),
-        SimpleNamespace(field_name="uid", field_type="text"),
-    ]
-    table_obj = SimpleNamespace(
-        table=SimpleNamespace(id=10, table_name="event"),
-        fields=cached_fields,
-    )
     monkeypatch.setattr(datasource_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(datasource_crud, "get_tracking_config", lambda *_args, **_kwargs: config)
     monkeypatch.setattr(
         datasource_crud,
         "datasource_physical_schema",
         lambda *_args, **_kwargs: {"event": {"event", "personal", "uid"}},
+    )
+    schema, tables, configured = datasource_crud._dictionary_schema_from_workspace(
+        session=_DictionarySession(),
+        current_user=SimpleNamespace(id=1001),
+        ds=SimpleNamespace(id=1, type="mysql", type_name="MySQL"),
+        tenant_id=2001,
+        db_name="xiuxian",
+        table_list=None,
+    )
+
+    assert configured is False
+    assert tables == []
+    assert schema == ""
+    assert not hasattr(datasource_crud, "project_event_schema_fields")
+
+
+def test_workspace_dictionary_schema_omits_event_specific_validation_warnings(monkeypatch) -> None:
+    from apps.datasource.crud import datasource as datasource_crud
+
+    config = _config(
+        {
+            "event_name": "ShopBuyItem",
+            "properties": [_property("personal.item_id", "text", "personal", "$.item_id")],
+        }
+    ).model_copy(
+        update={
+            "default_event_table": "missing_event_table",
+            "fields": [
+                TenantTrackingFieldDTO(
+                    tenant_id=2001,
+                    table_name="event",
+                    field_name="uid",
+                    field_comment="用户 ID",
+                )
+            ],
+        }
+    )
+    table_obj = SimpleNamespace(
+        table=SimpleNamespace(id=10, table_name="event"),
+        fields=[SimpleNamespace(field_name="uid", field_type="text")],
+    )
+    monkeypatch.setattr(datasource_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(datasource_crud, "get_tracking_config", lambda *_args, **_kwargs: config)
+    monkeypatch.setattr(
+        datasource_crud,
+        "datasource_physical_schema",
+        lambda *_args, **_kwargs: {"event": {"uid"}},
     )
     monkeypatch.setattr(datasource_crud, "get_table_obj_by_ds", lambda **_kwargs: [table_obj])
     monkeypatch.setattr(datasource_crud, "get_user_permission_rules", lambda *_args, **_kwargs: [])
@@ -294,12 +335,10 @@ def test_workspace_dictionary_schema_appends_request_event_projection(monkeypatc
         tenant_id=2001,
         db_name="xiuxian",
         table_list=None,
-        question="近七天 ARPPU",
-        data_skill_text="PayBuyRet 使用 personal.ed_money",
     )
 
     assert configured is True
     assert tables == ["event"]
-    assert "# Event: PayBuyRet" in schema
-    assert "$.ed_money" in schema
-    assert "personal.order_id" not in schema
+    assert "uid:text" in schema
+    assert "missing_event_table" not in schema
+    assert "ShopBuyItem" not in schema

@@ -44,11 +44,7 @@ from apps.system.crud.tracking_config import (
     datasource_physical_schema,
     filter_tracking_config_for_physical_schema,
     get_tracking_config,
-)
-from apps.system.crud.tracking_event_schema import (
-    EventSchemaProjection,
-    format_event_schema_projection,
-    project_event_schema_fields,
+    project_tracking_config_for_ai_context,
 )
 from apps.system.models.tenant import TenantSchemaFieldModel, TenantSchemaTableModel
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
@@ -1146,17 +1142,16 @@ def _dictionary_schema_from_workspace(
         tenant_id: int | None,
         db_name: str | None,
         table_list: list[str] | None,
-        question: str | None = None,
-        data_skill_text: str | None = None,
 ) -> tuple[str, list[str], bool]:
     if tenant_id is None or ds is None or not has_datasource_access(session, current_user, ds.id):
         return "", [], False
 
-    tracking_config = get_tracking_config(session, int(tenant_id), int(ds.id))
+    tracking_config = project_tracking_config_for_ai_context(
+        get_tracking_config(session, int(tenant_id), int(ds.id))
+    )
     tracking_configured = bool(
         getattr(tracking_config, "tables", None)
         or getattr(tracking_config, "fields", None)
-        or getattr(tracking_config, "event_name_mappings", None)
         or getattr(tracking_config, "field_role_mappings", None)
         or getattr(tracking_config, "sql_rules", None)
     )
@@ -1173,14 +1168,6 @@ def _dictionary_schema_from_workspace(
             getattr(ds, "type", None) or getattr(ds, "type_name", None),
         )
         tracking_validation_warnings.extend(expression_warnings)
-    event_projection = project_event_schema_fields(
-        tracking_config,
-        physical_schema,
-        getattr(ds, "type", None) or getattr(ds, "type_name", None),
-        question,
-        data_skill_text,
-    )
-    tracking_validation_warnings.extend(event_projection.warnings)
     tracking_enabled = bool(getattr(tracking_config, "enabled", False))
     tracking_tables = {
         item.table_name: item
@@ -1216,15 +1203,10 @@ def _dictionary_schema_from_workspace(
         or schema_field_comments
     )
 
-    event_fields_by_table: dict[str, list[Any]] = {}
-    for field in event_projection.fields:
-        event_fields_by_table.setdefault(field.table_name, []).append(field)
-
     table_names = (
         set(schema_table_comments)
         | set(tracking_tables)
         | set(tracking_fields_by_table)
-        | set(event_fields_by_table)
     )
     if table_list is not None:
         requested = {str(table).strip() for table in table_list if str(table or "").strip()}
@@ -1251,15 +1233,10 @@ def _dictionary_schema_from_workspace(
     scoped_table_ids = get_user_scoped_table_ids(session, current_user, ds.id, contain_rules)
 
     schema_parts: list[str] = []
-    event_schema_parts: list[str] = []
     table_name_list: list[str] = []
     for table_name in sorted(table_names):
         cached_obj = cached_by_table.get(table_name)
         if cached_obj is not None and scoped_table_ids is not None and int(cached_obj.table.id) not in scoped_table_ids:
-            if event_fields_by_table.get(table_name):
-                tracking_validation_warnings.append(
-                    f"事件表 {table_name} 不在当前用户的数据表权限范围内，已停止事件属性投影。"
-                )
             continue
 
         cached_fields_by_name: dict[str, CoreField] = {}
@@ -1301,47 +1278,20 @@ def _dictionary_schema_from_workspace(
             fields.append((schema_field, field_type, field_comment or ""))
             seen_fields.add(schema_field)
 
-        allowed_event_fields = []
-        for event_field in event_fields_by_table.get(table_name, []):
-            if cached_obj is None:
-                tracking_validation_warnings.append(
-                    f"事件属性 {event_field.event_name}.{event_field.field_name} 无法取得当前用户字段权限，已停止投影。"
-                )
-                continue
-            required_fields = {event_field.event_name_field, event_field.source_field}
-            denied_fields = sorted(required_fields - set(cached_fields_by_name))
-            if denied_fields:
-                tracking_validation_warnings.append(
-                    f"事件属性 {event_field.event_name}.{event_field.field_name} 依赖无权限字段 "
-                    f"{', '.join(denied_fields)}，已停止投影。"
-                )
-                continue
-            allowed_event_fields.append(event_field)
-
-        if not fields and not allowed_event_fields:
+        if not fields:
             continue
 
-        if fields:
-            table_comment = _dictionary_table_comment(table_name, schema_table_comments, tracking_tables)
-            schema_parts.append(_format_schema_table(
-                ds=ds,
-                db_name=db_name,
-                table_name=table_name,
-                table_comment=table_comment,
-                fields=fields,
-            ))
-        if allowed_event_fields:
-            event_schema_parts.append(
-                format_event_schema_projection(
-                    EventSchemaProjection(
-                        fields=allowed_event_fields,
-                        datasource_type=event_projection.datasource_type,
-                    )
-                )
-            )
+        table_comment = _dictionary_table_comment(table_name, schema_table_comments, tracking_tables)
+        schema_parts.append(_format_schema_table(
+            ds=ds,
+            db_name=db_name,
+            table_name=table_name,
+            table_comment=table_comment,
+            fields=fields,
+        ))
         table_name_list.append(table_name)
 
-    if not schema_parts and not event_schema_parts:
+    if not schema_parts:
         if dictionary_configured and tracking_validation_warnings:
             schema_str = f"【DB_ID】 {db_name or ''}\n【Schema】\n"
             schema_str += "【AI schema source】workspace data dictionary, but current datasource schema validation found no usable dictionary fields.\n"
@@ -1363,7 +1313,6 @@ def _dictionary_schema_from_workspace(
         schema_str += "\n".join(f"- {warning}" for warning in tracking_validation_warnings[:20])
         schema_str += "\n"
     schema_str += "".join(schema_parts)
-    schema_str += "".join(event_schema_parts)
     return schema_str, table_name_list, dictionary_configured
 
 
@@ -1375,6 +1324,8 @@ def get_ai_table_schema(session: SessionDep, current_user: CurrentUser, ds: Core
     是什么：为 AI 生成 SQL/分析计划提供结构上下文。
     做了什么：优先读取工作空间数据字典和字段注释；物理库只在执行 SQL 时使用，不在这里探测结构。
     """
+    # 保留参数契约供共享 SQL 上下文调用；事件字典不再按 Data Skill 投影进 schema。
+    _ = data_skill_text
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     db_name = effective_db_schema(ds.type, conf)
     metadata_tenant_id = _schema_metadata_tenant_id(session, ds, current_user, tenant_id)
@@ -1385,8 +1336,6 @@ def get_ai_table_schema(session: SessionDep, current_user: CurrentUser, ds: Core
         tenant_id=metadata_tenant_id,
         db_name=db_name,
         table_list=table_list,
-        question=question,
-        data_skill_text=data_skill_text,
     )
     if dictionary_tables or dictionary_configured:
         return dictionary_schema, dictionary_tables
