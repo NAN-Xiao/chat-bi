@@ -248,3 +248,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: 修复知识库检索查询污染
+
+**Date**: 2026-08-24
+**Task**: 修复知识库检索查询污染
+**Branch**: `codex/fix-kb-retrieval-query`
+
+### Summary
+
+将知识相关性查询收窄为调用方主意图，补充回归测试并通过真实商店购买问答审计验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e31dbbc8` | (see git log) |
+
+### Status
+
+[OK] **Completed**

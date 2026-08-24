@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
-- **Last Active**: 2026-08-21
+- **Total Sessions**: 12
+- **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~250 | Active |
+| `journal-1.md` | ~271 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-08-24 | 修复知识库检索查询污染 | `e31dbbc8` | `codex/fix-kb-retrieval-query` |
 | 11 | 2026-08-21 | 知识库版本保留上限 | `014d42c9` | `codex/retain-latest-10-kb-versions` |
 | 10 | 2026-08-18 | 移除知识库参与检索开关 | `91ab5bd4` | `codex/remove-knowledge-retrieval-toggle` |
 | 9 | 2026-08-18 | 默认开启知识库运行时检索 | `90a0237d` | `codex/enable-knowledge-retrieval-default` |
