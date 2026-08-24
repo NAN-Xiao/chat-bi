@@ -205,21 +205,20 @@ test('知识库管理页通过分组工具栏接入模板下拉入口', async ()
 })
 
 test('知识库管理使用双下拉并向普通成员开放只读入口', async () => {
-  const [v2Source, legacySource, routerSource, scopeNavigationSource] = await Promise.all([
+  const [v2Source, pageSource, routerSource, scopeNavigationSource] = await Promise.all([
     readFile(new URL('../src/views/knowledge-base/KnowledgeBaseV2Panel.vue', import.meta.url), 'utf8'),
     readFile(new URL('../src/views/knowledge-base/index.vue', import.meta.url), 'utf8'),
     readFile(new URL('../src/router/index.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/views/knowledge-base/knowledgeScopeNavigation.ts', import.meta.url), 'utf8'),
   ])
 
-  for (const source of [v2Source, legacySource]) {
-    assert.match(source, /平台知识库/)
-    assert.match(source, /工作空间知识库/)
-    assert.match(source, /workspaceFilterDisabled/)
-    assert.match(source, /userStore\.isTenantAdminUser/)
-  }
+  assert.match(v2Source, /平台知识库/)
+  assert.match(v2Source, /工作空间知识库/)
+  assert.match(v2Source, /workspaceFilterDisabled/)
+  assert.match(v2Source, /userStore\.isTenantAdminUser/)
+  assert.match(pageSource, /<KnowledgeBaseV2Panel \/>/)
+  assert.doesNotMatch(pageSource, /LEGACY|knowledgePageMode/)
   assert.match(v2Source, /row\.archived \|\| !row\.can_manage \? '查看' : '编辑'/)
-  assert.match(legacySource, /row\.can_manage \? '可管理' : '只读'/)
   const routeStart = routerSource.indexOf("path: 'knowledge-base'")
   const routeEnd = routeStart >= 0 ? routerSource.indexOf("path: 'prompt'", routeStart) : -1
   const knowledgeRoute = routeStart >= 0 && routeEnd > routeStart

@@ -11,7 +11,6 @@ from apps.knowledge_base.cutover import KnowledgeCapabilities
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.models import (
     KnowledgeBase,
-    KnowledgeBaseStatusEnum,
     KnowledgeBaseVisibilityScopeEnum,
 )
 from apps.knowledge_base.permissions import KnowledgePermissionService
@@ -172,11 +171,9 @@ def serialize_record(record: KnowledgeBase, *, can_manage: bool) -> dict[str, An
         "description": record.description,
         "visibility_scope": KnowledgeBaseVisibilityScopeEnum(record.visibility_scope).value,
         "active": bool(record.active),
-        "status": KnowledgeBaseStatusEnum(record.status).value,
         "file_id": record.file_id,
         "file_name": record.file_name,
         "file_ext": record.file_ext,
-        "error_message": record.error_message,
         "create_time": record.create_time,
         "update_time": record.update_time,
         "archived": bool(record.archived),

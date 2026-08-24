@@ -376,11 +376,11 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci --prefer-offline --no-audit --no-fund
 ```
 
-## Scenario: Frontend And Backend Release Alignment
+## Scenario: V2 Knowledge Management Contract And Release Alignment
 
 ### 1. Scope / Trigger
 
-- Trigger: a frontend release adds or changes an API capability probe, route, response field, or mode-selection contract.
+- Trigger: a frontend release adds or changes a knowledge-management route, response field, or deployment capability contract.
 - The frontend and backend deployed for one environment must come from the same target release line. A successful build of another branch does not validate the requested release.
 
 ### 2. Signatures
@@ -388,36 +388,42 @@ RUN --mount=type=cache,target=/root/.npm \
 - Knowledge management capability probe: `GET /api/v1/knowledge-base/capabilities`.
 - Knowledge management list: `GET /api/v1/knowledge-base/list`.
 - The final application router in `backend/apps/api.py`, not only a feature-local router, must register both methods and paths.
+- V2 publication task: `knowledge_base.publish_version`.
 
 ### 3. Contracts
 
 - The capability response contains `phase`, `management_mode`, `legacy_write_enabled`, `v2_write_enabled`, and `runtime_context_enabled`.
 - `management_mode` is one of `LEGACY`, `UPGRADING`, `V2`, or `MAINTENANCE`.
-- The frontend may render the legacy management surface only when the capability response explicitly contains `management_mode: "LEGACY"`.
-- HTTP errors, malformed responses, and transport failures are capability-unavailable states. They must remain visible errors and must not be converted to `LEGACY` or an empty list.
+- Capabilities remain deployment and maintenance safety signals. They may block V2 writes, but they must never dispatch a legacy list, delete, upload, or processing path.
+- List, detail, create, archive/delete, restore, and permanent-delete behavior is V2-only. `POST /knowledge-base/save` and task `knowledge_base.process_document` must not be registered.
+- `knowledge_base` is the identity and version-pointer table. It must not contain or serialize the legacy `status`, `task_id`, or `error_message` columns; version and publish-job tables remain authoritative for validation, indexing, publication, task, and error state.
+- The frontend always renders the V2 management surface. Capability failures must not synthesize or restore a legacy page.
 - Before deployment, verify that the CI branch parameter and checkout `BranchSpec` select the same target release as the frontend and backend artifacts.
 
 ### 4. Validation & Error Matrix
 
 | Condition | Required behavior |
 | --- | --- |
-| Capability returns `200` with a valid mode | Render the matching management state |
-| Capability returns `404`, `405`, `5xx`, or a transport error | Show capability unavailable with retry; do not load legacy cards |
-| Capability payload has a missing or unknown mode | Treat it as capability unavailable |
+| V2 write is enabled | Execute the V2 lifecycle operation |
+| V2 write is disabled or cutover barrier is active | Return the explicit maintenance/upgrade error; do not dispatch legacy code |
+| Database is not yet `V2_ACTIVE` | Keep operational capability reporting, but do not expose legacy application writes |
 | List returns `200` with `[]` | Show the real empty state |
 | List returns an HTTP or transport error | Show list error with retry; do not show the empty state |
+| Old client calls `POST /knowledge-base/save` | Return route-not-found behavior; no compatibility fallback |
 | CI checkout branch differs from the requested release | Stop release verification and correct the pipeline selection before deployment |
 
 ### 5. Good/Base/Bad Cases
 
 - Good: release 2.0 frontend and backend are built from the release 2.0 branch, both routes return the expected contracts, and the V2 page loads.
-- Base: the backend explicitly returns `LEGACY`; the frontend renders the legacy management page without synthesizing that mode locally.
-- Bad: a release 2.0 frontend is deployed with a release 1.0 backend, receives `405` from the capability probe, and silently displays the legacy empty state.
+- Base: deployment is in a maintenance phase; reads remain on the V2 model and writes return an explicit blocked response.
+- Bad: a non-V2 phase causes list/delete to call a legacy implementation, or the frontend restores the old card page and displays identity-table processing status.
 
 ### 6. Tests Required
 
-- Backend route regression: inspect the final `apps.api.api_router` and assert `GET` is registered for both `/knowledge-base/capabilities` and `/knowledge-base/list`.
-- Frontend mode regression: assert valid modes map exactly, while null, unknown, and failed capability loads resolve to the explicit unavailable state.
+- Backend route regression: inspect the final `apps.api.api_router`, assert V2 routes are registered, and assert `/knowledge-base/save` is absent.
+- Task registry regression: assert `knowledge_base.process_document` is absent and `knowledge_base.publish_version` remains registered.
+- Schema/serialization regression: assert the identity model and API item omit `status`, `task_id`, and `error_message`; test the upgrade/downgrade migration structure.
+- Frontend regression: assert the entry contains only `KnowledgeBaseV2Panel`, the list has no processing-status column, and publish-job task/error fields remain typed.
 - Frontend list regression: assert an empty success and a failed request render different states and that the failed request exposes retry.
 - Deployment verification: record the requested branch, CI checkout branch/commit, running image identifier, and direct capability endpoint result.
 
@@ -425,22 +431,18 @@ RUN --mount=type=cache,target=/root/.npm \
 
 #### Wrong
 
-```ts
-try {
-  return await loadCapabilities()
-} catch {
-  return { management_mode: 'LEGACY' }
-}
+```python
+if capabilities.phase != KnowledgeMigrationPhase.V2_ACTIVE:
+    return await save_legacy_knowledge_base(...)
 ```
 
 #### Correct
 
-```ts
-try {
-  return resolveKnowledgePageMode(await loadCapabilities())
-} catch {
-  return 'CAPABILITIES_UNAVAILABLE'
-}
+```python
+blocked = v2_write_error(capabilities)
+if blocked is not None:
+    return serialize_error(blocked)
+return run_v2_lifecycle_operation(...)
 ```
 
 ## Scenario: Knowledge Base Permanent Deletion And Source Cleanup

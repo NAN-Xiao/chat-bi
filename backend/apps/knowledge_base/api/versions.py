@@ -20,10 +20,6 @@ from apps.knowledge_base.api._helpers import (
     unexpected_error,
     v2_write_error,
 )
-from apps.knowledge_base.api.knowledge_base import (
-    ALLOWED_EXTENSIONS,
-    KNOWLEDGE_FILE_MAX_BYTES,
-)
 from apps.knowledge_base.chunking import parse_and_normalize_version
 from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.errors import KnowledgeBusinessError
@@ -48,6 +44,9 @@ from common.core.deps import CurrentUser, SessionDep
 from common.utils.file_utils import AppFileUtils
 
 logger = logging.getLogger(__name__)
+
+ALLOWED_EXTENSIONS = {".md", ".markdown"}
+KNOWLEDGE_FILE_MAX_BYTES = settings.KNOWLEDGE_FILE_MAX_BYTES
 
 router = APIRouter(
     tags=["KnowledgeBase"],

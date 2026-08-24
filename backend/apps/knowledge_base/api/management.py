@@ -22,10 +22,6 @@ from apps.knowledge_base.api._helpers import (
     validate_workspace_tenant,
     visible_tenant_ids,
 )
-from apps.knowledge_base.api.knowledge_base import (
-    delete_legacy_knowledge_base,
-    list_legacy_knowledge_base,
-)
 from apps.knowledge_base.audit import new_request_id, write_retrieval_audit
 from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.errors import KnowledgeBusinessError
@@ -36,7 +32,6 @@ from apps.knowledge_base.lifecycle_models import (
 from apps.knowledge_base.lifecycle_service import KnowledgeLifecycleService
 from apps.knowledge_base.models import (
     KnowledgeBase,
-    KnowledgeBaseStatusEnum,
     KnowledgeBaseVisibilityScopeEnum,
 )
 from apps.knowledge_base.permissions import KnowledgePermissionService
@@ -333,7 +328,6 @@ async def create_knowledge_base(
             description=body.description.strip() or None,
             visibility_scope=scope,
             active=True,
-            status=KnowledgeBaseStatusEnum.PENDING,
             stable_key=f"kb-{uuid4().hex}",
             knowledge_type="DOCUMENT",
             create_time=datetime.utcnow(),
@@ -361,17 +355,6 @@ async def list_knowledge_base(
     tenant_id: int | None = None,
     archived: bool = False,
 ):
-    capabilities = get_capabilities(session)
-    if capabilities.phase.value != "V2_ACTIVE":
-        if archived:
-            return []
-        return await list_legacy_knowledge_base(
-            session=session,
-            current_user=current_user,
-            visibility_scope=visibility_scope,
-            keyword=keyword,
-            tenant_id=tenant_id,
-        )
     try:
         if tenant_id is not None and visibility_scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC.value:
             raise KnowledgeBusinessError(
@@ -503,10 +486,6 @@ async def delete_knowledge_base(
     current_user: CurrentUser,
 ):
     capabilities = get_capabilities(session)
-    if capabilities.phase.value != "V2_ACTIVE":
-        return await delete_legacy_knowledge_base(
-            session=session, current_user=current_user, id=id
-        )
     from apps.knowledge_base.api._helpers import v2_write_error
 
     blocked = v2_write_error(capabilities)

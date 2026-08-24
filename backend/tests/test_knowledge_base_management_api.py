@@ -7,10 +7,12 @@ from types import SimpleNamespace
 
 from apps import api as apps_api
 from apps.knowledge_base import cutover
-from apps.knowledge_base.api import knowledge_base, management, publish
+from apps.knowledge_base.api import management, publish
 from apps.knowledge_base.api._helpers import v2_write_error
 from apps.knowledge_base.cutover import KnowledgeCapabilities
 from apps.knowledge_base.lifecycle_models import KnowledgeMigrationPhase
+from common.core.task_queue import registered_task_names
+from common.core.task_registry import register_builtin_tasks
 
 
 class _Result:
@@ -171,5 +173,22 @@ def test_publish_route_returns_database_job_snapshot(monkeypatch):
     assert response["status"] == "QUEUING"
 
 
-def test_legacy_save_route_remains_registered():
-    assert any(route.path == "/knowledge-base/save" for route in knowledge_base.router.routes)
+def test_legacy_save_route_is_not_registered():
+    paths = []
+    pending = [apps_api.api_router]
+    while pending:
+        router = pending.pop()
+        for route in router.routes:
+            included = getattr(route, "original_router", None)
+            if included is not None:
+                pending.append(included)
+            else:
+                paths.append(route.path)
+    assert "/knowledge-base/save" not in paths
+
+
+def test_legacy_document_task_is_not_registered():
+    register_builtin_tasks()
+    names = registered_task_names()
+    assert "knowledge_base.process_document" not in names
+    assert "knowledge_base.publish_version" in names

@@ -13,7 +13,6 @@ from apps.datasource.api import (
     table_relation,
 )
 from apps.external_mcp import api as external_mcp_api
-from apps.knowledge_base.api import knowledge_base
 from apps.knowledge_base.api import management as knowledge_management
 from apps.knowledge_base.api import publish as knowledge_publish
 from apps.knowledge_base.api import versions as knowledge_versions
@@ -58,7 +57,6 @@ api_router.include_router(roi_dashboard_api.router)
 api_router.include_router(knowledge_management.router)
 api_router.include_router(knowledge_versions.router)
 api_router.include_router(knowledge_publish.router)
-api_router.include_router(knowledge_base.router)
 if settings.MCP_ENABLED:
     from apps.mcp import mcp
 

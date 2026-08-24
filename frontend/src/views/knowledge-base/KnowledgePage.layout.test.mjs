@@ -11,6 +11,9 @@ const panelSource = readFileSync(join(directory, 'KnowledgeBaseV2Panel.vue'), 'u
   '\n'
 )
 const knowledgeApiSource = readFileSync(join(directory, '../../api/knowledgeBase.ts'), 'utf8')
+const knowledgeItemSource = knowledgeApiSource.match(
+  /export interface KnowledgeBaseItem \{[\s\S]*?\n\}/
+)?.[0] || ''
 const routerSource = readFileSync(join(directory, '../../router/index.ts'), 'utf8')
 const menuItemSource = readFileSync(join(directory, '../../components/layout/MenuItem.vue'), 'utf8')
 const editorSource = readFileSync(join(directory, 'KnowledgePayloadEditor.vue'), 'utf8')
@@ -18,6 +21,7 @@ const layoutSource = readFileSync(join(directory, '../../components/layout/Layou
 
 test('knowledge page exposes only the document editor behind one orchestration layer', () => {
   assert.match(pageSource, /KnowledgeBaseV2Panel/)
+  assert.doesNotMatch(pageSource, /knowledgePageMode|knowledgeBaseApi|pageMode|LEGACY/)
   assert.match(editorSource, /DocumentEditor/)
   assert.doesNotMatch(editorSource, /BusinessKnowledgeEditor|EventKnowledgeEditor|JsonFieldKnowledgeEditor/)
 })
@@ -40,19 +44,20 @@ test('knowledge management expands to platform and workspace child menus', () =>
   assert.match(menuItemSource, /children\.map/)
 })
 
-test('knowledge page keeps capability and list failures separate from legacy and empty states', () => {
-  assert.match(pageSource, /pageMode\.value = 'CAPABILITIES_UNAVAILABLE'/)
-  assert.match(pageSource, /listError\.value = true/)
-  assert.match(pageSource, /v-if="listError"/)
-  assert.match(pageSource, /v-else-if="!visibleCards\.length"/)
-  assert.doesNotMatch(pageSource, /catch[\s\S]{0,180}pageMode\.value = 'LEGACY'/)
+test('knowledge page uses the V2 list and has no legacy processing status', () => {
+  assert.match(panelSource, /listError\.value = true/)
+  assert.match(panelSource, /v-if="listError"/)
+  assert.doesNotMatch(panelSource, /处理状态|待处理|processStatusText|row\.status/)
+  assert.doesNotMatch(knowledgeApiSource, /\/knowledge-base\/save|KnowledgeBaseStatus/)
+  assert.doesNotMatch(knowledgeItemSource, /status:|task_id\?:|error_message\?:/)
+  assert.match(knowledgeApiSource, /interface KnowledgePublishJob[\s\S]*task_id\?:[\s\S]*error_message\?:/)
 })
 
 test('knowledge page exposes platform knowledge as read-only to non-managers', () => {
-  assert.match(pageSource, /<el-option label="平台知识库" value="PLATFORM_PUBLIC"/)
-  assert.match(pageSource, /<el-option label="工作空间知识库" value="ADMIN_PUBLIC"/)
-  assert.match(pageSource, /v-if="canCreateKnowledge"/)
-  assert.match(pageSource, /if \(!row\.can_manage\) return/)
+  assert.match(panelSource, /<el-option label="平台知识库" value="PLATFORM_PUBLIC"/)
+  assert.match(panelSource, /<el-option label="工作空间知识库" value="ADMIN_PUBLIC"/)
+  assert.match(panelSource, /v-if="canCreateKnowledgeInScope"/)
+  assert.match(panelSource, /row\.archived \|\| !row\.can_manage \? '查看' : '编辑'/)
 })
 
 test('workspace knowledge creation reuses the top workspace filter', () => {

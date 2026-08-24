@@ -149,13 +149,6 @@ const workspaceKnowledgeEnabled = computed({
   },
 })
 
-function processStatusText(status?: string | null) {
-  if (status === 'READY') return '已完成'
-  if (status === 'PROCESSING') return '处理中'
-  if (status === 'FAILED') return '处理失败'
-  return '待处理'
-}
-
 async function loadItems() {
   loading.value = true
   try {
@@ -903,9 +896,6 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
             {{ row.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}
           </el-tag>
         </template>
-      </el-table-column>
-      <el-table-column label="处理状态" width="110">
-        <template #default="{ row }">{{ processStatusText(row.status) }}</template>
       </el-table-column>
       <el-table-column label="发布版本" width="130">
         <template #default="{ row }">

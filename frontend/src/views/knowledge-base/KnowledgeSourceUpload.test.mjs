@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const panelSource = readFileSync(new URL('./KnowledgeBaseV2Panel.vue', import.meta.url), 'utf8')
-const legacySource = readFileSync(new URL('./index.vue', import.meta.url), 'utf8')
 const localeFiles = ['en', 'ko-KR', 'zh-CN', 'zh-TW'].map((locale) => ({
   locale,
   messages: JSON.parse(readFileSync(new URL(`../../i18n/${locale}.json`, import.meta.url), 'utf8')),
@@ -24,12 +23,6 @@ test('V2 create and edit flows expose the source upload control', () => {
   assert.match(panelSource, /accept="\.md,\.markdown"/)
   assert.match(panelSource, /parseKnowledgeMarkdownFile\(file\)/)
   assert.doesNotMatch(panelSource, /\.docx|\.xlsx|Word|Excel/)
-})
-
-test('legacy and V2 upload selectors use the same Markdown document contract', () => {
-  assert.match(legacySource, /accept="\.md,\.markdown"/)
-  assert.match(legacySource, /parseKnowledgeMarkdownFile\(rawFile\)/)
-  assert.doesNotMatch(legacySource, /\.docx|\.xlsx/)
 })
 
 test('all knowledge upload locales describe only Markdown without requiring a template marker', () => {

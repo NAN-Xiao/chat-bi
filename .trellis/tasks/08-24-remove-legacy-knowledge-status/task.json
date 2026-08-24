@@ -1,0 +1,29 @@
+{
+  "id": "remove-legacy-knowledge-status",
+  "name": "remove-legacy-knowledge-status",
+  "title": "移除知识库旧处理逻辑和主表状态字段",
+  "description": "移除旧知识库处理路由、任务、前端分支及 knowledge_base.status/task_id/error_message 字段，保留 V2 版本化发布与任务字段",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "dongjinchao",
+  "assignee": "dongjinchao",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "codex/remove-legacy-knowledge-status",
+  "base_branch": "release/release_2.0.0",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "worktree_path": "D:\\AIWork3\\chat-bi_ver-worktrees\\remove-legacy-knowledge-status",
+    "migration_execution": "not_run_shared_database"
+  }
+}

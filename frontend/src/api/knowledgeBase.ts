@@ -1,7 +1,6 @@
 import { request } from '@/utils/request'
 
 export type KnowledgeBaseScope = 'ADMIN_PUBLIC' | 'PLATFORM_PUBLIC'
-export type KnowledgeBaseStatus = 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED'
 
 export interface KnowledgeBaseItem {
   id: number | string
@@ -12,12 +11,9 @@ export interface KnowledgeBaseItem {
   content?: string | null
   visibility_scope: KnowledgeBaseScope
   active: boolean
-  status: KnowledgeBaseStatus
   file_id?: string | null
   file_name?: string | null
   file_ext?: string | null
-  task_id?: string | null
-  error_message?: string | null
   create_time?: string | null
   update_time?: string | null
   can_manage?: boolean
@@ -110,16 +106,6 @@ export interface KnowledgeConflictDetails {
   server_payload?: Record<string, any>
 }
 
-export interface KnowledgeBaseSavePayload {
-  id?: number | string | null
-  name: string
-  description?: string
-  active: boolean
-  visibility_scope: KnowledgeBaseScope
-  tenant_id?: number | string | null
-  file?: File | null
-}
-
 export interface KnowledgeBaseCreatePayload {
   name: string
   description?: string
@@ -139,18 +125,6 @@ export interface KnowledgeRemovalResult {
   }
 }
 
-const buildFormData = (payload: KnowledgeBaseSavePayload) => {
-  const formData = new FormData()
-  if (payload.id) formData.append('id', String(payload.id))
-  formData.append('name', payload.name)
-  formData.append('description', payload.description || '')
-  formData.append('active', String(payload.active))
-  formData.append('visibility_scope', payload.visibility_scope)
-  if (payload.tenant_id) formData.append('tenant_id', String(payload.tenant_id))
-  if (payload.file) formData.append('file', payload.file)
-  return formData
-}
-
 export const knowledgeBaseApi = {
   capabilities: () => request.get<KnowledgeBaseCapabilities>('/knowledge-base/capabilities'),
   list: (params?: { visibility_scope?: KnowledgeBaseScope; keyword?: string; tenant_id?: number | string; archived?: boolean }) =>
@@ -158,12 +132,6 @@ export const knowledgeBaseApi = {
   detail: (id: number | string) => request.get<KnowledgeBaseItem>(`/knowledge-base/${id}`),
   create: (payload: KnowledgeBaseCreatePayload) =>
     request.post<KnowledgeBaseItem>('/knowledge-base/create', payload),
-  save: (payload: KnowledgeBaseSavePayload) =>
-    request.post<KnowledgeBaseItem>('/knowledge-base/save', buildFormData(payload), {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    }),
   delete: (id: number | string) =>
     request.delete<KnowledgeRemovalResult>(`/knowledge-base/${id}`),
   permanentDelete: (id: number | string) =>
