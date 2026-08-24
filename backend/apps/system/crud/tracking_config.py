@@ -402,6 +402,8 @@ def project_tracking_config_for_ai_context(
     projected.default_event_time_field = None
     projected.event_name_mappings = []
     projected.event_groups = []
+    for field in projected.fields or []:
+        field.value_mappings = []
     return projected
 
 
@@ -986,7 +988,7 @@ def _tracking_field_match_texts(field: TenantTrackingFieldDTO) -> list[str]:
     ):
         if isinstance(value, str) and value.strip():
             texts.append(value.strip())
-    for value in (field.aliases, field.value_mappings, field.example_values):
+    for value in (field.aliases, field.example_values):
         if value not in (None, [], {}):
             texts.append(_format_json_for_prompt(value))
     return texts
@@ -1047,9 +1049,6 @@ def _tracking_field_context_line(field: TenantTrackingFieldDTO, datasource_type:
     aliases = _format_json_for_prompt(field.aliases)
     if aliases:
         parts.append(f"aliases={aliases}")
-    mappings = _format_json_for_prompt(field.value_mappings)
-    if mappings:
-        parts.append(f"value_mappings={mappings}")
     examples = _format_json_for_prompt(field.example_values)
     if examples:
         parts.append(f"examples={examples}")

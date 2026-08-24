@@ -8,7 +8,11 @@ from apps.datasource.api.datasource import (
 )
 
 
-def _tracking_json_field(*, aliases: list[str] | None = None):
+def _tracking_json_field(
+    *,
+    aliases: list[str] | None = None,
+    value_mappings: dict[str, str] | None = None,
+):
     return SimpleNamespace(
         field_name="adinfo.adId",
         aliases=aliases or [],
@@ -19,7 +23,7 @@ def _tracking_json_field(*, aliases: list[str] | None = None):
         json_path="$.adId",
         expression=None,
         category=None,
-        value_mappings=None,
+        value_mappings=value_mappings,
         example_values=None,
     )
 
@@ -85,6 +89,19 @@ def test_tracking_json_field_prefers_explicit_alias() -> None:
     )
 
     assert item.display_name == "广告 ID"
+
+
+def test_tracking_field_list_item_preserves_value_mappings_for_management() -> None:
+    mappings = {"organic": "自然量"}
+
+    item = _field_list_item_from_tracking(
+        _tracking_json_field(value_mappings=mappings),
+        datasource=SimpleNamespace(type="mysql", type_name="MySQL"),
+        table=SimpleNamespace(table_name="event", ds_id=6, id=10),
+        field_index=1,
+    )
+
+    assert item.value_mappings == mappings
 
 
 def test_tracking_display_name_keeps_physical_comment_fallback() -> None:

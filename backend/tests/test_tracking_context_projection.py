@@ -37,6 +37,10 @@ def _tracking_config() -> TenantTrackingConfigDTO:
                 field_comment="业务事件名",
                 field_role="event_name",
                 semantic_type="text",
+                value_mappings={
+                    "ShopBuyComplete": "商店购买完成",
+                    "PayBuyRet": "商店购买返回",
+                },
             ),
             TenantTrackingFieldDTO(
                 tenant_id=1,
@@ -59,6 +63,7 @@ def _tracking_config() -> TenantTrackingConfigDTO:
                 source_field="event_props",
                 json_path="$.battle_result",
                 expression="battle_result_expression",
+                value_mappings={"MappingOnlyVictory": "仅映射命中的胜利"},
             ),
         ],
         event_name_mappings=[
@@ -100,6 +105,7 @@ def test_tracking_prompt_omits_event_dictionary_without_mutating_config() -> Non
     config = _tracking_config()
     original_mappings = deepcopy(config.event_name_mappings)
     original_groups = deepcopy(config.event_groups)
+    original_field_mappings = deepcopy([field.value_mappings for field in config.fields])
 
     context, summary = build_tracking_prompt_context(config, question="商店购买相关事件有哪些")
 
@@ -117,6 +123,7 @@ def test_tracking_prompt_omits_event_dictionary_without_mutating_config() -> Non
         "order_id",
         "shop_purchase",
         "商店购买流程",
+        "PayBuyRet",
     ):
         assert event_text not in context
         assert all(event_text not in item for item in summary)
@@ -124,6 +131,22 @@ def test_tracking_prompt_omits_event_dictionary_without_mutating_config() -> Non
     assert "字段定义由当前工作空间维护" in context
     assert config.event_name_mappings == original_mappings
     assert config.event_groups == original_groups
+    assert [field.value_mappings for field in config.fields] == original_field_mappings
+
+
+def test_tracking_prompt_does_not_match_or_render_field_value_mappings() -> None:
+    """字段值映射既不进入 Prompt，也不能成为字段投影命中依据。"""
+    context, summary = build_tracking_prompt_context(
+        _tracking_config(),
+        question='{"MappingOnlyVictory":"仅映射命中的胜利"}',
+    )
+
+    assert "`event_log.event_props.battle_result`" not in context
+    assert "MappingOnlyVictory" not in context
+    assert "仅映射命中的胜利" not in context
+    assert all("MappingOnlyVictory" not in item for item in summary)
+    assert "value_mappings=" not in context
+    assert all("value_mappings=" not in item for item in summary)
 
 
 def test_tracking_prompt_omits_event_specific_schema_warnings(monkeypatch) -> None:
