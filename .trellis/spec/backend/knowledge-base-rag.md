@@ -1,5 +1,48 @@
 # Knowledge Base RAG Contracts
 
+## Scenario: Primary-Intent-Only Relevance Query
+
+### 1. Scope / Trigger
+- Applies whenever an assistant surface calls `BusinessSemanticContextService.build(...)` and the service delegates to `KnowledgeRetrievalService.search(...)`.
+
+### 2. Signatures
+- `_retrieval_query(question: str | None) -> str` returns only `str(question or "").strip()`.
+- Surface-specific callers remain responsible for constructing their bounded primary intent before calling the shared semantic service.
+
+### 3. Contracts
+- The relevance query contains only the normalized caller-provided primary intent.
+- `surface`, authorized Schema text, allowed tables, selected Data Skill text, tracking configuration, and structured context must not be appended to the relevance query.
+- Permission snapshots, datasource applicability, object references, publication state, embedding signature, minimum score, and Top-K continue to constrain candidates through their existing paths.
+- Smart Q&A supplies the user question; dashboard SQL, report interpretation, and analysis assistant retain their existing surface-specific primary-intent builders.
+- A blank primary intent remains blank and reaches the existing `EMPTY_QUERY` result. Auxiliary context must never manufacture a retrieval query.
+
+### 4. Validation & Error Matrix
+- Same primary intent with different Schema, table, Skill, or surface values -> identical query and SHA-256 query hash.
+- Blank or whitespace-only primary intent -> `EMPTY_QUERY` with no citations or knowledge context.
+- No relevant candidate above the unchanged minimum score -> return no hits; do not broaden the query with auxiliary context.
+- Permission or applicability mismatch -> retain the existing explicit filtering and failure behavior.
+
+### 5. Good/Base/Bad Cases
+- Good: `商店购买` remains the exact retrieval query even when selected Skills mention DAU, WAU, MAU, or paying users.
+- Base: a dashboard caller passes a bounded intent containing its metric, grouping, and filters; the shared service trims and forwards that text unchanged.
+- Bad: concatenate Schema or Skill bodies with a short question, causing unrelated generic metrics to pass the similarity threshold.
+
+### 6. Tests Required
+- Capture the query passed at the shared semantic-service boundary and assert exact normalized text.
+- Vary Schema, allowed tables, selected Skills, and surface while holding the primary intent constant; assert stable query and hash.
+- Use the real retrieval service for a blank input and assert the existing `EMPTY_QUERY` result.
+
+### 7. Wrong vs Correct
+#### Wrong
+```python
+query = "\n".join((question, surface, schema, *skill_list))
+```
+
+#### Correct
+```python
+query = str(question or "").strip()
+```
+
 ## Scenario: Published Version References and Chunk Retrieval
 
 ### 1. Scope / Trigger

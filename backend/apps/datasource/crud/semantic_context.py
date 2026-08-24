@@ -223,7 +223,7 @@ class BusinessSemanticContextService:
                 tenant_id=int(tenant_id),
                 datasource_id=int(datasource_id),
                 surface=str(surface),
-                query=_retrieval_query(question, surface, schema, allowed_tables, skill_list),
+                query=_retrieval_query(question),
                 permission_snapshot=snapshot,
                 request_id=request_id,
                 user_id=getattr(current_user, "id", None),
@@ -332,22 +332,8 @@ def _default_schema_loader(**kwargs):
     return get_ai_table_schema(**kwargs)
 
 
-def _retrieval_query(
-    question: str | None,
-    surface: str,
-    schema: str,
-    allowed_tables: list[str],
-    skill_list: list[str],
-) -> str:
-    # Keep the retrieval query descriptive but bounded; full row data never enters it.
-    parts = [str(question or "").strip(), f"场景：{surface}"]
-    if allowed_tables:
-        parts.append("数据表：" + ", ".join(str(item) for item in allowed_tables[:100]))
-    if schema:
-        parts.append("授权 Schema 摘要：" + str(schema)[:4000])
-    if skill_list:
-        parts.append("已选 Skill 摘要：" + "\n".join(str(item)[:1200] for item in skill_list[:12]))
-    return "\n".join(item for item in parts if item)
+def _retrieval_query(question: str | None) -> str:
+    return str(question or "").strip()
 
 
 def _citation_summary(citation: KnowledgeCitation) -> dict[str, Any]:
