@@ -8,7 +8,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, create_engine
 
 from apps.chat.curd.custom_prompt import (
     CustomPromptTargetScopeEnum,
@@ -1370,7 +1370,8 @@ def test_workspace_tracking_prompt_context_contains_table_and_field_comments():
     assert "通用事件明细表" in context
     assert "`fact_events.event_key`" in context
     assert "事件编码" in context
-    assert "value_mappings={\"signup\":\"注册\"}" in context
+    assert "value_mappings=" not in context
+    assert "注册" not in context
     assert any("fact_events.event_key" in item for item in summary)
 
 

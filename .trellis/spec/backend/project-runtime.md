@@ -523,13 +523,16 @@ cleanup = cleanup_unreferenced_source_files(session, candidate_ids)
 - AI-safe configuration: `project_tracking_config_for_ai_context(config) -> TenantTrackingConfigDTO`.
 - Prompt projection: `build_tracking_prompt_context(config, validation_warnings=None, *, datasource_type=None, question=None, data_skill_text=None) -> tuple[str, list[str]]`.
 - Schema projection: `get_ai_table_schema(session, current_user, ds, question, embedding=True, table_list=None, data_skill_text=None, tenant_id=None) -> tuple[str, list]`.
+- Structured projection: `load_tracking_structured_records(session, *, tenant_id, datasource_id, permission_snapshot=None, resolver=None) -> TrackingStructuredRecords`.
 - Smart Q&A post-check: `_event_availability_for_sql(service, sql) -> list[_EventAvailability]`.
 
 ### 3. Contracts
 
 - `<Workspace-Tracking-Rules>` may contain non-event workspace table and field descriptions, generic field-role mappings, SQL constraints, and workspace notes.
 - It must not serialize event names, event-name mappings, event groups, event-specific defaults, or event properties from `TenantTrackingConfigDTO`.
+- Field-level `value_mappings` are management metadata for every tracking field, including ordinary enum and JSON fields. They must not enter `<Workspace-Tracking-Rules>`, summaries, `m-schema`, structured runtime context, or field-match ranking.
 - Workspace `m-schema` must not append `Request event attribute schema`, `# Event:`, `Required predicate`, or JSON expressions derived from the event dictionary.
+- Every AI adapter that reads tracking configuration must call `project_tracking_config_for_ai_context()` before validation or serialization. The structured adapter returns no tracking event records; it may retain JSON field names, paths, types, and expressions, but `StructuredJsonFieldRecord.value_mappings` must be empty.
 - When `<Configured-Event-Names>` is absent, event-availability post-checks must remain inactive. They must not compensate by scanning physical event tables or inferring event names from similar fields.
 - Event storage, management APIs, catalog APIs, permissions, and Excel import/export remain unchanged. Event text explicitly supplied by the user, Data Skills, knowledge, or ordinary table/field metadata follows the rules of that independent source.
 
@@ -538,6 +541,8 @@ cleanup = cleanup_unreferenced_source_files(session, candidate_ids)
 | Condition | Required behavior |
 | --- | --- |
 | Workspace dictionary contains `ShopBuyItem` and `ShopBuyComplete` | Neither event name appears in tracking Prompt or dictionary-derived `m-schema` |
+| A tracking field stores those events in `value_mappings` | Do not render or use the mapping for field selection in any AI context |
+| Structured runtime context is enabled | Emit no tracking event records; retain allowed JSON field structure with empty `value_mappings` |
 | The same workspace also contains non-event table/field metadata and SQL rules | Preserve those entries in shared AI context |
 | Generated SQL contains an event predicate but the configured-event marker is absent | Skip event-availability probing and rewriting |
 | A Data Skill or user question explicitly names an event | Preserve that independent context; do not scrub the text globally |
@@ -545,14 +550,16 @@ cleanup = cleanup_unreferenced_source_files(session, candidate_ids)
 
 ### 5. Good/Base/Bad Cases
 
-- Good: all shared AI entry points receive the same event-free workspace context while administrators can still maintain and export the event catalog.
+- Good: all shared AI entry points receive the same event-free workspace context across tracking Prompt, schema, and structured context while administrators can still maintain and export the event catalog and field mappings.
 - Base: a workspace with only table/field descriptions continues to produce the same useful schema and tracking rules.
-- Bad: removing event sections from one assistant only, projecting matching event properties into `m-schema`, or querying physical event values after the marker disappears.
+- Bad: removing event sections from one assistant only, leaving field `value_mappings` in schema comments or field ranking, projecting raw tracking records into `structured_context`, or querying physical event values after the marker disappears.
 
 ### 6. Tests Required
 
 - Prompt regression: assert configured event names, mappings, groups, defaults, and properties are absent while non-event metadata remains.
-- Schema regression: assert event projection is not invoked and no event predicate or request-event section is appended.
+- Prompt field regression: assert `value_mappings` cannot render into Prompt/summary or cause an otherwise unrelated field to be selected.
+- Schema regression: assert event projection is not invoked, no event predicate or request-event section is appended, and field comments omit all `value_mappings`.
+- Structured-context regression: assert raw tracking events are absent, JSON field mappings are empty, and the original management DTO remains unchanged.
 - Shared-entry regression: cover each shared business SQL context consumer or prove they all call the same sanitized builders.
 - Smart Q&A regression: assert removal of the marker cannot trigger a physical event-table query.
 - Management regression: keep event catalog, configuration persistence, and Excel import/export tests passing.
@@ -562,13 +569,17 @@ cleanup = cleanup_unreferenced_source_files(session, candidate_ids)
 #### Wrong
 
 ```python
-if requested_event:
-    schema += project_event_schema_fields(tracking_config, physical_schema, question)
+config = get_tracking_config(session, tenant_id, datasource_id)
+schema += _dictionary_field_comment(config.fields[0])
+structured = load_tracking_structured_records_from_raw_config(config)
 ```
 
 #### Correct
 
 ```python
-tracking_context, summary = build_tracking_prompt_context(tracking_config)
-# Event catalog data stays in management APIs and is not projected into AI context.
+config = project_tracking_config_for_ai_context(
+    get_tracking_config(session, tenant_id, datasource_id)
+)
+tracking_context, summary = build_tracking_prompt_context(config)
+# AI schema and structured adapters consume the same safe projection.
 ```

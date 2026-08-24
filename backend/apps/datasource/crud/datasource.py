@@ -1070,7 +1070,6 @@ def _dictionary_table_comment(table_name: str, comments: dict[str, str], trackin
 def _dictionary_field_comment(field: Any, cached_comment: str | None = None) -> str:
     aliases = getattr(field, "aliases", None)
     examples = getattr(field, "example_values", None)
-    value_mappings = getattr(field, "value_mappings", None)
     expression = getattr(field, "expression", None)
     extra_properties = getattr(field, "extra_properties", None) or {}
     encoding = extra_properties.get("encoding") if isinstance(extra_properties, dict) else None
@@ -1083,7 +1082,6 @@ def _dictionary_field_comment(field: Any, cached_comment: str | None = None) -> 
         f"json_path={getattr(field, 'json_path', None)}" if getattr(field, "json_path", None) else None,
         "required=true" if getattr(field, "required", False) else None,
         f"aliases={json.dumps(aliases, ensure_ascii=False)}" if aliases else None,
-        f"value_mappings={json.dumps(value_mappings, ensure_ascii=False)}" if value_mappings else None,
         f"examples={json.dumps(examples, ensure_ascii=False)}" if examples else None,
         f"expression={expression}" if expression else None,
         "SQL must use expression instead of this dictionary field name" if expression else None,

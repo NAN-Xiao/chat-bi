@@ -10,6 +10,10 @@ from apps.knowledge_base.source_references import (
     TrackingStructuredRecords,
 )
 from apps.knowledge_base.structured_context import StructuredKnowledgeContextService
+from apps.system.schemas.tenant_schema import (
+    TenantTrackingConfigDTO,
+    TenantTrackingFieldDTO,
+)
 
 
 class _Result:
@@ -35,7 +39,7 @@ def _snapshot():
     )
 
 
-def test_tracking_adapter_filters_denied_events_without_writing(monkeypatch):
+def test_tracking_adapter_omits_tracking_events_without_writing(monkeypatch):
     config = SimpleNamespace(
         id=12,
         enabled=True,
@@ -55,6 +59,43 @@ def test_tracking_adapter_filters_denied_events_without_writing(monkeypatch):
     )
     assert result.events == ()
     assert result.json_fields == ()
+
+
+def test_tracking_adapter_uses_ai_safe_projection_without_mutating_management_config(monkeypatch):
+    config = TenantTrackingConfigDTO(
+        tenant_id=2,
+        datasource_id=9,
+        enabled=True,
+        default_event_table="events",
+        default_event_name_field="event_name",
+        event_name_mappings=[{"event_name": "ShopBuyComplete", "description": "商店购买完成"}],
+        fields=[
+            TenantTrackingFieldDTO(
+                tenant_id=2,
+                datasource_id=9,
+                table_name="events",
+                field_name="payload.result",
+                source_field="payload",
+                json_path="$.result",
+                semantic_type="text",
+                value_mappings={"MappingOnlyVictory": "仅映射命中的胜利"},
+            )
+        ],
+    )
+    monkeypatch.setattr(source_references, "get_tracking_config", lambda *args, **kwargs: config)
+
+    result = source_references.load_tracking_structured_records(
+        _Session(),
+        tenant_id=2,
+        datasource_id=9,
+    )
+
+    assert result.events == ()
+    assert len(result.json_fields) == 1
+    assert result.json_fields[0].field_name == "payload.result"
+    assert result.json_fields[0].value_mappings == {}
+    assert config.event_name_mappings[0]["event_name"] == "ShopBuyComplete"
+    assert config.fields[0].value_mappings == {"MappingOnlyVictory": "仅映射命中的胜利"}
 
 
 def test_structured_service_uses_tracking_records_without_knowledge_type_projection():

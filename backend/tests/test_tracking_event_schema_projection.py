@@ -342,3 +342,66 @@ def test_workspace_dictionary_schema_omits_event_specific_validation_warnings(mo
     assert "uid:text" in schema
     assert "missing_event_table" not in schema
     assert "ShopBuyItem" not in schema
+
+
+def test_workspace_dictionary_schema_omits_all_field_value_mappings(monkeypatch) -> None:
+    """事件字段和普通字段的值映射都不得通过 AI schema 字段注释泄漏。"""
+    from apps.datasource.crud import datasource as datasource_crud
+
+    config = TenantTrackingConfigDTO(
+        tenant_id=2001,
+        datasource_id=1,
+        enabled=True,
+        fields=[
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="event",
+                field_name="event",
+                field_role="event_name",
+                semantic_type="text",
+                value_mappings={"ShopBuyComplete": "商店购买完成"},
+            ),
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="event",
+                field_name="result",
+                semantic_type="text",
+                value_mappings={"MappingOnlyVictory": "仅映射命中的胜利"},
+            ),
+        ],
+    )
+    table_obj = SimpleNamespace(
+        table=SimpleNamespace(id=10, table_name="event"),
+        fields=[
+            SimpleNamespace(field_name="event", field_type="text"),
+            SimpleNamespace(field_name="result", field_type="text"),
+        ],
+    )
+    monkeypatch.setattr(datasource_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(datasource_crud, "get_tracking_config", lambda *_args, **_kwargs: config)
+    monkeypatch.setattr(
+        datasource_crud,
+        "datasource_physical_schema",
+        lambda *_args, **_kwargs: {"event": {"event", "result"}},
+    )
+    monkeypatch.setattr(datasource_crud, "get_table_obj_by_ds", lambda **_kwargs: [table_obj])
+    monkeypatch.setattr(datasource_crud, "get_user_permission_rules", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(datasource_crud, "get_user_scoped_table_ids", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(datasource_crud, "get_column_permission_fields", lambda **kwargs: kwargs["fields"])
+
+    schema, tables, configured = datasource_crud._dictionary_schema_from_workspace(
+        session=_DictionarySession(),
+        current_user=SimpleNamespace(id=1001),
+        ds=SimpleNamespace(id=1, type="mysql", type_name="MySQL"),
+        tenant_id=2001,
+        db_name="xiuxian",
+        table_list=None,
+    )
+
+    assert configured is True
+    assert tables == ["event"]
+    assert "event:text" in schema
+    assert "result:text" in schema
+    assert "value_mappings=" not in schema
+    assert "ShopBuyComplete" not in schema
+    assert "MappingOnlyVictory" not in schema
