@@ -11,6 +11,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field
@@ -82,6 +83,13 @@ class TenantUserModel(SnowflakeBase, table=True):
         UniqueConstraint("tenant_id", "user_id", name="uq_sys_tenant_user_tenant_user"),
         Index("idx_sys_tenant_user_tenant_id", "tenant_id"),
         Index("idx_sys_tenant_user_user_id", "user_id"),
+        Index(
+            "uq_sys_tenant_user_active_primary",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status = 1 AND is_primary = true"),
+            sqlite_where=text("status = 1 AND is_primary = 1"),
+        ),
     )
 
     tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))

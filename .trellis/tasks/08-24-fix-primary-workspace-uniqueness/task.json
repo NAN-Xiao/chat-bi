@@ -1,0 +1,29 @@
+{
+  "id": "fix-primary-workspace-uniqueness",
+  "name": "fix-primary-workspace-uniqueness",
+  "title": "修复用户多主工作空间",
+  "description": "保证每个用户最多一个有效主工作空间，清理历史重复标记并增加数据库约束。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "backend",
+  "package": null,
+  "priority": "P1",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "codex/fix-primary-workspace-uniqueness",
+  "base_branch": "release/release_2.0.0",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "worktree_path": "D:\\AIWork3\\chat-bi_ver_worktrees\\fix-primary-workspace-uniqueness",
+    "verification": "focused=6_passed;migration=2_passed;foundation=55_passed_1_unrelated_deselected;related=60_passed_5_fixture_failures;ruff=passed;compile=passed;diff_check=passed;alembic_head=167primaryworkspaceunique;mypy=74_baseline_errors"
+  }
+}

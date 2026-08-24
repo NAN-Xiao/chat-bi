@@ -21,6 +21,7 @@ from apps.system.models.tenant import (
     TenantUserModel,
     generate_tenant_public_id,
 )
+from apps.system.models.user import UserModel
 from common.utils.time import get_timestamp
 
 DEFAULT_TENANT_ID = 1
@@ -79,6 +80,48 @@ def _bump_membership_epoch(session: Session, membership: TenantUserModel) -> Non
         tenant_id=int(membership.tenant_id),
         subject_id=int(membership.user_id),
     )
+
+
+def _set_primary_tenant_membership(
+    session: Session,
+    membership: TenantUserModel,
+) -> TenantUserModel:
+    """Make one membership the user's sole primary workspace."""
+    user_id = int(membership.user_id)
+    tenant_id = int(membership.tenant_id)
+    session.exec(
+        select(UserModel.id)
+        .where(UserModel.id == user_id)
+        .with_for_update()
+    ).first()
+    memberships = session.exec(
+        select(TenantUserModel)
+        .where(TenantUserModel.user_id == user_id)
+        .with_for_update()
+    ).all()
+    target = next(
+        (item for item in memberships if int(item.tenant_id) == tenant_id),
+        None,
+    )
+    if target is None or int(target.status or 0) != 1:
+        raise ValueError("Primary tenant membership must be active")
+
+    for item in memberships:
+        if int(item.tenant_id) == tenant_id or not bool(item.is_primary):
+            continue
+        item.is_primary = False
+        session.add(item)
+        _bump_membership_epoch(session, item)
+    session.flush()
+
+    if not bool(target.is_primary):
+        target.is_primary = True
+        session.add(target)
+        _bump_membership_epoch(session, target)
+        session.flush()
+    return target
+
+
 TENANT_MEMBERSHIP_APPLICATION_ROLES = {TENANT_ROLE_ADMIN, TENANT_ROLE_MEMBER}
 TENANT_DOMAIN_STATUS_PENDING = "pending"
 TENANT_DOMAIN_STATUS_VERIFIED = "verified"
@@ -386,7 +429,7 @@ def ensure_user_sample_workspace_membership(session: Session, user) -> TenantUse
             tenant_id=int(tenant.id),
             user_id=int(user_id),
             role=role,
-            is_primary=should_be_primary,
+            is_primary=False,
             status=1,
         )
         changed = True
@@ -395,16 +438,18 @@ def ensure_user_sample_workspace_membership(session: Session, user) -> TenantUse
             membership.role = role
             changed = True
         if int(membership.status or 0) != 1:
+            membership.is_primary = False
             membership.status = 1
             changed = True
-        if should_be_primary and not bool(membership.is_primary):
-            membership.is_primary = True
-            changed = True
-    if not changed:
+    primary_changed = should_be_primary and not bool(membership.is_primary)
+    if not changed and not primary_changed:
         return None
     session.add(membership)
-    _bump_membership_epoch(session, membership)
     session.flush()
+    if changed:
+        _bump_membership_epoch(session, membership)
+    if primary_changed:
+        membership = _set_primary_tenant_membership(session, membership)
     return membership
 
 
@@ -1406,7 +1451,6 @@ def transfer_tenant_owner(session: Session, *, tenant_id: int, target_user_id: i
         )
         if int(membership.user_id) == int(target_user_id):
             membership.role = TENANT_ROLE_OWNER
-            membership.is_primary = True
         elif normalize_tenant_role(membership.role) == TENANT_ROLE_OWNER:
             membership.role = TENANT_ROLE_ADMIN
         session.add(membership)
@@ -1417,7 +1461,7 @@ def transfer_tenant_owner(session: Session, *, tenant_id: int, target_user_id: i
         if after != before:
             _bump_membership_epoch(session, membership)
     session.flush()
-    return target_membership
+    return _set_primary_tenant_membership(session, target_membership)
 
 
 def assign_user_to_tenant(
@@ -1450,8 +1494,9 @@ def assign_user_to_tenant(
             bool(membership.is_primary),
         )
         membership.role = normalize_tenant_role(role or membership.role)
+        if int(membership.status or 0) != 1:
+            membership.is_primary = False
         membership.status = 1
-        membership.is_primary = bool(is_primary or membership.is_primary)
         changed = before != (
             normalize_tenant_role(membership.role),
             int(membership.status or 0),
@@ -1462,14 +1507,16 @@ def assign_user_to_tenant(
             tenant_id=tenant.id,
             user_id=user_id,
             role=normalize_tenant_role(role),
-            is_primary=is_primary,
+            is_primary=False,
             status=1,
         )
         changed = True
     session.add(membership)
+    session.flush()
     if changed:
         _bump_membership_epoch(session, membership)
-    session.flush()
+    if is_primary:
+        membership = _set_primary_tenant_membership(session, membership)
     return membership
 
 

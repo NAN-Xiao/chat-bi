@@ -9,28 +9,29 @@ from sqlalchemy import text
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine, select
 
+from apps.datasource.models.semantic_scope import SemanticScopeType
+from apps.system.api import login as login_api
+from apps.system.api import tenant as tenant_api
 from apps.system.crud.tenant import (
     DEFAULT_TENANT_ID,
     DEFAULT_TENANT_NAME,
+    SAMPLE_TENANT_NAME,
     TENANT_APPLICATION_TYPE_INVITE,
     TENANT_APPLICATION_TYPE_JOIN,
     TENANT_ROLE_ADMIN,
     TENANT_ROLE_MEMBER,
-    SAMPLE_TENANT_NAME,
     TenantContext,
-    auto_assign_tenants_by_email_domain,
-    create_tenant_invitation,
     assign_user_to_tenant,
     attach_tenant_context,
+    auto_assign_tenants_by_email_domain,
+    create_tenant_invitation,
     ensure_default_tenant,
     ensure_sample_workspace,
     ensure_user_sample_workspace_membership,
     resolve_current_tenant,
-    validate_tenant_security_policy,
     user_belongs_to_tenant,
+    validate_tenant_security_policy,
 )
-from apps.system.api import tenant as tenant_api
-from apps.system.api import login as login_api
 from apps.system.models.tenant import (
     TenantApplicationModel,
     TenantDataRequestModel,
@@ -49,16 +50,14 @@ from apps.system.schemas.tenant_schema import (
     TenantDataRequestReview,
     TenantDomainCreator,
     TenantDomainReview,
-    TenantMemberEditor,
-    TenantSecurityPolicyEditor,
     TenantEditor,
+    TenantMemberEditor,
     TenantOwnerTransfer,
+    TenantSecurityPolicyEditor,
     TenantStatus,
 )
 from common.audit.models.log_model import SystemLog
-from apps.datasource.models.semantic_scope import SemanticScopeType
-from tests.permission_scope_fixtures import EPOCH_STATEMENTS
-from tests.permission_scope_fixtures import read_epoch
+from tests.permission_scope_fixtures import EPOCH_STATEMENTS, read_epoch
 
 
 def _engine():
@@ -480,6 +479,197 @@ def test_default_workspace_context_prefers_primary_membership():
         assert tenant is not None
         assert tenant.id == 300
         assert tenant.role == TENANT_ROLE_ADMIN
+
+
+def test_assigning_new_primary_workspace_clears_previous_primary():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, name="Workspace A", status=1, plan="default"))
+        session.add(TenantModel(id=300, name="Workspace B", status=1, plan="default"))
+        session.flush()
+        assign_user_to_tenant(
+            session,
+            100,
+            tenant_id=200,
+            role=TENANT_ROLE_ADMIN,
+            is_primary=True,
+        )
+        assign_user_to_tenant(
+            session,
+            100,
+            tenant_id=300,
+            role=TENANT_ROLE_MEMBER,
+            is_primary=True,
+        )
+
+        memberships = session.exec(
+            select(TenantUserModel)
+            .where(TenantUserModel.user_id == 100)
+            .order_by(TenantUserModel.tenant_id)
+        ).all()
+
+        assert [(item.tenant_id, item.is_primary) for item in memberships] == [
+            (200, False),
+            (300, True),
+        ]
+
+
+def test_non_primary_membership_update_preserves_existing_primary_workspace():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, name="Workspace A", status=1, plan="default"))
+        session.add(TenantModel(id=300, name="Workspace B", status=1, plan="default"))
+        session.flush()
+        assign_user_to_tenant(
+            session,
+            100,
+            tenant_id=200,
+            role=TENANT_ROLE_ADMIN,
+            is_primary=True,
+        )
+        assign_user_to_tenant(
+            session,
+            100,
+            tenant_id=300,
+            role=TENANT_ROLE_MEMBER,
+            is_primary=False,
+        )
+        assign_user_to_tenant(
+            session,
+            100,
+            tenant_id=300,
+            role=TENANT_ROLE_ADMIN,
+            is_primary=False,
+        )
+
+        primary = session.exec(
+            select(TenantUserModel).where(
+                TenantUserModel.user_id == 100,
+                TenantUserModel.is_primary == True,  # noqa: E712
+            )
+        ).one()
+
+        assert primary.tenant_id == 200
+
+
+def test_reactivating_stale_inactive_primary_preserves_existing_primary_workspace():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, name="Workspace A", status=1, plan="default"))
+        session.add(TenantModel(id=300, name="Workspace B", status=1, plan="default"))
+        session.add(
+            TenantUserModel(
+                id=201,
+                tenant_id=200,
+                user_id=100,
+                role=TENANT_ROLE_ADMIN,
+                is_primary=True,
+                status=1,
+            )
+        )
+        session.add(
+            TenantUserModel(
+                id=301,
+                tenant_id=300,
+                user_id=100,
+                role=TENANT_ROLE_MEMBER,
+                is_primary=True,
+                status=0,
+            )
+        )
+        session.commit()
+
+        membership = assign_user_to_tenant(
+            session,
+            100,
+            tenant_id=300,
+            role=TENANT_ROLE_MEMBER,
+            is_primary=False,
+        )
+        session.flush()
+
+        assert membership.status == 1
+        assert membership.is_primary is False
+        primary = session.exec(
+            select(TenantUserModel).where(
+                TenantUserModel.user_id == 100,
+                TenantUserModel.status == 1,
+                TenantUserModel.is_primary == True,  # noqa: E712
+            )
+        ).one()
+        assert primary.tenant_id == 200
+
+
+def test_reactivating_stale_inactive_primary_can_switch_primary_workspace():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, name="Workspace A", status=1, plan="default"))
+        session.add(TenantModel(id=300, name="Workspace B", status=1, plan="default"))
+        session.add(
+            TenantUserModel(
+                id=201,
+                tenant_id=200,
+                user_id=100,
+                role=TENANT_ROLE_ADMIN,
+                is_primary=True,
+                status=1,
+            )
+        )
+        session.add(
+            TenantUserModel(
+                id=301,
+                tenant_id=300,
+                user_id=100,
+                role=TENANT_ROLE_MEMBER,
+                is_primary=True,
+                status=0,
+            )
+        )
+        session.commit()
+
+        membership = assign_user_to_tenant(
+            session,
+            100,
+            tenant_id=300,
+            role=TENANT_ROLE_MEMBER,
+            is_primary=True,
+        )
+        session.flush()
+
+        memberships = session.exec(
+            select(TenantUserModel)
+            .where(TenantUserModel.user_id == 100)
+            .order_by(TenantUserModel.tenant_id)
+        ).all()
+        assert membership.is_primary is True
+        assert [(item.tenant_id, item.is_primary) for item in memberships] == [
+            (200, False),
+            (300, True),
+        ]
+
+
+def test_sample_workspace_does_not_replace_existing_primary_workspace():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, name="Workspace A", status=1, plan="default"))
+        session.flush()
+        assign_user_to_tenant(
+            session,
+            100,
+            tenant_id=200,
+            role=TENANT_ROLE_ADMIN,
+            is_primary=True,
+        )
+
+        ensure_user_sample_workspace_membership(session, _user(100))
+
+        primary = session.exec(
+            select(TenantUserModel).where(
+                TenantUserModel.user_id == 100,
+                TenantUserModel.is_primary == True,  # noqa: E712
+            )
+        ).one()
+        assert primary.tenant_id == 200
 
 
 def test_user_without_membership_has_no_current_tenant():
@@ -1771,8 +1961,10 @@ def test_tenant_owner_can_transfer_ownership_to_active_member():
             """
         ))
         session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=300, name="Tenant C", status=1, plan="basic"))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=10, role="owner", is_primary=True, status=1))
         session.add(TenantUserModel(id=202, tenant_id=200, user_id=11, role="member", is_primary=False, status=1))
+        session.add(TenantUserModel(id=203, tenant_id=300, user_id=11, role="admin", is_primary=True, status=1))
         session.commit()
 
         result = asyncio.run(tenant_api.transfer_current_tenant_owner(
@@ -1788,9 +1980,14 @@ def test_tenant_owner_can_transfer_ownership_to_active_member():
         new_owner = session.exec(
             select(TenantUserModel).where(TenantUserModel.tenant_id == 200, TenantUserModel.user_id == 11)
         ).one()
+        previous_primary = session.exec(
+            select(TenantUserModel).where(TenantUserModel.tenant_id == 300, TenantUserModel.user_id == 11)
+        ).one()
         assert result.owner_user_id == 11
         assert previous_owner.role == "admin"
         assert new_owner.role == "owner"
+        assert new_owner.is_primary is True
+        assert previous_primary.is_primary is False
         audit_log = session.exec(
             select(SystemLog).where(
                 SystemLog.tenant_id == 200,
