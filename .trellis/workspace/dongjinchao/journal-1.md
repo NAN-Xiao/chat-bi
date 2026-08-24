@@ -248,3 +248,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: 移除知识库旧处理链路和状态字段
+
+**Date**: 2026-08-24
+**Task**: 移除知识库旧处理链路和状态字段
+**Branch**: `codex/remove-legacy-knowledge-status`
+
+### Summary
+
+统一知识库为 V2 管理与发布路径，删除旧路由、任务、前端页面及主表状态字段，补充可回滚迁移和全链路验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `964a08ba` | (see git log) |
+
+### Status
+
+[OK] **Completed**
