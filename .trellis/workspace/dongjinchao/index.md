@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
+- **Total Sessions**: 16
 - **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~344 | Active |
+| `journal-1.md` | ~365 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 16 | 2026-08-24 | 完整关闭事件值映射 AI 上下文 | `e1978505` | `codex/fully-disable-event-value-mappings` |
 | 15 | 2026-08-24 | 修复 AI 看板工作空间数据源上下文 | `8985743c` | `release/release_2.0.0` |
 | 14 | 2026-08-24 | 修复知识库检索查询污染 | `e31dbbc8` | `codex/fix-kb-retrieval-query` |
 | 13 | 2026-08-24 | 关闭工作空间事件字典 AI 上下文通道 | `0eb2f0c0` | `codex/disable-workspace-event-dictionary-prompt` |

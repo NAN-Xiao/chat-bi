@@ -342,3 +342,24 @@ AI 看板改为使用当前工作空间唯一绑定且有权限的数据源，�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 16: 完整关闭事件值映射 AI 上下文
+
+**Date**: 2026-08-24
+**Task**: 完整关闭事件值映射 AI 上下文
+**Branch**: `codex/fully-disable-event-value-mappings`
+
+### Summary
+
+关闭 value_mappings 在 Tracking Prompt、AI Schema、字段匹配与结构化上下文中的旁路，保留管理与导入导出能力；相关回归 372 passed。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e1978505` | (see git log) |
+
+### Status
+
+[OK] **Completed**
