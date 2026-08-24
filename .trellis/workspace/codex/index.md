@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 5
-- **Last Active**: 2026-08-21
+- **Total Sessions**: 6
+- **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~123 | Active |
+| `journal-1.md` | ~145 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 6 | 2026-08-24 | 修复登录后默认工作空间 | `93bbf19f`, `5b67bb65` | `codex/fix-workspace-default` |
 | 5 | 2026-08-21 | 修复知识源文件跨工作树下载 | `d84aecd6`, `bdf06abd` | `codex/fix-knowledge-source-storage` |
 | 4 | 2026-08-21 | 修复知识块删除确认框层级 | `9c0504e8` | `codex/fix-knowledge-block-delete-feedback` |
 | 3 | 2026-08-21 | 修复知识块删除反馈 | `d8f80e92` | `codex/fix-knowledge-block-delete-feedback` |
