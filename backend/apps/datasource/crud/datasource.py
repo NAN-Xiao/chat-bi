@@ -1159,6 +1159,7 @@ def _dictionary_schema_from_workspace(
         tracking_config, tracking_validation = filter_tracking_config_for_physical_schema(
             tracking_config,
             physical_schema,
+            validate_physical_schema=False,
         )
         tracking_validation_warnings = tracking_validation.warnings
         tracking_config, expression_warnings = compile_tracking_config_expressions(

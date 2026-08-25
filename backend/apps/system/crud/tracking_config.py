@@ -477,11 +477,16 @@ def _tracking_field_schema_issue(field: Any, physical_names: set[str] | None) ->
 def filter_tracking_config_for_physical_schema(
     config: TenantTrackingConfigDTO,
     physical_schema: dict[str, Any],
+    *,
+    validate_physical_schema: bool = True,
 ) -> tuple[TenantTrackingConfigDTO, TrackingSchemaValidation]:
     """
     是什么：把已经漂移到当前数据源 schema 之外的数据字典配置从 AI 消费配置中剔除，并保留明确提示。
+
+    validate_physical_schema=False 用于 AI 上下文构建：工作空间字典是显式语义配置，
+    即使物理 schema 尚未同步，也需要先完整暴露给模型，由后续 SQL/权限层负责校验。
     """
-    if not physical_schema:
+    if not validate_physical_schema or not physical_schema:
         return config, TrackingSchemaValidation(warnings=[], invalid_tables=[], invalid_fields=[])
 
     if hasattr(config, "model_copy"):
@@ -1218,7 +1223,11 @@ def find_tracking_prompt_context(
     validation_warnings: list[str] = []
     if datasource_id is not None:
         physical_schema = datasource_physical_schema(session, int(datasource_id))
-        config, validation = filter_tracking_config_for_physical_schema(config, physical_schema)
+        config, validation = filter_tracking_config_for_physical_schema(
+            config,
+            physical_schema,
+            validate_physical_schema=False,
+        )
         validation_warnings = validation.warnings
     return build_tracking_prompt_context(
         config,

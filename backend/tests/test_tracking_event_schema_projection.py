@@ -287,7 +287,7 @@ def test_workspace_dictionary_schema_does_not_append_request_event_projection(mo
     assert not hasattr(datasource_crud, "project_event_schema_fields")
 
 
-def test_workspace_dictionary_schema_omits_event_specific_validation_warnings(monkeypatch) -> None:
+def test_workspace_dictionary_schema_preserves_configured_fields_without_validation_warnings(monkeypatch) -> None:
     from apps.datasource.crud import datasource as datasource_crud
 
     config = _config(
@@ -304,13 +304,22 @@ def test_workspace_dictionary_schema_omits_event_specific_validation_warnings(mo
                     table_name="event",
                     field_name="uid",
                     field_comment="用户 ID",
-                )
+                ),
+                TenantTrackingFieldDTO(
+                    tenant_id=2001,
+                    table_name="event",
+                    field_name="ed_guideId",
+                    field_comment="新手引导 ID",
+                ),
             ],
         }
     )
     table_obj = SimpleNamespace(
         table=SimpleNamespace(id=10, table_name="event"),
-        fields=[SimpleNamespace(field_name="uid", field_type="text")],
+        fields=[
+            SimpleNamespace(field_name="uid", field_type="text"),
+            SimpleNamespace(field_name="ed_guideId", field_type="text"),
+        ],
     )
     monkeypatch.setattr(datasource_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(datasource_crud, "get_tracking_config", lambda *_args, **_kwargs: config)
@@ -340,8 +349,10 @@ def test_workspace_dictionary_schema_omits_event_specific_validation_warnings(mo
     assert configured is True
     assert tables == ["event"]
     assert "uid:text" in schema
+    assert "ed_guideId:text" in schema
     assert "missing_event_table" not in schema
     assert "ShopBuyItem" not in schema
+    assert "Dictionary schema validation" not in schema
 
 
 def test_workspace_dictionary_schema_omits_all_field_value_mappings(monkeypatch) -> None:
