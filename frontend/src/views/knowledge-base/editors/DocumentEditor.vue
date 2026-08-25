@@ -570,6 +570,11 @@ function applyBlockFormat(value: KnowledgeBlockFormat) {
   margin-bottom: 0;
 }
 
+.markdown-preview :deep(ul),
+.markdown-preview :deep(ol) {
+  padding-left: 24px;
+}
+
 .markdown-preview :deep(table) {
   display: block;
   max-width: 100%;

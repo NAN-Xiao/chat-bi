@@ -82,3 +82,10 @@ test('directory and toolbar stay usable on narrow screens', () => {
   )
   assert.match(panelSource, /\.knowledge-lifecycle-actions \{[\s\S]*?overflow-x: auto;/)
 })
+
+test('preview lists keep their markers inside the clipped content frame', () => {
+  assert.match(
+    editorSource,
+    /\.markdown-preview :deep\(ul\),[\s\S]*?\.markdown-preview :deep\(ol\) \{[\s\S]*?padding-left: 24px;/
+  )
+})
