@@ -394,3 +394,24 @@ AI 看板改为使用当前工作空间唯一绑定且有权限的数据源，�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 18: 修复思考过程生成状态闪烁
+
+**Date**: 2026-08-25
+**Task**: 修复思考过程生成状态闪烁
+**Branch**: `codex/fix-thinking-process-flicker`
+
+### Summary
+
+修复同会话重叠任务导致思考过程入口短暂消失的问题，统一记录级生成态和会话输入锁，并完成测试、构建及桌面移动端浏览器验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c4666c99` | (see git log) |
+
+### Status
+
+[OK] **Completed**
