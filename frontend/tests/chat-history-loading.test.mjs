@@ -251,6 +251,13 @@ async function testTerminalRecordsDoNotRestoreTasks() {
       { id: 14, question: '非最后一条执行中', task_id: 'running-task' },
       { id: 15, question: '最后一条已完成', finish: true },
     ]),
+    true
+  )
+  assert.equal(
+    shouldMarkChatTypingOnRestore([
+      { id: 16, question: '旧任务已完成', finish: true, task_id: 'stale-task' },
+      { id: 17, question: '最新任务已完成', finish: true },
+    ]),
     false
   )
 }

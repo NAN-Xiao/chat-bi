@@ -1,0 +1,3 @@
+{"file":".trellis/spec/frontend/project-runtime.md","reason":"前端实现、构建与浏览器质量门禁"}
+{"file":".trellis/tasks/08-25-diagnose-thinking-process-flicker/research/diagnosis.md","reason":"根因、真实并发时间线和受影响状态链"}
+{"file":".trellis/tasks/08-25-diagnose-thinking-process-flicker/design.md","reason":"记录级任务状态所有权和兼容边界"}

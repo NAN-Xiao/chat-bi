@@ -1,0 +1,10 @@
+{"file":".trellis/spec/frontend/project-runtime.md","reason":"前端构建、运行态和浏览器验收要求"}
+{"file":".trellis/tasks/08-25-diagnose-thinking-process-flicker/prd.md","reason":"用户可见验收标准和明确不变行为"}
+{"file":".trellis/tasks/08-25-diagnose-thinking-process-flicker/research/diagnosis.md","reason":"复核修复是否覆盖已证实的并发窗口"}
+{"date":"2026-08-25","type":"finding_fixed","file":"frontend/src/views/chat/answer/taskRestore.ts","issue":"页面恢复的公共 helper 仍只检查最后一条记录，与 index.vue 的全记录扫描不一致，且历史测试固化了旧行为。","fix":"shouldMarkChatTypingOnRestore 改为扫描全部记录；非最后活动 task_id 可保持输入锁，终态残留 task_id 仍不会被误判。index.vue 恢复态和运行态共用该判定。"}
+{"date":"2026-08-25","type":"verification","tests":"node --test tests/chatTypingState.test.ts tests/chat-thinking-state-contract.test.mjs tests/chat-history-loading.test.mjs tests/thinkingVisibility.test.ts","result":"pass (14/14)"}
+{"date":"2026-08-25","type":"verification","check":"npm run build","result":"pass; vue-tsc and Vite production build completed, only existing bundle/dynamic-import warnings"}
+{"date":"2026-08-25","type":"verification","check":"eslint affected files without --fix","result":"new and directly changed modules pass; full index.vue plus chat-history-loading test report 14 pre-existing baseline errors (index.vue 13, untouched history assertion 1), no error on changed hunks"}
+{"date":"2026-08-25","type":"verification","check":"git diff --check","result":"pass"}
+{"date":"2026-08-25","type":"verification","check":"browser regression on isolated Vite port 5187","result":"pass; non-latest active record kept 思考中 and placeholder before first reasoning, first reasoning rendered continuously, completion collapsed content but retained 思考过程; desktop and 390px had no console errors or horizontal overflow","evidence":["research/thinking-state-desktop.png","research/thinking-state-mobile.png"]}
+{"date":"2026-08-25","type":"verification","tests":"node --test tests/chatTypingState.test.ts tests/chat-thinking-state-contract.test.mjs tests/chat-history-loading.test.mjs tests/chat-post-answer-actions.test.mjs tests/thinkingVisibility.test.ts","result":"final pass (15/15)"}

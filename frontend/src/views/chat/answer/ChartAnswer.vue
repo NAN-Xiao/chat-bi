@@ -101,11 +101,13 @@ const _chatList = computed({
   },
 })
 
+const localLoading = ref(false)
 const _loading = computed({
   get() {
-    return props.loading
+    return props.loading || localLoading.value
   },
   set(v) {
+    localLoading.value = v
     emits('update:loading', v)
   },
 })

@@ -74,6 +74,8 @@ export function shouldMarkChatTypingOnRestore(records?: RestorableRecord[]) {
   if (!records?.length) {
     return false
   }
-  const latestRecord = records[records.length - 1]
-  return isRestorableAnswerRecord(latestRecord, true)
+  const lastRecordIndex = records.length - 1
+  return records.some((record, index) =>
+    isRestorableAnswerRecord(record, index === lastRecordIndex)
+  )
 }

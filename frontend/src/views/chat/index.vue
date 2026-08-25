@@ -634,6 +634,7 @@ function isRecordTyping(record?: ChatRecord, index = -1) {
     lastRecordIndex: currentChat.value.records.length - 1,
     isTyping: isTyping.value,
     isUnfinished: isUnfinishedAnswerRecord(record),
+    hasActiveTask: !!record?.task_id,
   })
 }
 function recordTerminalMessage(record?: ChatRecord) {
@@ -674,13 +675,23 @@ const computedMessages = computed<Array<RenderedChatMessage>>(() => {
 const hasRealChatRecords = computed(() =>
   currentChat.value.records.some((record) => !record.first_chat && !!record.question?.trim())
 )
-function hasUnfinishedRecord() {
-  return currentChat.value.records.some((record) => isUnfinishedAnswerRecord(record))
+function hasUnfinishedRecord(records = currentChat.value.records) {
+  return shouldMarkChatTypingOnRestore(records)
 }
 function restoreChatTypingState(records = currentChat.value.records) {
-  const shouldType = shouldMarkChatTypingOnRestore(records)
+  const shouldType = hasUnfinishedRecord(records)
   isTyping.value = shouldType
   loading.value = shouldType
+  return shouldType
+}
+function syncChatTypingState() {
+  const shouldType = hasUnfinishedRecord()
+  isTyping.value = shouldType
+  loading.value = shouldType
+  if (!shouldType) {
+    clearInterval(scrollTime)
+    scrollTime = null
+  }
   return shouldType
 }
 const hasUnfinishedGeneration = computed(() => hasUnfinishedRecord())
@@ -1252,13 +1263,11 @@ function handlePageVisible() {
 
 async function onChartAnswerFinish(id: number) {
   const lastRecord = currentChat.value.records[currentChat.value.records.length - 1]
-  if (id !== lastRecord?.id) {
-    return
-  }
-  loading.value = false
-  isTyping.value = false
+  syncChatTypingState()
   getRecordUsage(id)
-  await ensurePostAnswerActions(lastRecord)
+  if (id === lastRecord?.id) {
+    await ensurePostAnswerActions(lastRecord)
+  }
 }
 
 const loadingOver = () => {
@@ -1267,8 +1276,7 @@ const loadingOver = () => {
 }
 
 function onChartAnswerError(id: number) {
-  loading.value = false
-  isTyping.value = false
+  syncChatTypingState()
   getRecordUsage(id)
 }
 
@@ -1399,8 +1407,7 @@ const sendMessage = async (
   } catch (error) {
     currentRecord.error = resolveSmartQaErrorMessage(error, t)
     if (currentChatId.value === requestChatId) {
-      loading.value = false
-      isTyping.value = false
+      syncChatTypingState()
     }
     console.error('Start chat task failed:', error)
     return

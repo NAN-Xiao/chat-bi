@@ -101,6 +101,7 @@ const message = formatRequestErrorMessage(error, '下载失败，请稍后重试
 ## Data And Rendering Rules
 
 - Use the currently selected and authorized datasource context; do not infer a datasource from question wording or semantic examples.
+- Smart Q&A generation state belongs to each answer record: every non-terminal record with an active `task_id` remains loading even when it is not the latest record. Page-level typing only covers the input lock and the latest local record before task creation. Completion or failure must rescan all records before releasing the input lock, and terminal fields take precedence over a stale `task_id`.
 - Preserve generic chart configuration when copying a chart between Smart Q&A and dashboards, including axes, columns, insight/summary, pivot, datasource, SQL, and result data.
 - Bind chart libraries to the component-owned DOM ref. Do not globally query chart IDs because duplicate source records can be rendered in dialogs, previews, and dashboards at the same time.
 - Do not silently substitute a first column or another field when an explicit chart field is missing or invalid. Clear the invalid configuration or show an actionable validation state.

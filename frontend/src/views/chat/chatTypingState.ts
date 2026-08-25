@@ -3,11 +3,16 @@ export function shouldMarkRecordTyping({
   lastRecordIndex,
   isTyping,
   isUnfinished,
+  hasActiveTask,
 }: {
   recordIndex: number
   lastRecordIndex: number
   isTyping: boolean
   isUnfinished: boolean
+  hasActiveTask: boolean
 }): boolean {
-  return recordIndex === lastRecordIndex && isTyping && isUnfinished
+  if (!isUnfinished) {
+    return false
+  }
+  return hasActiveTask || (recordIndex === lastRecordIndex && isTyping)
 }
