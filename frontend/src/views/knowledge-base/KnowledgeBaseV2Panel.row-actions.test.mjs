@@ -91,6 +91,12 @@ test('row download checks the explicit draft before the explicit published versi
   assert.match(source, /catch \(error\) \{\s*showSourceDownloadError\(error\)/)
 })
 
+test('draft validation does not depend on datasource_id', () => {
+  const source = functionSource('validateDraft', 'async function publishDraft')
+  assert.doesNotMatch(source, /datasource_id|datasourceContext\.datasourceId/)
+  assert.match(source, /knowledgeBaseApi\.validateDraft\(selected\.value\.id, \{[\s\S]*version_id: draft\.value\.id/)
+})
+
 test('source download failures show an actionable missing-file message', () => {
   assert.match(
     panelSource,

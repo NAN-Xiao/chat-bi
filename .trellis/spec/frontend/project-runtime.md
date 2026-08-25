@@ -184,3 +184,60 @@ else this.clearDatasourceSelection()
 - All three source-upload entrances accept only `.md` and `.markdown` files and must run the shared Markdown structure validator before issuing a create or replacement request. A rejected selection clears any previously pending file and shows an error beginning with `格式错误`.
 - Downloaded content templates and ordinary uploads are pure Markdown. They must not require or generate platform metadata such as `template_type` or `template_version`.
 - Markdown upload validation must ignore headings inside fenced code and close a fence only with the same marker character and at least the opening marker length, matching backend block and section parsing.
+
+## Scenario: Online Knowledge Document Editing
+
+### 1. Scope / Trigger
+
+- Trigger: changing the ordinary `DOCUMENT` knowledge editor, its toolbar, block canvas, or draft-save orchestration.
+
+### 2. Signatures
+
+- `KnowledgeMarkdownEditor`: `modelValue: string`, `readonly?: boolean`, `update:modelValue: [markdown: string]`.
+- Document payload remains `blocks[]`, `block_revision`, and `structure_revision`; the editor does not introduce HTML persistence or a new API payload.
+- Save-response reconciliation uses `mergePersistedDocument(live, requestSnapshot, persisted)`.
+
+### 3. Contracts
+
+- Render every block in document order, but mount exactly one rich-text editor for the active block; inactive blocks use sanitized Markdown preview.
+- Markdown is the only persisted body format. Initial load, block switching, and external `setContent` must use `emitUpdate: false`; only a user edit may emit a Markdown update.
+- The toolbar exposes undo, redo, paragraph/heading format, unordered list, ordered list, and quote. Existing bold, italic, underline, table, and link syntax remains readable, but these five authoring entries stay hidden.
+- Autosave is debounced and serialized. A response may adopt server revisions, but it must preserve any title, Markdown, enabled state, or order changed after the request snapshot was taken.
+- Validation, publication, editor return, and `Ctrl+S` call the same pending-save flush. A conflict or failure blocks the requested follow-up action.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| No user edit after loading Markdown | Do not emit or save rewritten Markdown |
+| User types while a save is in flight | Keep the new text, merge server revisions, then serialize the next save |
+| HTTP 409 block/structure conflict | Keep local content visible and enter explicit conflict state |
+| Network or business save error | Keep local content, show save failure, and allow `Ctrl+S` or a later edit to retry |
+| Read-only or archived document | Do not schedule saves or expose block mutation controls |
+
+### 5. Good/Base/Bad Cases
+
+- Good: an older response updates `block_revision` while text typed after the request remains in the editor and is saved in the next request.
+- Base: opening and switching through a document containing tables and links produces no payload update.
+- Bad: assigning `payload = response.payload` after every save, mounting one Tiptap instance per block, or restoring the five removed toolbar commands.
+
+### 6. Tests Required
+
+- Assert the canvas renders all blocks and the active branch contains the only `KnowledgeMarkdownEditor`.
+- Assert external Markdown synchronization uses `emitUpdate: false` and the removed toolbar commands are absent.
+- Unit-test save-response reconciliation for in-flight text edits and local reordering.
+- Run the knowledge-page contract tests, production build, and authenticated desktop/mobile browser checks with horizontal-overflow assertions.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+payload.value = normalizeDocumentPayload(savedVersion.payload)
+```
+
+#### Correct
+
+```typescript
+payload.value = mergePersistedDocument(payload.value, requestSnapshot, persistedPayload)
+```

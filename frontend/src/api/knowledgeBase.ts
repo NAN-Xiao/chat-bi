@@ -51,6 +51,7 @@ export interface KnowledgeBaseVersion {
   file_name?: string | null
   file_ext?: string | null
   parser_version?: string | null
+  create_time?: string | null
   publish_time?: string | null
 }
 
@@ -186,7 +187,6 @@ export const knowledgeBaseApi = {
       version_id: number
       revision: number
       content_hash: string
-      datasource_id?: number | null
       context?: Record<string, any>
     }
   ) => request.post<KnowledgeBaseVersion>(`/knowledge-base/${id}/draft/validate`, payload),

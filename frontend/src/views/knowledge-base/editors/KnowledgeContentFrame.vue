@@ -10,7 +10,9 @@ defineProps<{
     <header class="content-frame-header">
       <div class="content-frame-heading">
         <span v-if="index !== undefined" class="content-frame-index">{{ index }}</span>
-        <span class="content-frame-title">{{ title }}</span>
+        <slot name="title">
+          <span class="content-frame-title">{{ title }}</span>
+        </slot>
       </div>
       <div v-if="$slots.actions" class="content-frame-actions">
         <slot name="actions" />
