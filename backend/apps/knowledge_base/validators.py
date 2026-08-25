@@ -1,409 +1,72 @@
 from __future__ import annotations
 
-import re
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
-
-import sqlglot
-from sqlglot import exp
-
 from apps.knowledge_base.schemas import (
     DocumentPayload,
     KnowledgePayload,
-    SemanticObjectReferenceInput,
     ValidationIssue,
     ValidationReport,
 )
-from common.sql_json_paths import extract_json_accesses, normalize_json_path
-
-_SQL_BLOCK = re.compile(r"```sql\s*\n(.*?)```", re.IGNORECASE | re.DOTALL)
-_WRITE_EXPRESSIONS = (exp.Alter, exp.Command, exp.Create, exp.Delete, exp.Drop, exp.Insert, exp.Merge, exp.Update)
 
 
-@dataclass(frozen=True)
-class _CatalogTable:
-    catalog: str | None
-    schema: str | None
-    table: str
-
-
-@dataclass(frozen=True)
-class ValidationContext:
-    """Authoritative catalog and tracking values for one validation request."""
-
-    dialect: str = "postgres"
-    tables: Mapping[str, Iterable[str]] = field(default_factory=dict)
-    json_paths: Mapping[str, Iterable[str]] = field(default_factory=dict)
-    event_names: Iterable[str] = field(default_factory=tuple)
-
-    def table_fields(self, *, schema: str | None, table: str) -> frozenset[str] | None:
-        if not self.tables:
-            return None
-        target, schema_target = _key(table), _key(schema)
-        for raw_table, raw_fields in self.tables.items():
-            parts = [_key(part) for part in str(raw_table).split(".")]
-            if parts[-1] == target and (not schema_target or (len(parts) > 1 and parts[-2] == schema_target)):
-                return frozenset(_key(item) for item in raw_fields)
-        return frozenset()
-
-    def has_event_name(self, name: str) -> bool:
-        return any(_key(item) == _key(name) for item in self.event_names)
-
-
-def validate_payload(payload: KnowledgePayload, *, context: ValidationContext | None = None) -> ValidationReport:
-    context = context or ValidationContext()
+def validate_payload(payload: KnowledgePayload) -> ValidationReport:
+    """Validate only the structure produced by splitting an uploaded Markdown file."""
     errors: list[ValidationIssue] = []
-    _validate_document(payload, context, errors)
+    if isinstance(payload, DocumentPayload):
+        _validate_document(payload, errors)
     return ValidationReport(valid=not errors, errors=errors, warnings=[])
 
 
-def _validate_document(payload: DocumentPayload, context: ValidationContext, errors: list[ValidationIssue]) -> None:
+def _validate_document(payload: DocumentPayload, errors: list[ValidationIssue]) -> None:
     if not payload.blocks:
-        _error(errors, "KNOWLEDGE_DOCUMENT_BLOCK_REQUIRED", "blocks", "知识文档至少需要一个知识块。", "请新增知识块后重新校验。")
+        _error(
+            errors,
+            "KNOWLEDGE_DOCUMENT_BLOCK_REQUIRED",
+            "blocks",
+            "知识文档至少需要一个知识块。",
+            "请检查 Markdown 格式并重新上传。",
+        )
         return
-    enabled = [block for block in payload.blocks if block.enabled]
-    if not enabled:
-        _error(errors, "KNOWLEDGE_DOCUMENT_ENABLED_BLOCK_REQUIRED", "blocks", "至少需要启用一个知识块。", "请启用一个有效知识块后重新校验。")
+    if not any(block.enabled for block in payload.blocks):
+        _error(
+            errors,
+            "KNOWLEDGE_DOCUMENT_ENABLED_BLOCK_REQUIRED",
+            "blocks",
+            "至少需要启用一个知识块。",
+            "请启用一个有效知识块后重新校验。",
+        )
         return
     for index, block in enumerate(payload.blocks):
         if not block.title.strip():
-            _error(errors, "KNOWLEDGE_DOCUMENT_BLOCK_TITLE_REQUIRED", f"blocks[{index}].title", "知识块标题不能为空。", "请填写知识块标题。")
+            _error(
+                errors,
+                "KNOWLEDGE_DOCUMENT_BLOCK_TITLE_REQUIRED",
+                f"blocks[{index}].title",
+                "知识块标题不能为空。",
+                "请填写知识块标题。",
+            )
         if block.enabled and not block.markdown.strip():
-            _error(errors, "KNOWLEDGE_DOCUMENT_BLOCK_MARKDOWN_REQUIRED", f"blocks[{index}].markdown", "已启用知识块的正文不能为空。", "请填写正文或停用该知识块。")
-    markdown = payload.markdown
-    sql_blocks = _SQL_BLOCK.findall(markdown)
-    if payload.datasource_neutral and (sql_blocks or payload.object_references or _document_has_physical_identifier(markdown, context)):
-        _error(errors, "KNOWLEDGE_DOCUMENT_NOT_NEUTRAL", "datasource_neutral", "数据源无关文档不能包含 SQL 或确定性物理对象引用。", "请取消数据源无关标记，并声明引用对象。")
-        return
-    if not payload.datasource_neutral:
-        valid_declarations = _validate_related_objects(
-            payload.object_references,
-            context,
-            errors,
-            field_prefix="object_references",
-        )
-        declared = {
-            _key(item.table)
-            for index, item in enumerate(payload.object_references)
-            if item.table and index in valid_declarations
-        }
-        if any(_key(item) not in declared for item in _document_tables(markdown, context)):
-            _error(errors, "KNOWLEDGE_DOCUMENT_OBJECT_NOT_DECLARED", "object_references", "文档中的物理对象必须显式声明。", "请声明文档引用的物理对象。")
-        for index, sql in enumerate(sql_blocks):
-            _validate_sql(sql, context.dialect, payload.object_references, errors, f"markdown.sql_blocks[{index}]", valid_declarations=valid_declarations)
-
-
-def _validate_related_objects(
-    declarations: list[SemanticObjectReferenceInput],
-    context: ValidationContext,
-    errors: list[ValidationIssue],
-    *,
-    field_prefix: str = "related_objects",
-) -> set[int]:
-    valid: set[int] = set()
-    for index, declaration in enumerate(declarations):
-        field_path = f"{field_prefix}[{index}]"
-        if declaration.object_type not in {"TABLE", "FIELD", "JSON_PATH"} or not declaration.table:
-            _error(errors, "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE", field_path, "关联对象必须声明完整的物理表身份。", "请声明 Catalog、Schema 和表名。")
-            continue
-        if not context.tables:
-            _error(errors, "KNOWLEDGE_RELATED_OBJECT_CONTEXT_REQUIRED", field_path, "当前校验上下文缺少物理对象目录。", "请在已绑定数据源的工作空间中校验该知识。")
-            continue
-        candidates = [item for item in _catalog_tables(context) if _key(item.table) == _key(declaration.table)]
-        if not candidates:
-            _error(errors, "KNOWLEDGE_RELATED_OBJECT_NOT_FOUND", field_path, "关联对象不在当前数据源目录中。", "请重新选择已同步的物理表。")
-            continue
-        if any(
-            (candidate.catalog and not _key(declaration.catalog))
-            or (candidate.schema and not _key(declaration.schema))
-            for candidate in candidates
-        ):
-            _error(errors, "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE", field_path, "关联对象必须声明目录中的完整 Catalog、Schema 和表名。", "请补齐 Catalog、Schema 和表名。")
-            continue
-        if not any(_catalog_table_matches(candidate, declaration) for candidate in candidates):
-            _error(errors, "KNOWLEDGE_RELATED_OBJECT_NOT_FOUND", field_path, "关联对象不在当前数据源目录中。", "请重新选择已同步的完整对象。")
-            continue
-        if declaration.object_type in {"FIELD", "JSON_PATH"}:
-            if not declaration.field:
-                _error(errors, "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE", field_path, "字段对象必须声明宿主字段。", "请补齐字段名。")
-                continue
-            fields = _fields_for_declaration(context, declaration)
-            if fields is None or _key(declaration.field) not in fields:
-                _error(errors, "KNOWLEDGE_RELATED_OBJECT_NOT_FOUND", field_path, "关联字段不在当前数据源目录中。", "请重新选择已同步的字段。")
-                continue
-        if declaration.object_type == "JSON_PATH" and not normalize_json_path(declaration.json_path):
-            _error(errors, "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE", field_path, "JSON Path 对象必须声明静态合法路径。", "请补齐 JSON Path。")
-            continue
-        valid.add(index)
-    return valid
-
-
-def _validate_sql(
-    sql: str,
-    dialect: str,
-    declarations: list[SemanticObjectReferenceInput],
-    errors: list[ValidationIssue],
-    field_path: str,
-    used: set[int] | None = None,
-    valid_declarations: set[int] | None = None,
-) -> None:
-    statement = _read_only_statement(sql, dialect)
-    if statement is None:
-        _error(errors, "KNOWLEDGE_SQL_NOT_READ_ONLY", field_path, "SQL 示例必须是一条可解析的只读查询。", "请改为单条 SELECT 或 WITH 查询。")
-        return
-    declared = [
-        (index, item)
-        for index, item in enumerate(declarations)
-        if item.table and (valid_declarations is None or index in valid_declarations)
-    ]
-    for table in _tables(statement):
-        matched = [index for index, item in declared if _table_matches(table, item)]
-        if not matched:
-            _error(errors, "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED", field_path, "SQL 示例引用的物理对象必须显式声明。", "请在关联对象中声明 SQL 使用的表、Schema 或 Catalog。")
-        elif used is not None:
-            used.update(matched)
-    _validate_declared_sql_objects(statement, declared, dialect, errors, field_path, used)
-
-
-def _read_only_statement(sql: str, dialect: str) -> exp.Expression | None:
-    try:
-        statements = [item for item in sqlglot.parse(sql, read=dialect) if item is not None]
-    except Exception:
-        return None
-    if len(statements) != 1 or not isinstance(statements[0], (exp.Select, exp.Union, exp.Intersect, exp.Except)):
-        return None
-    if any(isinstance(node, (*_WRITE_EXPRESSIONS, exp.Into, exp.Lock)) for node in statements[0].walk()):
-        return None
-    return statements[0]
-
-
-def _tables(statement: exp.Expression) -> list[SemanticObjectReferenceInput]:
-    return [reference for reference, _ in _table_entries(statement)]
-
-
-def _table_entries(statement: exp.Expression) -> list[tuple[SemanticObjectReferenceInput, str]]:
-    ctes = {_key(item.alias_or_name) for item in statement.find_all(exp.CTE)}
-    result: list[tuple[SemanticObjectReferenceInput, str]] = []
-    for item in statement.find_all(exp.Table):
-        name = str(item.name or "").strip()
-        if name and (item.db or item.catalog or _key(name) not in ctes):
-            reference = SemanticObjectReferenceInput(object_type="TABLE", catalog=str(item.catalog or "").strip() or None, schema=str(item.db or "").strip() or None, table=name)
-            result.append((reference, _key(item.alias_or_name)))
-    return result
-
-
-def _table_matches(reference: SemanticObjectReferenceInput, declaration: SemanticObjectReferenceInput) -> bool:
-    return _key(reference.table) == _key(declaration.table) and _key(reference.catalog) == _key(declaration.catalog) and _key(reference.schema) == _key(declaration.schema)
-
-
-def _catalog_tables(context: ValidationContext) -> list[_CatalogTable]:
-    tables: list[_CatalogTable] = []
-    for raw_table in context.tables:
-        parts = [part.strip() for part in str(raw_table).split(".") if part.strip()]
-        if not parts:
-            continue
-        catalog = parts[-3] if len(parts) >= 3 else None
-        schema = parts[-2] if len(parts) >= 2 else None
-        tables.append(_CatalogTable(catalog=catalog, schema=schema, table=parts[-1]))
-    return tables
-
-
-def _catalog_table_matches(candidate: _CatalogTable, declaration: SemanticObjectReferenceInput) -> bool:
-    return (
-        _key(candidate.catalog) == _key(declaration.catalog)
-        and _key(candidate.schema) == _key(declaration.schema)
-        and _key(candidate.table) == _key(declaration.table)
-    )
-
-
-def _fields_for_declaration(
-    context: ValidationContext,
-    declaration: SemanticObjectReferenceInput,
-) -> frozenset[str] | None:
-    for raw_table, raw_fields in context.tables.items():
-        parts = [part.strip() for part in str(raw_table).split(".") if part.strip()]
-        if not parts:
-            continue
-        candidate = _CatalogTable(
-            catalog=parts[-3] if len(parts) >= 3 else None,
-            schema=parts[-2] if len(parts) >= 2 else None,
-            table=parts[-1],
-        )
-        if _catalog_table_matches(candidate, declaration):
-            return frozenset(_key(field) for field in raw_fields)
-    return None
-
-
-def _document_tables(markdown: str, context: ValidationContext) -> set[str]:
-    return {
-        table.table
-        for table in _catalog_tables(context)
-        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(table.table)}(?![A-Za-z0-9_])", markdown)
-    }
-
-
-def _document_has_physical_identifier(markdown: str, context: ValidationContext) -> bool:
-    identifiers = {table.table for table in _catalog_tables(context)}
-    identifiers.update(
-        str(field).strip()
-        for fields in context.tables.values()
-        for field in fields
-        if str(field).strip()
-    )
-    identifiers.update(
-        str(json_path).strip()
-        for paths in context.json_paths.values()
-        for json_path in paths
-        if str(json_path).strip()
-    )
-    identifiers.update(str(event_name).strip() for event_name in context.event_names if str(event_name).strip())
-    normalized_markdown = markdown.casefold()
-    return any(
-        re.search(
-            rf"(?<![A-Za-z0-9_]){re.escape(identifier.casefold())}(?![A-Za-z0-9_])",
-            normalized_markdown,
-        )
-        for identifier in identifiers
-    )
-
-
-def _validate_declared_sql_objects(
-    statement: exp.Expression,
-    declarations: list[tuple[int, SemanticObjectReferenceInput]],
-    dialect: str,
-    errors: list[ValidationIssue],
-    field_path: str,
-    used: set[int] | None,
-) -> None:
-    field_accesses = _sql_field_accesses(statement)
-    json_accesses = _sql_json_accesses(statement, dialect)
-    for index, declaration in declarations:
-        if declaration.object_type == "FIELD":
-            matches = any(
-                _table_matches(table, declaration) and _key(field) == _key(declaration.field)
-                for table, field in field_accesses
+            _error(
+                errors,
+                "KNOWLEDGE_DOCUMENT_BLOCK_MARKDOWN_REQUIRED",
+                f"blocks[{index}].markdown",
+                "已启用知识块的正文不能为空。",
+                "请填写正文或停用该知识块。",
             )
-        elif declaration.object_type == "JSON_PATH":
-            matches = any(
-                _table_matches(table, declaration)
-                and _key(field) == _key(declaration.field)
-                and json_path == normalize_json_path(declaration.json_path)
-                for table, field, json_path in json_accesses
-            )
-        else:
-            continue
-        if not matches:
-            _error(errors, "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED", field_path, "SQL 示例未使用声明的字段或 JSON Path 对象。", "请让声明对象与 SQL 实际访问的对象一致。")
-        elif used is not None:
-            used.add(index)
 
 
-def _sql_field_accesses(statement: exp.Expression) -> list[tuple[SemanticObjectReferenceInput, str]]:
-    accesses: list[tuple[SemanticObjectReferenceInput, str]] = []
-    for column in statement.find_all(exp.Column):
-        table = _resolve_column_table(
-            str(column.table or ""),
-            _select_table_entries(_nearest_select(column)),
+def _error(
+    errors: list[ValidationIssue],
+    code: str,
+    field_path: str | None,
+    message: str,
+    suggestion: str,
+) -> None:
+    errors.append(
+        ValidationIssue(
+            code=code,
+            message=message,
+            field_path=field_path,
+            error_type="ERROR",
+            suggestion=suggestion,
         )
-        if table is not None and column.name:
-            accesses.append((table, str(column.name)))
-    return accesses
-
-
-def _sql_json_accesses(statement: exp.Expression, dialect: str) -> list[tuple[SemanticObjectReferenceInput, str, str]]:
-    accesses: list[tuple[SemanticObjectReferenceInput, str, str]] = []
-    for select in statement.find_all(exp.Select):
-        entries = _select_table_entries(select)
-        for access in extract_json_accesses(
-            select,
-            dialect=dialect,
-            current_select_only=True,
-        ).accesses:
-            table = _resolve_column_table(access.table_alias, entries)
-            if table is not None:
-                accesses.append((table, access.source_field, access.json_path))
-    return accesses
-
-
-def _nearest_select(node: exp.Expression) -> exp.Select | None:
-    current: exp.Expression | None = node.parent
-    while current is not None:
-        if isinstance(current, exp.Select):
-            return current
-        current = current.parent
-    return None
-
-
-def _select_table_entries(select: exp.Select | None) -> list[tuple[SemanticObjectReferenceInput, str]]:
-    if select is None:
-        return []
-    sources: list[exp.Expression] = []
-    from_clause = select.args.get("from_")
-    if isinstance(from_clause, exp.From) and from_clause.this is not None:
-        sources.append(from_clause.this)
-    for join in select.args.get("joins") or []:
-        if isinstance(join, exp.Join) and join.this is not None:
-            sources.append(join.this)
-    visible_ctes = _visible_cte_names(select)
-    entries: list[tuple[SemanticObjectReferenceInput, str]] = []
-    for source in sources:
-        if not isinstance(source, exp.Table):
-            continue
-        name = str(source.name or "").strip()
-        if not name or (not source.db and not source.catalog and _key(name) in visible_ctes):
-            continue
-        reference = SemanticObjectReferenceInput(
-            object_type="TABLE",
-            catalog=str(source.catalog or "").strip() or None,
-            schema=str(source.db or "").strip() or None,
-            table=name,
-        )
-        entries.append((reference, _key(source.alias_or_name)))
-    return entries
-
-
-def _visible_cte_names(select: exp.Select) -> set[str]:
-    names: set[str] = set()
-    current: exp.Expression | None = select
-    while current is not None:
-        if isinstance(current, exp.Select):
-            with_clause = current.args.get("with_")
-            if isinstance(with_clause, exp.With):
-                names.update(_key(cte.alias_or_name) for cte in with_clause.expressions)
-        current = current.parent
-    return names
-
-
-def _resolve_column_table(
-    qualifier: str,
-    entries: list[tuple[SemanticObjectReferenceInput, str]],
-) -> SemanticObjectReferenceInput | None:
-    if not qualifier and len(entries) == 1:
-        return entries[0][0]
-    for reference, alias in entries:
-        if _key(qualifier) in {_key(reference.table), alias}:
-            return reference
-    return None
-
-
-def _is_json_expression_function(node: exp.Func, dialect: str) -> bool:
-    if isinstance(node, exp.Cast):
-        return True
-    if type(node).__name__ in {"JSONExtract", "JSONExtractScalar", "JSONBExtract", "JSONBExtractScalar"}:
-        return True
-    if not isinstance(node, exp.Anonymous):
-        return False
-    names_by_dialect = {
-        "postgres": {"JSON_VALUE", "JSON_EXTRACT", "JSON_EXTRACT_SCALAR", "JSONB_EXTRACT_PATH", "JSONB_EXTRACT_PATH_TEXT"},
-        "mysql": {"JSON_VALUE", "JSON_EXTRACT", "JSON_UNQUOTE"},
-        "clickhouse": {"JSON_VALUE", "JSONEXTRACT", "JSONEXTRACTSTRING", "JSONEXTRACTRAW"},
-    }
-    return str(node.name or "").upper() in names_by_dialect.get(_key(dialect), set())
-
-
-def _key(value: object) -> str:
-    return str(value or "").strip().strip('`"[]').casefold()
-
-
-def _error(errors: list[ValidationIssue], code: str, field_path: str | None, message: str, suggestion: str) -> None:
-    errors.append(ValidationIssue(code=code, message=message, field_path=field_path, error_type="ERROR", suggestion=suggestion))
+    )

@@ -1646,7 +1646,7 @@ class LLMService:
             self.sql_message.append(AIPromptMessage(content='我已确认您提供的数据 Skill，我会优先参考其中的业务口径与查询范式。'))
         if _system_templates.get('knowledge_context'):
             self.sql_message.append(HumanPromptMessage(content=_system_templates['knowledge_context']))
-            self.sql_message.append(AIPromptMessage(content='我已确认知识库内容仅作为当前数据源和权限范围内的只读参考。'))
+            self.sql_message.append(AIPromptMessage(content='我已确认知识库内容仅作为当前数据源和权限范围内的只读参考；只使用与当前问题相关的片段，忽略无关片段；如果知识库片段互相矛盾，直接说明存在冲突，不自行选择某个结论。'))
         if not self.dashboard_date_filter_enabled:
             self.sql_message.append(HumanPromptMessage(content=DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE))
             self.sql_message.append(

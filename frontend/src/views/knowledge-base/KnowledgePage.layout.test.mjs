@@ -161,6 +161,16 @@ test('knowledge lifecycle actions stay in the knowledge-base header before the p
   )
 })
 
+test('knowledge draft validation does not require a datasource context', () => {
+  const validateStart = panelSource.indexOf('async function validateDraft')
+  const validateEnd = panelSource.indexOf('\n}\n\nasync function publishDraft', validateStart)
+  const validateSource = panelSource.slice(validateStart, validateEnd)
+
+  assert.ok(validateStart >= 0, 'draft validation function should exist')
+  assert.doesNotMatch(validateSource, /datasource_id|datasourceContext\.datasourceId|context:/)
+  assert.doesNotMatch(knowledgeApiSource, /content_hash: string[\s\S]*datasource_id\?: number \| null/)
+})
+
 test('saving a document draft always persists and resynchronizes its server status', () => {
   const saveDocumentStart = panelSource.indexOf('async function saveDocumentDraft')
   const saveDocumentEnd = panelSource.indexOf('\n}\n\nasync function createEditingDraft', saveDocumentStart)

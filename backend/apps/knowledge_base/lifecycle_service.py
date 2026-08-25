@@ -21,7 +21,7 @@ from apps.knowledge_base.schemas import (
     KnowledgePayload,
     KnowledgePayloadAdapter,
 )
-from apps.knowledge_base.validators import ValidationContext, validate_payload
+from apps.knowledge_base.validators import validate_payload
 from apps.knowledge_base.version_repository import SourceFileRef
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 
@@ -315,7 +315,6 @@ class KnowledgeLifecycleService:
         content_hash: str,
         actor_id: int | None = None,
         current_user: Any | None = None,
-        context: ValidationContext | None = None,
     ):
         record = self.repository.lock_knowledge_base(
             tenant_id=tenant_id, knowledge_base_id=knowledge_base_id
@@ -353,7 +352,7 @@ class KnowledgeLifecycleService:
                 "warnings": [],
             }
         else:
-            report = validate_payload(payload, context=context).model_dump(mode="json")
+            report = validate_payload(payload).model_dump(mode="json")
         final_status = (
             KnowledgeVersionStatus.READY_TO_PUBLISH
             if report["valid"]

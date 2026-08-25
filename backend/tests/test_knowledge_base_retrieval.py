@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
 from apps.knowledge_base.retrieval import KnowledgeCitation, KnowledgeRetrievalService
 
@@ -15,6 +17,24 @@ class _EmbeddingModel:
 
     def embed_query(self, _query):
         return [1.0, 0.0]
+
+
+class _Reranker:
+    class config:
+        model = "test-reranker"
+
+    def __init__(self, scores):
+        self.scores = scores
+        self.calls = []
+
+    def rerank(self, query, documents):
+        self.calls.append((query, documents))
+        return self.scores
+
+
+@pytest.fixture(autouse=True)
+def disable_network_rerank_by_default(monkeypatch):
+    monkeypatch.setattr("apps.knowledge_base.retrieval.settings.KNOWLEDGE_RETRIEVAL_RERANK_ENABLED", False)
 
 
 def _snapshot():
@@ -91,6 +111,94 @@ def test_retrieval_filters_before_loading_chunk_content(monkeypatch):
     assert "forbidden content" not in result.context
 
 
+def test_retrieval_reranks_candidates_before_final_threshold_and_context(monkeypatch):
+    service = KnowledgeRetrievalService(
+        embedding_model=_EmbeddingModel(),
+        reranker_model=_Reranker([(1, 0.95), (0, 0.82), (2, 0.61)]),
+    )
+    candidates = [SimpleNamespace(id=index, version_id=11) for index in (1, 2, 3)]
+    rows = [
+        SimpleNamespace(
+            id=index,
+            knowledge_base_id=20,
+            version_id=11,
+            section_path=str(index),
+            content=f"content-{index}",
+            visibility_scope="ADMIN_PUBLIC",
+            embedding=[1.0, 0.0],
+            embedding_signature="signature",
+        )
+        for index in (1, 2, 3)
+    ]
+    monkeypatch.setattr(service, "_load_candidate_metadata", lambda *_args, **_kwargs: candidates)
+    monkeypatch.setattr(service, "_load_candidate_references", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(service, "_load_allowed_chunks", lambda *_args, **_kwargs: rows)
+    monkeypatch.setattr("apps.knowledge_base.retrieval.embedding_payload_signature", lambda *_args: "signature")
+    monkeypatch.setattr("apps.knowledge_base.retrieval.settings.KNOWLEDGE_RETRIEVAL_RERANK_ENABLED", True)
+    monkeypatch.setattr("apps.knowledge_base.retrieval.settings.KNOWLEDGE_RETRIEVAL_INITIAL_TOP_K", 3)
+    monkeypatch.setattr("apps.knowledge_base.retrieval.settings.KNOWLEDGE_RETRIEVAL_VECTOR_MIN_SCORE", 0.4)
+    monkeypatch.setattr("apps.knowledge_base.retrieval.settings.KNOWLEDGE_RETRIEVAL_MIN_SCORE", 0.7)
+
+    result = service.search(
+        session=SimpleNamespace(),
+        tenant_id=2,
+        datasource_id=10,
+        surface="SMART_QA",
+        query="收入",
+        permission_snapshot=_snapshot(),
+    )
+
+    assert [item.chunk_id for item in result.citations] == [2, 1]
+    assert [item.rerank_score for item in result.citations] == [0.95, 0.82]
+    assert '<retrieved-knowledge priority="reference-only" rank="1" score="0.950000" id="2">' in result.context
+    assert "content-3" not in result.context
+    assert service.reranker_model.calls == [("收入", ["content-1", "content-2", "content-3"])]
+
+
+def test_retrieval_takes_top_five_after_rerank(monkeypatch):
+    chunk_ids = tuple(range(1, 7))
+    service = KnowledgeRetrievalService(
+        embedding_model=_EmbeddingModel(),
+        reranker_model=_Reranker([(index - 1, 0.95 - index * 0.02) for index in chunk_ids]),
+    )
+    candidates = [SimpleNamespace(id=index, version_id=11) for index in chunk_ids]
+    rows = [
+        SimpleNamespace(
+            id=index,
+            knowledge_base_id=20,
+            version_id=11,
+            section_path=str(index),
+            content=f"content-{index}",
+            visibility_scope="ADMIN_PUBLIC",
+            embedding=[1.0, 0.0],
+            embedding_signature="signature",
+        )
+        for index in chunk_ids
+    ]
+    monkeypatch.setattr(service, "_load_candidate_metadata", lambda *_args, **_kwargs: candidates)
+    monkeypatch.setattr(service, "_load_candidate_references", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(service, "_load_allowed_chunks", lambda *_args, **_kwargs: rows)
+    monkeypatch.setattr("apps.knowledge_base.retrieval.embedding_payload_signature", lambda *_args: "signature")
+    monkeypatch.setattr("apps.knowledge_base.retrieval.settings.KNOWLEDGE_RETRIEVAL_RERANK_ENABLED", True)
+    monkeypatch.setattr("apps.knowledge_base.retrieval.settings.KNOWLEDGE_RETRIEVAL_INITIAL_TOP_K", 6)
+    monkeypatch.setattr("apps.knowledge_base.retrieval.settings.KNOWLEDGE_RETRIEVAL_TOP_K", 5)
+    monkeypatch.setattr("apps.knowledge_base.retrieval.settings.KNOWLEDGE_RETRIEVAL_VECTOR_MIN_SCORE", 0.4)
+    monkeypatch.setattr("apps.knowledge_base.retrieval.settings.KNOWLEDGE_RETRIEVAL_MIN_SCORE", 0.7)
+
+    result = service.search(
+        session=SimpleNamespace(),
+        tenant_id=2,
+        datasource_id=10,
+        surface="SMART_QA",
+        query="收入",
+        permission_snapshot=_snapshot(),
+    )
+
+    assert [item.chunk_id for item in result.citations] == [1, 2, 3, 4, 5]
+    assert result.context.count("<retrieved-knowledge") == 5
+    assert "content-6" not in result.context
+
+
 def test_permission_context_mismatch_fails_without_model_call():
     service = KnowledgeRetrievalService(embedding_model=_EmbeddingModel())
     result = service.search(
@@ -125,7 +233,7 @@ def test_retrieval_bounds_first_long_citation_without_breaking_context_tags():
 
     assert len(result.context) <= 160
     assert result.context.startswith(
-        '<retrieved-knowledge priority="reference-only" id="7">'
+        '<retrieved-knowledge priority="reference-only" rank="1" score="0.900000" id="7">'
     )
     assert result.context.endswith("</retrieved-knowledge>")
     assert result.citations[0].content in result.context

@@ -586,8 +586,6 @@ async function validateDraft() {
       version_id: draft.value.id,
       revision: draft.value.revision,
       content_hash: draft.value.content_hash || '',
-      datasource_id: datasourceContext.datasourceId ? Number(datasourceContext.datasourceId) : null,
-      context: {},
     })
     if (draft.value.validation_report?.valid) ElMessage.success('校验通过，可以发布')
     else ElMessage.warning('校验未通过，请根据页面提示修正')

@@ -1,0 +1,13 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": "backend/tests/test_knowledge_rerank.py", "reason": "Rerank HTTP contract tests"}
+{"file": "backend/tests/test_knowledge_base_retrieval.py", "reason": "Retrieval pipeline regression tests"}
+{"file": "backend/tests/test_knowledge_smart_qa_context.py", "reason": "Prompt rule regression tests"}
+{"check": "ruff", "result": "passed for changed Python modules and tests"}
+{"check": "targeted pytest", "result": "17 passed"}
+{"check": "full pytest", "result": "1711 passed, 15 unrelated pre-existing failures, 8 skipped"}
+{"check": "mypy", "result": "blocked by shared environment missing 0aca9ce3d91742c5b361__mypyc"}
+{"check": "git diff --check", "result": "passed"}
+{"check": "SQL-only prompt scope regression", "result": "passed: Smart Q&A and manual dashboard SQL prompts contain both rules; chart, analysis, and prediction prompts do not"}
+{"check": "post-rerank final Top-K regression", "result": "passed: reranked results are threshold-filtered, sorted, and capped at the configured default Top 5 before context assembly"}
+{"check": "knowledge draft validation datasource decoupling", "result": "passed: validateDraft no longer sends datasource_id or builds datasource permission/catalog context; backend knowledge validation and frontend layout tests passed"}
+{"check": "upload validation scope", "result": "passed: validation now checks only Markdown-split block presence, enabled block, title, and enabled block body; SQL and semantic object content is retained without datasource validation"}

@@ -18,3 +18,15 @@ def test_sql_and_followup_prompts_include_read_only_knowledge_context():
     assert knowledge in question.chart_user_question()
     assert knowledge in question.analysis_sys_question()
     assert knowledge in question.predict_sys_question()
+    sql_prompt = question.sql_sys_question("postgresql")["system"]
+    assert "与当前" in sql_prompt
+    assert "完全忽略无关片段" in sql_prompt
+    assert "知识库信息存在冲突" in sql_prompt
+
+    for prompt in (
+        question.chart_sys_question()["system"],
+        question.analysis_sys_question(),
+        question.predict_sys_question(),
+    ):
+        assert "完全忽略无关片段" not in prompt
+        assert "知识库信息存在冲突" not in prompt

@@ -13,6 +13,7 @@ from sqlalchemy import and_, exists, or_
 from sqlmodel import Session, select
 
 from apps.ai_model.embedding import EmbeddingModelCache
+from apps.ai_model.rerank import RerankModelCache
 from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
 from apps.datasource.embedding.utils import (
     cosine_similarity,
@@ -49,6 +50,8 @@ class KnowledgeCitation:
     knowledge_base_name: str | None = None
     version_number: int | None = None
     source_file_name: str | None = None
+    vector_score: float | None = None
+    rerank_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -62,15 +65,16 @@ class KnowledgeRetrievalResult:
     latency_ms: int | None = None
 
 
-def _knowledge_context_wrapper(citation: KnowledgeCitation) -> tuple[str, str]:
+def _knowledge_context_wrapper(citation: KnowledgeCitation, *, rank: int) -> tuple[str, str]:
+    score = f"{float(citation.score):.6f}"
     return (
-        f'<retrieved-knowledge priority="reference-only" id="{citation.chunk_id}">',
+        f'<retrieved-knowledge priority="reference-only" rank="{rank}" score="{score}" id="{citation.chunk_id}">',
         "</retrieved-knowledge>",
     )
 
 
-def _knowledge_context_item(citation: KnowledgeCitation) -> str:
-    prefix, suffix = _knowledge_context_wrapper(citation)
+def _knowledge_context_item(citation: KnowledgeCitation, *, rank: int) -> str:
+    prefix, suffix = _knowledge_context_wrapper(citation, rank=rank)
     return f"{prefix}{citation.content}{suffix}"
 
 
@@ -81,9 +85,11 @@ class KnowledgeRetrievalService:
         self,
         *,
         embedding_model: Any | None = None,
+        reranker_model: Any | None = None,
         audit_writer: Callable[..., Any] | None = None,
     ) -> None:
         self.embedding_model = embedding_model
+        self.reranker_model = reranker_model
         self.audit_writer = audit_writer
 
     def search(
@@ -166,6 +172,7 @@ class KnowledgeRetrievalService:
                 expected_signature = embedding_payload_signature(model_identity, len(vector))
                 if row.embedding_signature != expected_signature:
                     continue
+                vector_score = float(cosine_similarity(query_vector, vector))
                 scored.append(
                     KnowledgeCitation(
                         chunk_id=int(row.id),
@@ -173,7 +180,8 @@ class KnowledgeRetrievalService:
                         version_id=int(row.version_id),
                         section_path=row.section_path,
                         source_block_id=getattr(row, "source_block_id", None),
-                        score=float(cosine_similarity(query_vector, vector)),
+                        score=vector_score,
+                        vector_score=vector_score,
                         content=row.content,
                         visibility_scope=_scope_value(row.visibility_scope),
                         knowledge_base_name=getattr(candidate_by_id.get(int(row.id)), "knowledge_base_name", None),
@@ -182,18 +190,66 @@ class KnowledgeRetrievalService:
                     )
                 )
             min_score = float(settings.KNOWLEDGE_RETRIEVAL_MIN_SCORE)
+            vector_min_score = float(settings.KNOWLEDGE_RETRIEVAL_VECTOR_MIN_SCORE)
+            scored = [item for item in scored if item.score >= vector_min_score]
+            scored.sort(key=lambda item: (-item.score, item.chunk_id))
+            initial_top_k = max(
+                1,
+                int(settings.KNOWLEDGE_RETRIEVAL_INITIAL_TOP_K),
+                int(top_k or settings.KNOWLEDGE_RETRIEVAL_TOP_K),
+            )
+            candidates_for_rerank = scored[:initial_top_k]
+            model_signature = model_identity
+            if settings.KNOWLEDGE_RETRIEVAL_RERANK_ENABLED and candidates_for_rerank:
+                try:
+                    reranker = self.reranker_model or RerankModelCache.get_model()
+                    rerank_scores = reranker.rerank(
+                        query_text,
+                        [item.content for item in candidates_for_rerank],
+                    )
+                    reranked: list[KnowledgeCitation] = []
+                    for index, rerank_score in rerank_scores:
+                        citation = candidates_for_rerank[index]
+                        reranked.append(
+                            replace(
+                                citation,
+                                score=float(rerank_score),
+                                rerank_score=float(rerank_score),
+                            )
+                        )
+                    scored = reranked
+                    model_signature = f"{model_identity};rerank={getattr(getattr(reranker, 'config', None), 'model', 'unknown')}"
+                except Exception:
+                    logger.exception(
+                        "Knowledge rerank failed: tenant_id=%s datasource_id=%s surface=%s",
+                        tenant_id,
+                        datasource_id,
+                        surface,
+                    )
+                    result = self._result(
+                        query_hash,
+                        f"{model_identity};rerank=unavailable",
+                        (),
+                        warnings=("知识重排服务暂时不可用，未向模型提供知识内容。",),
+                        failure_type="RERANK_UNAVAILABLE",
+                        latency_ms=int((datetime.utcnow() - started).total_seconds() * 1000),
+                    )
+                    self._audit(surface, permission_snapshot, result, started, request_id=request_id, user_id=user_id)
+                    return result
             scored = [item for item in scored if item.score >= min_score]
             scored.sort(key=lambda item: (-item.score, item.chunk_id))
+            final_top_k = max(1, int(top_k or settings.KNOWLEDGE_RETRIEVAL_TOP_K))
+            scored = scored[:final_top_k]
             bounded = self._bound_context(
                 scored,
-                top_k=max(1, int(top_k or settings.KNOWLEDGE_RETRIEVAL_TOP_K)),
+                top_k=final_top_k,
                 max_chars=max(1, int(max_context_chars or settings.KNOWLEDGE_RETRIEVAL_MAX_CONTEXT_CHARS)),
             )
             if not bounded and rows:
                 warnings.append("知识向量与当前检索模型不匹配，暂未返回结果。")
             result = self._result(
                 query_hash,
-                model_identity,
+                model_signature,
                 tuple(bounded),
                 warnings=tuple(warnings),
                 latency_ms=int((datetime.utcnow() - started).total_seconds() * 1000),
@@ -400,8 +456,8 @@ class KnowledgeRetrievalService:
     ) -> list[KnowledgeCitation]:
         selected: list[KnowledgeCitation] = []
         used = 0
-        for citation in citations[:top_k]:
-            item = _knowledge_context_item(citation)
+        for rank, citation in enumerate(citations[:top_k], start=1):
+            item = _knowledge_context_item(citation, rank=rank)
             separator_size = 1 if selected else 0
             if used + separator_size + len(item) <= max_chars:
                 selected.append(citation)
@@ -409,7 +465,7 @@ class KnowledgeRetrievalService:
                 continue
             if selected:
                 break
-            prefix, suffix = _knowledge_context_wrapper(citation)
+            prefix, suffix = _knowledge_context_wrapper(citation, rank=rank)
             content_budget = max_chars - len(prefix) - len(suffix)
             if content_budget < 0:
                 break
@@ -427,7 +483,10 @@ class KnowledgeRetrievalService:
         failure_type: str | None = None,
         latency_ms: int | None = None,
     ) -> KnowledgeRetrievalResult:
-        context = "\n".join(_knowledge_context_item(item) for item in citations)
+        context = "\n".join(
+            _knowledge_context_item(item, rank=rank)
+            for rank, item in enumerate(citations, start=1)
+        )
         return KnowledgeRetrievalResult(
             query_hash=query_hash,
             model_signature=model_signature,
