@@ -82,7 +82,6 @@ class ValidateDraftRequest(BaseModel):
     version_id: int
     revision: int = Field(ge=1)
     content_hash: str
-    datasource_id: int | None = Field(default=None, ge=1)
     context: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -482,32 +481,6 @@ async def validate_draft(
         record = resolve_record(session, knowledge_base_id=id, user=current_user)
         tenant_id = record_tenant_id(record, current_user)
         validation_context = _context(body.context)
-        if body.datasource_id is not None:
-            from apps.datasource.crud.permission_scope import (
-                PermissionScopeUnavailableError,
-            )
-            from apps.knowledge_base.validation_context import build_validation_context
-
-            try:
-                validation_context = build_validation_context(
-                    session=session,
-                    current_user=current_user,
-                    datasource_id=int(body.datasource_id),
-                )
-            except PermissionScopeUnavailableError as exc:
-                raise KnowledgeBusinessError(
-                    code="KNOWLEDGE_VALIDATION_CONTEXT_UNAVAILABLE",
-                    message="当前数据源目录或权限状态不可用，请刷新数据源结构后重试。",
-                    status_code=409,
-                    error_type="CONFLICT",
-                ) from exc
-            except ValueError as exc:
-                raise KnowledgeBusinessError(
-                    code="KNOWLEDGE_VALIDATION_CONTEXT_INVALID",
-                    message=str(exc) or "当前数据源校验上下文无效。",
-                    status_code=422,
-                    error_type="VALIDATION",
-                ) from exc
         version = KnowledgeLifecycleService(KnowledgeVersionRepository(session)).validate_draft(
             tenant_id=tenant_id,
             knowledge_base_id=id,
