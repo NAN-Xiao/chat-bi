@@ -170,6 +170,7 @@ def _version_response(version: KnowledgeBaseVersion) -> dict[str, Any]:
         "file_name": version.file_name,
         "file_ext": version.file_ext,
         "parser_version": version.parser_version,
+        "create_time": version.create_time,
         "publish_time": version.publish_time,
     }
 

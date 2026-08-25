@@ -51,6 +51,7 @@ export interface KnowledgeBaseVersion {
   file_name?: string | null
   file_ext?: string | null
   parser_version?: string | null
+  create_time?: string | null
   publish_time?: string | null
 }
 

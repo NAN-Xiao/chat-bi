@@ -54,6 +54,7 @@ import {
 } from './knowledgeDocumentAutosave'
 import { useKnowledgeScopeNavigation } from './knowledgeScopeNavigation'
 import { formatRequestErrorMessage } from '@/utils/request'
+import { formatTimestamp } from '@/utils/date'
 
 const userStore = useUserStore()
 const datasourceContext = useDatasourceContextStore()
@@ -134,6 +135,12 @@ const currentVersion = computed(() => versions.value.find((version) => version.s
 const archivedPublishedVersion = computed(() => versions.value.find(
   (version) => version.status === 'ARCHIVED' && Boolean(version.publish_time)
 ) || null)
+const formatVersionTime = (version: KnowledgeBaseVersion) => {
+  const value = version.publish_time || version.create_time
+  if (!value) return '-'
+  const timestamp = new Date(value).getTime()
+  return Number.isFinite(timestamp) ? formatTimestamp(timestamp, 'YYYY-MM-DD HH:mm:ss') : '-'
+}
 const validationErrors = computed(() => draft.value?.validation_report?.errors || [])
 const validationWarnings = computed(() => draft.value?.validation_report?.warnings || [])
 const actionState = computed(() => knowledgeActionState({
@@ -1248,7 +1255,10 @@ onBeforeUnmount(() => {
     <el-drawer v-model="historyVisible" title="版本历史" size="420px" destroy-on-close>
       <div class="history-list">
         <div v-for="version in versions" :key="version.id" class="history-row">
-          <span>版本 {{ version.version_number }} · {{ version.status }}</span>
+          <div class="history-version-meta">
+            <span>版本 {{ version.version_number }} · {{ version.status }}</span>
+            <span class="history-time">{{ formatVersionTime(version) }}</span>
+          </div>
           <div class="history-actions">
             <el-button
               v-if="canEdit && !draft && ['PUBLISHED', 'SUPERSEDED'].includes(version.status)"
@@ -1289,7 +1299,7 @@ onBeforeUnmount(() => {
 .list-error { margin-bottom: 12px; }
 .empty-state { display: inline-flex; min-height: 120px; align-items: center; color: #8f959e; }
 .muted-text { color: #98a2b3; }
-.editor-toolbar, .knowledge-lifecycle-actions, .history-row, .history-actions { display: flex; align-items: center; gap: 8px; }
+.editor-toolbar, .knowledge-lifecycle-actions, .history-row, .history-actions, .history-version-meta { display: flex; align-items: center; gap: 8px; }
 .knowledge-editor-page { display: grid; height: 100%; min-width: 0; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; background: #f5f7fa; }
 .knowledge-editor-header { position: relative; z-index: 12; display: grid; grid-template-columns: auto minmax(220px, 1fr) auto; align-items: center; gap: 12px 16px; min-width: 0; padding: 11px 16px; border-bottom: 1px solid #e4e7ec; background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.03); }
 .editor-back { margin: 0; }
@@ -1322,6 +1332,8 @@ onBeforeUnmount(() => {
 .history-list { min-width: 0; }
 .history-row { justify-content: space-between; min-height: 36px; border-bottom: 1px solid #f2f4f7; color: #667085; font-size: 12px; }
 .publish-status { margin: 8px 16px 0; color: #1570ef; font-size: 12px; }
+.history-version-meta { min-width: 0; flex-wrap: wrap; }
+.history-time { color: #98a2b3; white-space: nowrap; }
 @media (max-width: 1440px) {
   .panel-actions { justify-content: space-between; }
 }
