@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   ArrowDown,
+  ArrowLeft,
+  Clock,
   Delete,
   Download,
   FolderDelete,
@@ -46,6 +48,10 @@ import {
   type DocumentPayload,
   type KnowledgePayload,
 } from './knowledgePayloadTypes'
+import {
+  documentEditableSignature,
+  mergePersistedDocument,
+} from './knowledgeDocumentAutosave'
 import { useKnowledgeScopeNavigation } from './knowledgeScopeNavigation'
 import { formatRequestErrorMessage } from '@/utils/request'
 
@@ -60,10 +66,13 @@ const listError = ref(false)
 const saving = ref(false)
 const sourceUploading = ref(false)
 const publishing = ref(false)
+type AutoSaveState = 'clean' | 'dirty' | 'saving' | 'conflict' | 'error'
 type RowAction = 'upload' | 'download' | 'restore' | 'purge'
 
 const rowActionBusy = ref<Record<string, RowAction>>({})
 const editorVisible = ref(false)
+const historyVisible = ref(false)
+const autoSaveState = ref<AutoSaveState>('clean')
 const createVisible = ref(false)
 const createSourceFile = ref<File | null>(null)
 const selected = ref<KnowledgeBaseItem | null>(null)
@@ -90,6 +99,10 @@ const overrideLoading = ref(false)
 const applicability = ref<KnowledgeApplicabilityState | null>(null)
 const applicabilityLoading = ref(false)
 let publishTimer: ReturnType<typeof window.setInterval> | null = null
+let autoSaveTimer: ReturnType<typeof window.setTimeout> | null = null
+let savePromise: Promise<boolean> | null = null
+let localMutationSequence = 0
+let persistedPayloadSignature = documentEditableSignature(payload.value)
 
 const isArchivedView = computed(() => archiveFilter.value === 'archived')
 const canCreateKnowledgeInScope = computed(
@@ -110,6 +123,13 @@ const editorTitle = computed(() => {
   return `${canEdit.value ? '编辑' : '查看'}知识库：${selected.value.name}`
 })
 const draftStatus = computed(() => draft.value?.status || '无草稿')
+const autoSaveStatus = computed(() => ({
+  clean: { label: '已自动保存', type: 'success' as const },
+  dirty: { label: '有未保存更改', type: 'info' as const },
+  saving: { label: '正在保存', type: 'warning' as const },
+  conflict: { label: '保存冲突', type: 'danger' as const },
+  error: { label: '保存失败', type: 'danger' as const },
+})[autoSaveState.value])
 const currentVersion = computed(() => versions.value.find((version) => version.status === 'PUBLISHED') || null)
 const archivedPublishedVersion = computed(() => versions.value.find(
   (version) => version.status === 'ARCHIVED' && Boolean(version.publish_time)
@@ -228,6 +248,7 @@ async function createKnowledge() {
 async function openEditor(item: KnowledgeBaseItem) {
   selected.value = await knowledgeBaseApi.detail(item.id)
   editorVisible.value = true
+  historyVisible.value = false
   publishJob.value = null
   draftConflict.value = false
   workspaceOverride.value = null
@@ -281,14 +302,20 @@ async function loadVersions() {
   draft.value = versions.value.find((version) =>
     ['DRAFT', 'VALIDATING', 'VALIDATION_FAILED', 'READY_TO_PUBLISH', 'PUBLISH_FAILED'].includes(version.status)
   ) || null
-  if (draft.value) payload.value = normalizeLoadedPayload(draft.value.payload)
-  else if (currentVersion.value) payload.value = normalizeLoadedPayload(currentVersion.value.payload)
-  else if (archivedPublishedVersion.value) payload.value = normalizeLoadedPayload(archivedPublishedVersion.value.payload)
-  else payload.value = defaultKnowledgePayload()
+  if (draft.value) applyPersistedPayload(normalizeLoadedPayload(draft.value.payload))
+  else if (currentVersion.value) applyPersistedPayload(normalizeLoadedPayload(currentVersion.value.payload))
+  else if (archivedPublishedVersion.value) applyPersistedPayload(normalizeLoadedPayload(archivedPublishedVersion.value.payload))
+  else applyPersistedPayload(defaultKnowledgePayload())
 }
 
 function normalizeLoadedPayload(value: Record<string, any>): KnowledgePayload {
   return normalizeDocumentPayload(value)
+}
+
+function applyPersistedPayload(value: DocumentPayload) {
+  persistedPayloadSignature = documentEditableSignature(value)
+  payload.value = value
+  autoSaveState.value = 'clean'
 }
 
 function documentBlockChanged(local: DocumentBlock, server: DocumentBlock) {
@@ -315,6 +342,7 @@ function captureDocumentConflict(error: any, localBlock?: DocumentBlock) {
     details,
   }
   draftConflict.value = true
+  autoSaveState.value = 'conflict'
 }
 
 function restoreDeletedConflictBlock() {
@@ -325,13 +353,16 @@ function restoreDeletedConflictBlock() {
   restored.enabled = localBlock.enabled
   draft.value = { ...draft.value, payload: serverPayload }
   payload.value = { ...serverPayload, blocks: [...serverPayload.blocks, restored] }
+  persistedPayloadSignature = documentEditableSignature(serverPayload)
   documentConflict.value = null
   draftConflict.value = false
+  autoSaveState.value = 'dirty'
+  scheduleAutoSave(0)
   ElMessage.info('本地内容已恢复为新知识块，请保存草稿。')
 }
 
 async function saveDocumentDraft(localPayload: DocumentPayload) {
-  if (!selected.value || !draft.value) return false
+  if (!selected.value || !draft.value) return null
   const serverPayload = normalizeDocumentPayload(draft.value.payload)
   const serverById = new Map(serverPayload.blocks.map((block) => [block.id, block]))
   let persisted = false
@@ -350,7 +381,7 @@ async function saveDocumentDraft(localPayload: DocumentPayload) {
     } catch (error: any) {
       if (error?.response?.status === 409) {
         captureDocumentConflict(error, localBlock)
-        return false
+        return null
       }
       throw error
     }
@@ -367,7 +398,7 @@ async function saveDocumentDraft(localPayload: DocumentPayload) {
     } catch (error: any) {
       if (error?.response?.status === 409) {
         captureDocumentConflict(error)
-        return false
+        return null
       }
       throw error
     }
@@ -379,9 +410,8 @@ async function saveDocumentDraft(localPayload: DocumentPayload) {
       content: localPayload,
     })
   }
-  payload.value = normalizeDocumentPayload(draft.value.payload)
   documentConflict.value = null
-  return true
+  return normalizeDocumentPayload(draft.value.payload)
 }
 
 async function createEditingDraft() {
@@ -463,26 +493,104 @@ async function permanentlyDeleteKnowledge(row: KnowledgeBaseItem) {
   }
 }
 
-async function saveDraft() {
+function clearAutoSaveTimer() {
+  if (!autoSaveTimer) return
+  window.clearTimeout(autoSaveTimer)
+  autoSaveTimer = null
+}
+
+function syncDraftVersion() {
+  if (!draft.value) return
+  versions.value = versions.value.map((version) => version.id === draft.value?.id ? draft.value : version)
+}
+
+async function runAutoSave() {
   if (!selected.value || !draft.value || !actionState.value.save) return false
+  const requestSnapshot = cloneDeep(payload.value)
+  const requestSignature = documentEditableSignature(requestSnapshot)
+  if (requestSignature === persistedPayloadSignature) {
+    autoSaveState.value = 'clean'
+    return true
+  }
+  const requestSequence = localMutationSequence
   try {
     saving.value = true
-    const saved = await saveDocumentDraft(cloneDeep(payload.value))
-    if (!saved) return false
-    await loadVersions()
-    ElMessage.success('草稿已保存')
+    autoSaveState.value = 'saving'
+    const persisted = await saveDocumentDraft(requestSnapshot)
+    if (!persisted) {
+      autoSaveState.value = 'conflict'
+      return false
+    }
+    payload.value = mergePersistedDocument(payload.value, requestSnapshot, persisted)
+    persistedPayloadSignature = requestSignature
+    syncDraftVersion()
     draftConflict.value = false
+    if (
+      requestSequence === localMutationSequence
+      && documentEditableSignature(payload.value) === requestSignature
+    ) {
+      autoSaveState.value = 'clean'
+    } else {
+      autoSaveState.value = 'dirty'
+    }
     return true
   } catch (error: any) {
     if (error?.response?.status === 409) {
       draftConflict.value = true
+      autoSaveState.value = 'conflict'
       ElMessage.error('草稿已被其他人更新，请刷新版本后重试。')
       return false
     }
-    throw error
+    console.error(error)
+    autoSaveState.value = 'error'
+    ElMessage.error(formatRequestErrorMessage(error, '自动保存失败，本地内容仍保留'))
+    return false
   } finally {
     saving.value = false
   }
+}
+
+function startAutoSave() {
+  if (savePromise) return savePromise
+  const currentPromise = runAutoSave()
+  savePromise = currentPromise
+  void currentPromise.finally(() => {
+    if (savePromise === currentPromise) savePromise = null
+    if (autoSaveState.value === 'dirty') scheduleAutoSave()
+  })
+  return currentPromise
+}
+
+function scheduleAutoSave(delay = 900) {
+  clearAutoSaveTimer()
+  if (savePromise || autoSaveState.value === 'conflict') return
+  autoSaveTimer = window.setTimeout(() => {
+    autoSaveTimer = null
+    void startAutoSave()
+  }, delay)
+}
+
+async function flushPendingSave() {
+  clearAutoSaveTimer()
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (savePromise) {
+      if (!(await savePromise)) return false
+      continue
+    }
+    if (documentEditableSignature(payload.value) === persistedPayloadSignature) {
+      autoSaveState.value = 'clean'
+      return true
+    }
+    if (!(await startAutoSave())) return false
+  }
+  autoSaveState.value = 'error'
+  return false
+}
+
+async function saveDraft() {
+  const saved = await flushPendingSave()
+  if (saved) ElMessage.success('草稿已保存')
+  return saved
 }
 
 function isSupportedSourceFile(file: File) {
@@ -564,7 +672,8 @@ async function replaceDraftSource(file: File) {
       revision: draft.value.revision,
       file,
     })
-    payload.value = normalizeDocumentPayload(draft.value.payload)
+    applyPersistedPayload(normalizeDocumentPayload(draft.value.payload))
+    syncDraftVersion()
     draftConflict.value = false
     documentConflict.value = null
     ElMessage.success('源文件已解析并保存为知识块，请校验后发布')
@@ -581,13 +690,14 @@ async function validateDraft() {
   if (!selected.value || !draft.value || !actionState.value.validate) return
   try {
     saving.value = true
-    if (draft.value.payload !== payload.value && !(await saveDraft())) return
+    if (!(await flushPendingSave())) return
     draft.value = await knowledgeBaseApi.validateDraft(selected.value.id, {
       version_id: draft.value.id,
       revision: draft.value.revision,
       content_hash: draft.value.content_hash || '',
       context: {},
     })
+    syncDraftVersion()
     if (draft.value.validation_report?.valid) ElMessage.success('校验通过，可以发布')
     else ElMessage.warning('校验未通过，请根据页面提示修正')
   } finally {
@@ -596,7 +706,12 @@ async function validateDraft() {
 }
 
 async function publishDraft() {
-  if (!selected.value || !draft.value || !actionState.value.publish) return
+  if (!selected.value || !draft.value) return
+  if (!(await flushPendingSave())) return
+  if (!actionState.value.publish) {
+    ElMessage.warning('内容已更新，请重新校验后发布。')
+    return
+  }
   try {
     publishing.value = true
     publishJob.value = await knowledgeBaseApi.publish(selected.value.id, {
@@ -636,17 +751,22 @@ async function refreshDraftAfterConflict() {
 function loadServerConflictBlock() {
   if (!documentConflict.value?.serverBlock) return
   const serverBlock = documentConflict.value.serverBlock
-  payload.value = {
+  const nextPayload = {
     ...payload.value,
     blocks: payload.value.blocks.map((block) => block.id === serverBlock.id ? cloneDeep(serverBlock) : block),
   }
+  payload.value = nextPayload
+  persistedPayloadSignature = documentEditableSignature(nextPayload)
   documentConflict.value = null
   draftConflict.value = false
+  autoSaveState.value = 'clean'
 }
 
 async function retryLocalConflictBlock() {
   if (!selected.value || !draft.value || !documentConflict.value?.localBlock || !documentConflict.value.serverBlock) return
-  const localBlock = cloneDeep(documentConflict.value.localBlock)
+  const conflictBlock = documentConflict.value.localBlock
+  const localBlock = cloneDeep(payload.value.blocks.find((block) => block.id === conflictBlock.id) || conflictBlock)
+  const requestSnapshot = cloneDeep(payload.value)
   const serverBlock = documentConflict.value.serverBlock
   saving.value = true
   try {
@@ -657,15 +777,14 @@ async function retryLocalConflictBlock() {
       markdown: localBlock.markdown,
       enabled: localBlock.enabled,
     })
-    const savedBlock = normalizeDocumentPayload(draft.value.payload).blocks.find((block) => block.id === localBlock.id)
-    if (savedBlock) {
-      payload.value = {
-        ...payload.value,
-        blocks: payload.value.blocks.map((block) => block.id === savedBlock.id ? savedBlock : block),
-      }
-    }
+    const persisted = normalizeDocumentPayload(draft.value.payload)
+    payload.value = mergePersistedDocument(payload.value, requestSnapshot, persisted)
+    persistedPayloadSignature = documentEditableSignature(requestSnapshot)
+    syncDraftVersion()
     documentConflict.value = null
     draftConflict.value = false
+    autoSaveState.value = documentEditableSignature(payload.value) === persistedPayloadSignature ? 'clean' : 'dirty'
+    if (autoSaveState.value === 'dirty') scheduleAutoSave()
     ElMessage.success('本地知识块已基于最新版本保存')
   } catch (error: any) {
     if (error?.response?.status === 409) captureDocumentConflict(error, localBlock)
@@ -759,15 +878,40 @@ function downloadMarkdownTemplate(command: string | number | object) {
   if (template) downloadKnowledgeMarkdownTemplate(template)
 }
 
-function closeEditor() {
+async function closeEditor() {
+  if (
+    canEdit.value
+    && draft.value
+    && documentEditableSignature(payload.value) !== persistedPayloadSignature
+    && !(await flushPendingSave())
+  ) {
+    ElMessage.warning('当前内容尚未保存，请处理保存失败或冲突后再返回。')
+    return
+  }
   editorVisible.value = false
+  historyVisible.value = false
+  clearAutoSaveTimer()
   if (publishTimer) window.clearInterval(publishTimer)
   publishTimer = null
   applicability.value = null
   loadItems()
 }
 
+function handleEditorShortcut(event: KeyboardEvent) {
+  if (!editorVisible.value || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return
+  event.preventDefault()
+  if (canEdit.value && draft.value) void saveDraft()
+}
+
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  if (!editorVisible.value || autoSaveState.value === 'clean') return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
 onMounted(async () => {
+  window.addEventListener('keydown', handleEditorShortcut)
+  window.addEventListener('beforeunload', handleBeforeUnload)
   if (isPlatformAdmin.value) {
     workspaces.value = (await tenantApi.adminList()).filter(
       (workspace) => !workspace.is_system_default && Number(workspace.status ?? 1) === 1
@@ -787,11 +931,32 @@ watch([scopeFilter, workspaceFilter, archiveFilter], () => {
 watch(() => datasourceContext.datasourceId, () => {
   if (editorVisible.value && !selected.value?.archived && selected.value?.visibility_scope === 'PLATFORM_PUBLIC') loadApplicability()
 })
-onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
+watch(
+  () => documentEditableSignature(payload.value),
+  (signature) => {
+    if (!editorVisible.value || !canEdit.value || !draft.value) return
+    if (signature === persistedPayloadSignature) {
+      if (!savePromise) autoSaveState.value = 'clean'
+      return
+    }
+    localMutationSequence += 1
+    if (autoSaveState.value !== 'conflict') {
+      autoSaveState.value = 'dirty'
+      scheduleAutoSave()
+    }
+  }
+)
+onBeforeUnmount(() => {
+  if (publishTimer) window.clearInterval(publishTimer)
+  clearAutoSaveTimer()
+  window.removeEventListener('keydown', handleEditorShortcut)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
 </script>
 
 <template>
-  <div class="knowledge-v2-panel">
+  <div class="knowledge-v2-panel" :class="{ 'is-editor-mode': editorVisible }">
+    <template v-if="!editorVisible">
     <div class="panel-header">
       <div class="panel-actions">
         <div class="panel-filters">
@@ -990,66 +1155,68 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       </template>
     </el-dialog>
 
-    <el-drawer v-model="editorVisible" class="knowledge-editor-drawer" :title="editorTitle" size="760px" destroy-on-close :before-close="closeEditor">
-      <div v-if="selected" class="editor-layout">
+    </template>
+
+    <section v-else-if="selected" class="knowledge-editor-page">
         <div class="knowledge-editor-header">
-          <div class="editor-toolbar">
-            <el-tag>{{ selected.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}</el-tag>
-            <el-tag v-if="selected.archived" type="info">已归档，只读</el-tag>
-            <KnowledgeApplicabilityTag
-              v-if="!selected.archived && selected.visibility_scope === 'PLATFORM_PUBLIC'"
-              :state="applicability"
-              :loading="applicabilityLoading"
-              :datasource-available="Boolean(datasourceContext.datasourceId)"
-            />
-            <span v-if="canToggleWorkspaceKnowledge" class="workspace-override">
-              当前工作空间使用
-              <el-switch
-                v-model="workspaceKnowledgeEnabled"
-                size="small"
-                :loading="overrideLoading"
-                @change="updateWorkspaceKnowledgeEnabled"
+          <el-button class="editor-back" :icon="ArrowLeft" text @click="closeEditor">返回</el-button>
+          <div class="editor-identity">
+            <h2>{{ editorTitle }}</h2>
+            <div class="editor-toolbar">
+              <el-tag>{{ selected.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}</el-tag>
+              <el-tag v-if="selected.archived" type="info">已归档，只读</el-tag>
+              <KnowledgeApplicabilityTag
+                v-if="!selected.archived && selected.visibility_scope === 'PLATFORM_PUBLIC'"
+                :state="applicability"
+                :loading="applicabilityLoading"
+                :datasource-available="Boolean(datasourceContext.datasourceId)"
               />
-            </span>
-            <span v-if="!selected.archived" class="version-status">草稿状态：{{ draftStatus }}</span>
-            <span v-if="draft?.file_name" class="version-file">源文件：{{ draft.file_name }}</span>
-          </div>
-          <div v-if="selected.archived && selected.can_manage" class="knowledge-lifecycle-actions">
-            <el-button type="primary" :icon="RefreshLeft" :loading="rowBusyState(selected) === 'restore'" @click="restoreKnowledge(selected)">恢复知识库</el-button>
-            <el-button type="danger" :icon="Delete" :loading="rowBusyState(selected) === 'purge'" @click="permanentlyDeleteKnowledge(selected)">永久删除</el-button>
-          </div>
-          <div v-else-if="!selected.archived" class="knowledge-lifecycle-actions">
-            <el-button v-if="canEdit && !draft" type="primary" plain :icon="Plus" @click="createEditingDraft">创建草稿</el-button>
-            <el-button :loading="saving" :disabled="!actionState.save" @click="saveDraft">保存草稿</el-button>
-            <el-button :loading="saving" :disabled="!actionState.validate" @click="validateDraft">校验</el-button>
-            <el-button type="primary" :loading="publishing" :disabled="!actionState.publish" @click="publishDraft">发布</el-button>
-          </div>
-        </div>
-        <div v-if="canEdit && draft" class="source-upload-row">
-          <el-upload
-            drag
-            action="#"
-            :auto-upload="false"
-            :show-file-list="false"
-            accept=".md,.markdown"
-            :disabled="sourceUploading"
-            :on-change="handleSourceFileChange"
-          >
-            <div class="source-upload-inner">
-              <el-icon><UploadFilled /></el-icon>
-              <span>{{ sourceUploading ? '正在解析源文件...' : '拖拽或点击上传源文件' }}</span>
-              <small>仅支持符合内容结构要求的 Markdown（.md / .markdown）</small>
+              <span v-if="canToggleWorkspaceKnowledge" class="workspace-override">
+                当前工作空间使用
+                <el-switch
+                  v-model="workspaceKnowledgeEnabled"
+                  size="small"
+                  :loading="overrideLoading"
+                  @change="updateWorkspaceKnowledgeEnabled"
+                />
+              </span>
+              <span v-if="!selected.archived" class="version-status">草稿状态：{{ draftStatus }}</span>
+              <span v-if="draft?.file_name" class="version-file">源文件：{{ draft.file_name }}</span>
             </div>
-          </el-upload>
+          </div>
+          <div class="knowledge-lifecycle-actions">
+            <el-tag v-if="canEdit && draft" :type="autoSaveStatus.type" effect="plain">{{ autoSaveStatus.label }}</el-tag>
+            <el-button :icon="Clock" @click="historyVisible = true">版本历史</el-button>
+            <template v-if="selected.archived && selected.can_manage">
+              <el-button type="primary" :icon="RefreshLeft" :loading="rowBusyState(selected) === 'restore'" @click="restoreKnowledge(selected)">恢复知识库</el-button>
+              <el-button type="danger" :icon="Delete" :loading="rowBusyState(selected) === 'purge'" @click="permanentlyDeleteKnowledge(selected)">永久删除</el-button>
+            </template>
+            <template v-else-if="!selected.archived">
+              <el-button v-if="canEdit && !draft" type="primary" plain :icon="Plus" @click="createEditingDraft">创建草稿</el-button>
+              <el-upload
+                v-if="canEdit && draft"
+                action="#"
+                :auto-upload="false"
+                :show-file-list="false"
+                accept=".md,.markdown"
+                :disabled="sourceUploading"
+                :on-change="handleSourceFileChange"
+              >
+                <el-button :icon="UploadFilled" :loading="sourceUploading">上传源文件</el-button>
+              </el-upload>
+              <el-button :loading="saving" :disabled="!actionState.validate" @click="validateDraft">校验</el-button>
+              <el-button type="primary" :loading="publishing" :disabled="!actionState.publish" @click="publishDraft">发布</el-button>
+            </template>
+          </div>
         </div>
-        <KnowledgePayloadEditor v-model="payload" :readonly="!canEdit || !draft || editorBusy" />
-        <div v-if="validationErrors.length" class="validation-panel is-error">
-          <div v-for="(issue, index) in validationErrors" :key="index">{{ issue.field_path || '内容' }}：{{ issue.message }}</div>
-        </div>
-        <div v-if="validationWarnings.length" class="validation-panel is-warning">
-          <div v-for="(issue, index) in validationWarnings" :key="index">{{ issue.field_path || '内容' }}：{{ issue.message }}</div>
-        </div>
-        <div v-if="draftConflict" class="validation-panel is-conflict">
+        <div class="editor-notices">
+          <div v-if="validationErrors.length" class="validation-panel is-error">
+            <div v-for="(issue, index) in validationErrors" :key="index">{{ issue.field_path || '内容' }}：{{ issue.message }}</div>
+          </div>
+          <div v-if="validationWarnings.length" class="validation-panel is-warning">
+            <div v-for="(issue, index) in validationWarnings" :key="index">{{ issue.field_path || '内容' }}：{{ issue.message }}</div>
+          </div>
+          <div v-if="draftConflict" class="validation-panel is-conflict">
           <template v-if="documentConflict?.type === 'BLOCK' && documentConflict.localBlock && documentConflict.serverBlock">
             <div class="conflict-title">同一知识块已被其他用户修改，本地内容仍保留在页面中。</div>
             <div class="conflict-compare">
@@ -1072,8 +1239,14 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
             <el-button v-if="documentConflict?.type === 'BLOCK_DELETED'" type="warning" @click="restoreDeletedConflictBlock">恢复为新知识块</el-button>
             <el-button text type="warning" @click="refreshDraftAfterConflict">刷新最新结构</el-button>
           </template>
+          </div>
+          <div v-if="publishJob" class="publish-status">发布任务：{{ publishJob.status }}{{ publishJob.stage ? ` · ${publishJob.stage}` : '' }}</div>
         </div>
-        <div class="history-title">版本历史</div>
+        <KnowledgePayloadEditor v-model="payload" :readonly="!canEdit || !draft || editorBusy" />
+    </section>
+
+    <el-drawer v-model="historyVisible" title="版本历史" size="420px" destroy-on-close>
+      <div class="history-list">
         <div v-for="version in versions" :key="version.id" class="history-row">
           <span>版本 {{ version.version_number }} · {{ version.status }}</span>
           <div class="history-actions">
@@ -1086,7 +1259,6 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
             <el-button text :disabled="!version.file_name" @click="downloadVersion(version)">下载</el-button>
           </div>
         </div>
-        <div v-if="publishJob" class="publish-status">发布任务：{{ publishJob.status }}{{ publishJob.stage ? ` · ${publishJob.stage}` : '' }}</div>
       </div>
     </el-drawer>
     <KnowledgeRetrievalPreview v-model="retrievalPreviewVisible" />
@@ -1094,7 +1266,8 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 </template>
 
 <style scoped lang="less">
-.knowledge-v2-panel { height: 100%; padding: 0 0 24px; color: #1f2329; }
+.knowledge-v2-panel { height: 100%; min-width: 0; padding: 0 0 24px; color: #1f2329; }
+.knowledge-v2-panel.is-editor-mode { overflow: hidden; padding: 0; background: #f5f7fa; }
 .panel-header { display: flex; width: 100%; margin-bottom: 18px; }
 .panel-actions { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px 16px; padding: 8px; border: 1px solid #e4e7ed; border-radius: 8px; background: #f7f8fa; }
 .panel-filters, .panel-buttons { display: flex; align-items: center; gap: 8px; }
@@ -1117,11 +1290,18 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .empty-state { display: inline-flex; min-height: 120px; align-items: center; color: #8f959e; }
 .muted-text { color: #98a2b3; }
 .editor-toolbar, .knowledge-lifecycle-actions, .history-row, .history-actions { display: flex; align-items: center; gap: 8px; }
-.editor-layout { padding: 0 2px 24px; }
-.knowledge-editor-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 20px; margin-bottom: 16px; padding: 12px; border: 1px solid #e4e7ed; border-radius: 6px; background: #f7f8fa; }
-.editor-toolbar { flex: 1 1 360px; min-width: 0; flex-wrap: wrap; color: #667085; font-size: 12px; }
-.knowledge-lifecycle-actions { flex: 0 0 auto; justify-content: flex-end; flex-wrap: wrap; }
+.knowledge-editor-page { display: grid; height: 100%; min-width: 0; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; background: #f5f7fa; }
+.knowledge-editor-header { position: relative; z-index: 12; display: grid; grid-template-columns: auto minmax(220px, 1fr) auto; align-items: center; gap: 12px 16px; min-width: 0; padding: 11px 16px; border-bottom: 1px solid #e4e7ec; background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.03); }
+.editor-back { margin: 0; }
+.editor-identity { min-width: 0; }
+.editor-identity h2 { margin: 0 0 5px; overflow: hidden; color: #1d2939; font-size: 15px; font-weight: 600; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
+.editor-toolbar { min-width: 0; overflow: hidden; color: #667085; font-size: 12px; white-space: nowrap; }
+.knowledge-lifecycle-actions { min-width: 0; justify-content: flex-end; flex-wrap: wrap; }
 .knowledge-lifecycle-actions :deep(.ed-button + .ed-button) { margin-left: 0; }
+.knowledge-lifecycle-actions :deep(.ed-upload) { display: inline-flex; }
+.editor-notices { position: relative; z-index: 6; min-width: 0; }
+.editor-notices:empty { display: none; }
+.knowledge-editor-page :deep(.payload-editor) { height: 100%; min-height: 0; overflow: auto; }
 .source-upload-row { margin-bottom: 16px; }
 .source-upload-row :deep(.ed-upload), .source-upload-row :deep(.ed-upload-dragger), .create-source-upload, .create-source-upload :deep(.ed-upload), .create-source-upload :deep(.ed-upload-dragger) { width: 100%; }
 .source-upload-row :deep(.ed-upload-dragger), .create-source-upload :deep(.ed-upload-dragger) { padding: 14px 16px; border-radius: 6px; }
@@ -1130,7 +1310,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .selected-source-file { margin-top: 8px; color: #475467; font-size: 12px; overflow-wrap: anywhere; }
 .workspace-override { display: inline-flex; align-items: center; gap: 6px; color: #475467; }
 .version-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.validation-panel { margin-top: 14px; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 20px; }
+.validation-panel { margin: 8px 16px 0; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 20px; }
 .validation-panel.is-error { color: #b42318; background: #fff1f3; }
 .validation-panel.is-warning { color: #9a6700; background: #fff8e6; }
 .validation-panel.is-conflict { color: #9a6700; background: #fff8e6; }
@@ -1139,14 +1319,13 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .conflict-compare > div { min-width: 0; padding: 8px; border: 1px solid #f5c451; border-radius: 6px; background: #fff; }
 .conflict-compare p { max-height: 100px; margin: 6px 0 0; overflow: auto; color: #475467; white-space: pre-wrap; overflow-wrap: anywhere; }
 .conflict-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
-.history-title { margin-top: 24px; padding-bottom: 8px; border-bottom: 1px solid #eaecf0; color: #344054; font-size: 13px; font-weight: 600; }
+.history-list { min-width: 0; }
 .history-row { justify-content: space-between; min-height: 36px; border-bottom: 1px solid #f2f4f7; color: #667085; font-size: 12px; }
-.publish-status { margin-top: 12px; color: #1570ef; font-size: 12px; }
+.publish-status { margin: 8px 16px 0; color: #1570ef; font-size: 12px; }
 @media (max-width: 1440px) {
   .panel-actions { justify-content: space-between; }
 }
 @media (max-width: 680px) {
-  :global(.knowledge-editor-drawer) { width: 100% !important; max-width: 100%; }
   .panel-actions, .panel-filters, .panel-buttons { width: 100%; }
   .panel-filters { flex-direction: column; }
   .knowledge-filter-input, .knowledge-filter-scope, .knowledge-filter-workspace, .knowledge-archive-filter { width: 100%; flex-basis: auto; }
@@ -1155,10 +1334,12 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
   .panel-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
   .panel-buttons :deep(.ed-button), .template-download { width: 100%; min-height: 32px; margin-left: 0; }
   .template-download :deep(.ed-button) { width: 100%; height: auto; min-height: 32px; white-space: normal; }
-  .knowledge-editor-header { flex-direction: column; }
-  .editor-toolbar { width: 100%; flex-basis: auto; }
-  .knowledge-lifecycle-actions { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
-  .knowledge-lifecycle-actions :deep(.ed-button) { width: 100%; min-width: 0; margin-left: 0; white-space: normal; }
+  .knowledge-editor-header { grid-template-columns: auto minmax(0, 1fr); gap: 8px 10px; padding: 8px 10px; }
+  .editor-identity h2 { font-size: 14px; }
+  .editor-toolbar { overflow-x: auto; scrollbar-width: none; }
+  .knowledge-lifecycle-actions { grid-column: 1 / -1; width: 100%; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+  .knowledge-lifecycle-actions :deep(.ed-button) { flex: 0 0 auto; min-width: 0; margin-left: 0; }
+  .validation-panel, .publish-status { margin-right: 10px; margin-left: 10px; }
   .conflict-compare { grid-template-columns: minmax(0, 1fr); }
   .conflict-actions { align-items: stretch; flex-direction: column; }
   .conflict-actions :deep(.ed-button) { width: 100%; margin-left: 0; }

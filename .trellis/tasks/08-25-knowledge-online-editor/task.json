@@ -1,0 +1,29 @@
+{
+  "id": "knowledge-online-editor",
+  "name": "knowledge-online-editor",
+  "title": "知识库在线文档编辑器",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "dongjinchao",
+  "assignee": "dongjinchao",
+  "createdAt": "2026-08-25",
+  "completedAt": null,
+  "branch": "codex/knowledge-online-editor",
+  "base_branch": "release/release_2.0.0",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "worktree_path": "D:\\AIWork3\\chat-bi_ver-worktrees\\knowledge-online-editor",
+    "verification_state": "automated_pass_browser_auth_blocked"
+  }
+}

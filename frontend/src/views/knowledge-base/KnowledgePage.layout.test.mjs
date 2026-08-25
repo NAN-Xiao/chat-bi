@@ -11,9 +11,8 @@ const panelSource = readFileSync(join(directory, 'KnowledgeBaseV2Panel.vue'), 'u
   '\n'
 )
 const knowledgeApiSource = readFileSync(join(directory, '../../api/knowledgeBase.ts'), 'utf8')
-const knowledgeItemSource = knowledgeApiSource.match(
-  /export interface KnowledgeBaseItem \{[\s\S]*?\n\}/
-)?.[0] || ''
+const knowledgeItemSource =
+  knowledgeApiSource.match(/export interface KnowledgeBaseItem \{[\s\S]*?\n\}/)?.[0] || ''
 const routerSource = readFileSync(join(directory, '../../router/index.ts'), 'utf8')
 const menuItemSource = readFileSync(join(directory, '../../components/layout/MenuItem.vue'), 'utf8')
 const editorSource = readFileSync(join(directory, 'KnowledgePayloadEditor.vue'), 'utf8')
@@ -23,7 +22,10 @@ test('knowledge page exposes only the document editor behind one orchestration l
   assert.match(pageSource, /KnowledgeBaseV2Panel/)
   assert.doesNotMatch(pageSource, /knowledgePageMode|knowledgeBaseApi|pageMode|LEGACY/)
   assert.match(editorSource, /DocumentEditor/)
-  assert.doesNotMatch(editorSource, /BusinessKnowledgeEditor|EventKnowledgeEditor|JsonFieldKnowledgeEditor/)
+  assert.doesNotMatch(
+    editorSource,
+    /BusinessKnowledgeEditor|EventKnowledgeEditor|JsonFieldKnowledgeEditor/
+  )
 })
 
 test('knowledge management expands to platform and workspace child menus', () => {
@@ -50,7 +52,10 @@ test('knowledge page uses the V2 list and has no legacy processing status', () =
   assert.doesNotMatch(panelSource, /处理状态|待处理|processStatusText|row\.status/)
   assert.doesNotMatch(knowledgeApiSource, /\/knowledge-base\/save|KnowledgeBaseStatus/)
   assert.doesNotMatch(knowledgeItemSource, /status:|task_id\?:|error_message\?:/)
-  assert.match(knowledgeApiSource, /interface KnowledgePublishJob[\s\S]*task_id\?:[\s\S]*error_message\?:/)
+  assert.match(
+    knowledgeApiSource,
+    /interface KnowledgePublishJob[\s\S]*task_id\?:[\s\S]*error_message\?:/
+  )
 })
 
 test('knowledge page exposes platform knowledge as read-only to non-managers', () => {
@@ -89,7 +94,10 @@ test('knowledge management exposes archived records as restorable or permanently
   assert.match(panelSource, /version\.status === 'ARCHIVED' && Boolean\(version\.publish_time\)/)
   assert.match(panelSource, /knowledgeBaseApi\.restore\(row\.id\)/)
   assert.match(panelSource, /恢复知识库/)
-  assert.match(panelSource, /class="panel-action-slot" :class="\{ 'is-placeholder': isArchivedView \}"/)
+  assert.match(
+    panelSource,
+    /class="panel-action-slot" :class="\{ 'is-placeholder': isArchivedView \}"/
+  )
   assert.match(panelSource, /class="template-download panel-action-slot"/)
   assert.match(panelSource, /v-if="canCreateKnowledgeInScope"/)
   assert.match(panelSource, /class="panel-action-slot"[\s\S]*?is-placeholder': !canCreateKnowledge/)
@@ -108,37 +116,31 @@ test('knowledge archive switching keeps a stable header and table layout', () =>
   assert.doesNotMatch(panelSource, /class="panel-subtitle"/)
   assert.match(panelSource, /<div class="panel-header">\s*<div class="panel-actions">/)
   assert.doesNotMatch(panelSource, /<el-table-column label="参与检索"/)
-  assert.match(panelSource, /\.panel-action-slot\.is-placeholder \{ visibility: hidden; pointer-events: none; \}/)
+  assert.match(
+    panelSource,
+    /\.panel-action-slot\.is-placeholder \{ visibility: hidden; pointer-events: none; \}/
+  )
   assert.match(panelSource, /\.panel-header \{ display: flex; width: 100%; margin-bottom: 18px; \}/)
 })
 
 test('knowledge lifecycle actions stay in the knowledge-base header before the payload editor', () => {
   const headerIndex = panelSource.indexOf('<div class="knowledge-editor-header">')
   const actionIndex = panelSource.indexOf('class="knowledge-lifecycle-actions"', headerIndex)
-  const sourceUploadIndex = panelSource.indexOf(
-    '<div v-if="canEdit && draft" class="source-upload-row">',
-    headerIndex
-  )
+  const sourceUploadIndex = panelSource.indexOf('v-if="canEdit && draft"', actionIndex)
   const editorIndex = panelSource.indexOf('<KnowledgePayloadEditor', headerIndex)
 
   assert.ok(headerIndex >= 0, 'knowledge-base header should exist')
   assert.ok(actionIndex > headerIndex, 'lifecycle actions should be grouped inside the header')
-  assert.ok(sourceUploadIndex > actionIndex, 'lifecycle actions should precede source upload content')
+  assert.ok(sourceUploadIndex > actionIndex, 'source upload should remain in lifecycle actions')
   assert.ok(
     editorIndex > sourceUploadIndex,
-    'the payload editor should appear after source upload content'
+    'the payload editor should appear after the page header'
   )
-  assert.equal(panelSource.match(/class="knowledge-lifecycle-actions"/g)?.length, 2)
-  assert.match(
-    panelSource,
-    /v-if="selected\.archived && selected\.can_manage" class="knowledge-lifecycle-actions"/
-  )
+  assert.equal(panelSource.match(/class="knowledge-lifecycle-actions"/g)?.length, 1)
+  assert.match(panelSource, /v-else-if="selected" class="knowledge-editor-page"/)
   assert.match(panelSource, /@click="permanentlyDeleteKnowledge\(selected\)">永久删除/)
-  assert.match(panelSource, /v-else-if="!selected\.archived" class="knowledge-lifecycle-actions"/)
-  assert.match(
-    panelSource,
-    /:loading="saving" :disabled="!actionState\.save" @click="saveDraft">保存草稿/
-  )
+  assert.match(panelSource, /v-if="canEdit && draft" :type="autoSaveStatus\.type"/)
+  assert.doesNotMatch(panelSource, />保存草稿<\/el-button>/)
   assert.match(
     panelSource,
     /:loading="saving" :disabled="!actionState\.validate" @click="validateDraft">校验/
@@ -149,44 +151,35 @@ test('knowledge lifecycle actions stay in the knowledge-base header before the p
   )
   assert.match(
     panelSource,
-    /@media \(max-width: 680px\)[\s\S]*?\.knowledge-editor-header \{ flex-direction: column; \}/
+    /@media \(max-width: 680px\)[\s\S]*?\.knowledge-editor-header \{ grid-template-columns: auto minmax\(0, 1fr\);/
   )
   assert.match(
     panelSource,
-    /\.knowledge-lifecycle-actions \{ display: grid; width: 100%; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/
-  )
-  assert.match(
-    panelSource,
-    /\.knowledge-lifecycle-actions :deep\(\.ed-button\) \{ width: 100%; min-width: 0;/
+    /\.knowledge-lifecycle-actions \{ grid-column: 1 \/ -1;[\s\S]*?overflow-x: auto;/
   )
 })
 
-test('saving a document draft always persists and resynchronizes its server status', () => {
+test('document autosave is serialized and all explicit workflows flush it', () => {
   const saveDocumentStart = panelSource.indexOf('async function saveDocumentDraft')
-  const saveDocumentEnd = panelSource.indexOf('\n}\n\nasync function createEditingDraft', saveDocumentStart)
+  const saveDocumentEnd = panelSource.indexOf(
+    '\n}\n\nasync function createEditingDraft',
+    saveDocumentStart
+  )
   const saveDocumentSource = panelSource.slice(saveDocumentStart, saveDocumentEnd)
-  const saveDraftStart = panelSource.indexOf('async function saveDraft')
-  const saveDraftEnd = panelSource.indexOf('\n}\n\nfunction isSupportedSourceFile', saveDraftStart)
-  const saveDraftSource = panelSource.slice(saveDraftStart, saveDraftEnd)
 
   assert.ok(saveDocumentStart >= 0, 'document save function should exist')
   assert.match(saveDocumentSource, /let persisted = false/)
   assert.match(saveDocumentSource, /if \(!persisted\) \{[\s\S]*knowledgeBaseApi\.saveDraft\(/)
-  assert.match(saveDraftSource, /if \(!saved\) return false[\s\S]*await loadVersions\(\)/)
-})
-
-test('saving a document draft always persists and resynchronizes its server status', () => {
-  const saveDocumentStart = panelSource.indexOf('async function saveDocumentDraft')
-  const saveDocumentEnd = panelSource.indexOf('\n}\n\nasync function createEditingDraft', saveDocumentStart)
-  const saveDocumentSource = panelSource.slice(saveDocumentStart, saveDocumentEnd)
-  const saveDraftStart = panelSource.indexOf('async function saveDraft')
-  const saveDraftEnd = panelSource.indexOf('\n}\n\nfunction isSupportedSourceFile', saveDraftStart)
-  const saveDraftSource = panelSource.slice(saveDraftStart, saveDraftEnd)
-
-  assert.ok(saveDocumentStart >= 0, 'document save function should exist')
-  assert.match(saveDocumentSource, /let persisted = false/)
-  assert.match(saveDocumentSource, /if \(!persisted\) \{[\s\S]*knowledgeBaseApi\.saveDraft\(/)
-  assert.match(saveDraftSource, /if \(!saved\) return false[\s\S]*await loadVersions\(\)/)
+  assert.match(panelSource, /if \(savePromise\) return savePromise/)
+  assert.match(
+    panelSource,
+    /payload\.value = mergePersistedDocument\(payload\.value, requestSnapshot, persisted\)/
+  )
+  assert.match(panelSource, /async function flushPendingSave\(\)/)
+  assert.match(panelSource, /async function validateDraft\(\)[\s\S]*await flushPendingSave\(\)/)
+  assert.match(panelSource, /async function publishDraft\(\)[\s\S]*await flushPendingSave\(\)/)
+  assert.match(panelSource, /async function closeEditor\(\)[\s\S]*await flushPendingSave\(\)/)
+  assert.match(panelSource, /event\.key\.toLowerCase\(\) !== 's'/)
 })
 
 test('workspace management keeps a usable content width on mobile', () => {
