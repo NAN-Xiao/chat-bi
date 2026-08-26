@@ -2140,7 +2140,14 @@
     "active": "可用",
     "inactive": "停用",
     "updated_at": "更新时间",
+    "scope": "知识范围",
+    "publish_version": "发布版本",
+    "published": "已发布",
+    "download": "下载",
+    "more": "更多",
+    "file_not_found": "源文件不存在",
     "workspace_knowledge_base": "工作空间知识库",
+    "platform_knowledge_base": "平台知识库",
     "saas_knowledge_base": "SaaS 知识库",
     "delete_confirm": "是否删除知识库：{msg}？"
   }

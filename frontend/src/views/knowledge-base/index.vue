@@ -2,19 +2,23 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
-import { Search, UploadFilled } from '@element-plus/icons-vue'
+import { Download, Search, UploadFilled } from '@element-plus/icons-vue'
 import type { UploadFile, UploadProps, UploadRawFile } from 'element-plus'
+import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { knowledgeBaseApi, type KnowledgeBaseItem, type KnowledgeBaseScope } from '@/api/knowledgeBase'
+import {
+  knowledgeBaseApi,
+  type KnowledgeBaseItem,
+  type KnowledgeBaseScope,
+} from '@/api/knowledgeBase'
 import { formatTimestamp } from '@/utils/date'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
-import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
-import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 
 const { t } = useI18n()
 const userStore = useUserStore()
+const route = useRoute()
 
 const cardList = ref<KnowledgeBaseItem[]>([])
 const keyword = ref('')
@@ -33,10 +37,17 @@ const isPlatformAdmin = computed(
   () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
 )
 const defaultScope = computed<KnowledgeBaseScope>(() => {
+  const configuredScope = route.meta.knowledgeScope
+  if (configuredScope === 'PLATFORM_PUBLIC' || configuredScope === 'ADMIN_PUBLIC') {
+    return configuredScope
+  }
   return isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC'
 })
-const pageTitle = computed(() => t('knowledge_base.admin_title'))
+const pageTitle = computed(() => sourceText({ visibility_scope: defaultScope.value }))
 const scopeLabel = computed(() => sourceText({ visibility_scope: defaultScope.value }))
+const canManageScope = computed(() =>
+  defaultScope.value === 'PLATFORM_PUBLIC' ? isPlatformAdmin.value : userStore.isTenantAdminUser
+)
 
 const defaultForm = {
   id: null as number | string | null,
@@ -71,17 +82,14 @@ const filteredCards = computed(() => {
 })
 
 function sourceText(row: Pick<KnowledgeBaseItem, 'visibility_scope'> | null) {
-  if (row?.visibility_scope === 'PLATFORM_PUBLIC') return t('knowledge_base.saas_knowledge_base')
+  if (row?.visibility_scope === 'PLATFORM_PUBLIC')
+    return t('knowledge_base.platform_knowledge_base')
   return t('knowledge_base.workspace_knowledge_base')
 }
 
 function sourceClass(row: Pick<KnowledgeBaseItem, 'visibility_scope'> | null) {
   if (row?.visibility_scope === 'PLATFORM_PUBLIC') return 'is-saas'
   return 'is-workspace'
-}
-
-function statusText(row: Pick<KnowledgeBaseItem, 'active'> | null) {
-  return row?.active === false ? t('knowledge_base.inactive') : t('knowledge_base.active')
 }
 
 function processStatusText(row: Pick<KnowledgeBaseItem, 'status'> | null) {
@@ -91,11 +99,14 @@ function processStatusText(row: Pick<KnowledgeBaseItem, 'status'> | null) {
   return t('knowledge_base.process_pending')
 }
 
-function processStatusClass(row: Pick<KnowledgeBaseItem, 'status'> | null) {
-  if (row?.status === 'READY') return 'is-ready'
-  if (row?.status === 'FAILED') return 'is-failed'
-  if (row?.status === 'PROCESSING') return 'is-processing'
-  return 'is-pending'
+function releaseVersionText(row: Pick<KnowledgeBaseItem, 'status' | 'active'> | null) {
+  if (row?.active === false) return t('knowledge_base.inactive')
+  if (row?.status === 'READY') return t('knowledge_base.published')
+  return processStatusText(row)
+}
+
+function releaseVersionClass(row: Pick<KnowledgeBaseItem, 'status' | 'active'> | null) {
+  return row?.active !== false && row?.status === 'READY' ? 'is-published' : 'is-unpublished'
 }
 
 function formatCardTime(value?: string | null) {
@@ -244,6 +255,26 @@ function openDetail(row: KnowledgeBaseItem) {
   detailVisible.value = true
 }
 
+async function downloadCard(row: KnowledgeBaseItem) {
+  if (!row.file_id) {
+    ElMessage.warning(t('knowledge_base.file_not_found'))
+    return
+  }
+  try {
+    const blob = await knowledgeBaseApi.download(row.id)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = row.file_name || `${row.name}.${row.file_ext || 'md'}`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error(error)
+  }
+}
+
 watch(
   defaultScope,
   () => {
@@ -273,7 +304,7 @@ onBeforeUnmount(() => {
         <div class="scope-chip" :class="sourceClass({ visibility_scope: defaultScope })">
           {{ scopeLabel }}
         </div>
-        <el-button type="primary" @click="openCreateCard">
+        <el-button v-if="canManageScope" type="primary" @click="openCreateCard">
           <template #icon>
             <icon_add_outlined />
           </template>
@@ -284,77 +315,66 @@ onBeforeUnmount(() => {
 
     <section v-loading="loading" class="knowledge-section">
       <div class="knowledge-content">
-        <div v-if="!filteredCards.length" class="knowledge-empty">
-          {{ t('knowledge_base.no_knowledge_base') }}
-        </div>
-        <div v-else class="card-content">
-          <article
-            v-for="card in filteredCards"
-            :key="card.id"
-            class="knowledge-card"
-            :class="sourceClass(card)"
-            @click="openDetail(card)"
-          >
-            <div class="card-head">
-              <div class="title-block">
-                <el-icon class="card-icon" size="30">
-                  <icon_form_outlined />
-                </el-icon>
-                <div class="title-text">
-                  <div class="title-row">
-                    <span class="name ellipsis" :title="card.name">{{ card.name }}</span>
-                    <span class="source-pill">{{ sourceText(card) }}</span>
-                  </div>
-                  <div class="meta-row">
-                    <span>{{ statusText(card) }}</span>
-                    <span class="process-status" :class="processStatusClass(card)">
-                      {{ processStatusText(card) }}
-                    </span>
-                    <span>{{ formatCardTime(card.update_time) }}</span>
-                  </div>
-                </div>
-              </div>
-              <div class="card-actions" @click.stop>
+        <el-empty
+          v-if="!filteredCards.length"
+          :description="t('knowledge_base.no_knowledge_base')"
+        />
+        <el-table v-else :data="filteredCards" class="knowledge-table" style="width: 100%">
+          <el-table-column
+            prop="name"
+            :label="t('knowledge_base.name')"
+            min-width="280"
+            show-overflow-tooltip
+          />
+          <el-table-column :label="t('knowledge_base.scope')" width="180">
+            <template #default="{ row }">
+              <span class="scope-tag" :class="sourceClass(row)">{{ sourceText(row) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('knowledge_base.publish_version')" width="150">
+            <template #default="{ row }">
+              <span class="release-tag" :class="releaseVersionClass(row)">
+                {{ releaseVersionText(row) }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('knowledge_base.updated_at')" width="220">
+            <template #default="{ row }">{{ formatCardTime(row.update_time) }}</template>
+          </el-table-column>
+          <el-table-column fixed="right" :label="t('ds.actions')" width="210">
+            <template #default="{ row }">
+              <div class="table-actions">
+                <el-button link type="primary" @click="openDetail(row)">{{
+                  t('menu.Details')
+                }}</el-button>
+                <el-button link type="primary" :disabled="!row.file_id" @click="downloadCard(row)">
+                  <el-icon><Download /></el-icon>
+                  {{ t('knowledge_base.download') }}
+                </el-button>
                 <el-popover
+                  v-if="row.can_manage"
                   trigger="click"
                   :teleported="true"
-                  popper-class="popover-card_knowledge"
                   placement="bottom-end"
                 >
                   <template #reference>
-                    <button type="button" class="more" aria-label="more actions">
-                      <icon_more_outlined />
-                    </button>
+                    <el-button link type="primary">{{ t('knowledge_base.more') }}</el-button>
                   </template>
                   <div class="content">
-                    <div class="item" @click.stop="openEditCard(card)">
-                      <el-icon size="16">
-                        <IconOpeEdit />
-                      </el-icon>
+                    <div class="item" @click="openEditCard(row)">
+                      <el-icon size="16"><IconOpeEdit /></el-icon>
                       {{ t('datasource.edit') }}
                     </div>
-                    <div class="item" @click.stop="deleteCard(card)">
-                      <el-icon size="16">
-                        <IconOpeDelete />
-                      </el-icon>
+                    <div class="item" @click="deleteCard(row)">
+                      <el-icon size="16"><IconOpeDelete /></el-icon>
                       {{ t('dashboard.delete') }}
                     </div>
                   </div>
                 </el-popover>
               </div>
-            </div>
-
-            <div
-              class="description"
-              :title="card.description || t('knowledge_base.empty_description')"
-            >
-              {{ card.description || t('knowledge_base.empty_description') }}
-            </div>
-            <div class="content-preview" :title="card.file_name || card.content || ''">
-              {{ card.file_name || card.content || '-' }}
-            </div>
-          </article>
-        </div>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
     </section>
 
@@ -423,7 +443,9 @@ onBeforeUnmount(() => {
             </el-upload>
             <div v-if="uploadFileName" class="uploaded-file">
               <span class="uploaded-label">{{ t('knowledge_base.selected_file') }}</span>
-              <span class="uploaded-name ellipsis" :title="uploadFileName">{{ uploadFileName }}</span>
+              <span class="uploaded-name ellipsis" :title="uploadFileName">{{
+                uploadFileName
+              }}</span>
             </div>
           </div>
         </el-form-item>
@@ -451,7 +473,9 @@ onBeforeUnmount(() => {
           <div class="detail-content">{{ sourceText(selectedCard) }}</div>
         </el-form-item>
         <el-form-item :label="t('knowledge_base.status')">
-          <div class="detail-content">{{ statusText(selectedCard) }}</div>
+          <div class="detail-content">
+            {{ selectedCard ? releaseVersionText(selectedCard) : '-' }}
+          </div>
         </el-form-item>
         <el-form-item :label="t('knowledge_base.process_status')">
           <div class="detail-content">
@@ -471,9 +495,7 @@ onBeforeUnmount(() => {
         </el-form-item>
         <el-form-item :label="t('knowledge_base.updated_at')">
           <div class="detail-content">
-            {{
-              formatCardTime(selectedCard?.update_time)
-            }}
+            {{ formatCardTime(selectedCard?.update_time) }}
           </div>
         </el-form-item>
         <el-form-item :label="t('knowledge_base.document_content')">
@@ -551,11 +573,81 @@ onBeforeUnmount(() => {
       --scope-bg: #eaf2ff;
       --scope-border: #b9d6ff;
     }
-
   }
 
   .knowledge-section {
     min-height: 0;
+  }
+
+  .knowledge-table {
+    --el-table-border-color: #edf0f5;
+    --el-table-header-bg-color: #f5f7fa;
+    --el-table-row-hover-bg-color: #f8fbff;
+    border: 1px solid #edf0f5;
+    border-radius: 2px;
+    overflow: hidden;
+
+    :deep(.el-table__header th) {
+      height: 46px;
+      color: #667085;
+      font-size: 13px;
+      font-weight: 500;
+      background: #f5f7fa;
+    }
+
+    :deep(.el-table__body td) {
+      height: 68px;
+      color: #1f2329;
+      font-size: 13px;
+    }
+  }
+
+  .scope-tag,
+  .release-tag {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 8px;
+    border: 1px solid;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 20px;
+    white-space: nowrap;
+  }
+
+  .scope-tag.is-saas {
+    color: #e98b2a;
+    background: #fff6ed;
+    border-color: #ffd9b0;
+  }
+
+  .scope-tag.is-workspace {
+    color: #1570ef;
+    background: #eaf2ff;
+    border-color: #b9d6ff;
+  }
+
+  .release-tag.is-published {
+    color: #22a06b;
+    background: #edfff3;
+    border-color: #b7ebc6;
+  }
+
+  .release-tag.is-unpublished {
+    color: #667085;
+    background: #f5f7fa;
+    border-color: #d0d5dd;
+  }
+
+  .table-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+
+    .el-button {
+      padding: 0 4px;
+      font-size: 13px;
+    }
   }
 
   .knowledge-content {
@@ -900,7 +992,6 @@ onBeforeUnmount(() => {
     color: #1f2329;
     font-weight: 500;
   }
-
 }
 
 .popover-card_knowledge.popover-card_knowledge.popover-card_knowledge {
