@@ -2115,6 +2115,8 @@
     "description_placeholder": "Enter a knowledge base description",
     "empty_description": "No description",
     "document_content": "Document content",
+    "document_directory": "Document directory",
+    "empty_content": "No document content",
     "content_placeholder": "Write document content. Markdown is supported for notes, workflows, FAQs, or business rules.",
     "content_required": "Enter document content",
     "upload_source": "Upload source",

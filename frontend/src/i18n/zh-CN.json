@@ -2116,6 +2116,8 @@
     "description_placeholder": "请输入知识库描述",
     "empty_description": "暂无描述",
     "document_content": "文档内容",
+    "document_directory": "文档目录",
+    "empty_content": "暂无文档内容",
     "content_placeholder": "请输入文档内容，可使用 Markdown 记录说明、流程、FAQ 或业务规则。",
     "content_required": "请输入文档内容",
     "upload_source": "上传来源",
