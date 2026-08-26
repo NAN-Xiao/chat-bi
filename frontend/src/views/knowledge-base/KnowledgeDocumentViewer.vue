@@ -273,6 +273,10 @@ function updateActiveSection() {
 .section-content :deep(pre) {
   max-width: 100%;
   overflow-x: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .section-content :deep(table) {
   display: block;
