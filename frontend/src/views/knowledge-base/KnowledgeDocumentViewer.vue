@@ -247,6 +247,7 @@ function updateActiveSection() {
 .section-content {
   min-height: 72px;
   padding: 0;
+  background-color: transparent;
   color: #344054;
   font-size: 13px;
   line-height: 1.8;
