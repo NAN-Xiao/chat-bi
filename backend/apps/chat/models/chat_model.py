@@ -299,6 +299,7 @@ class AiModelQuestion(BaseModel):
     tracking_config: str = ""
     data_skill: str = ""
     data_skill_id: Optional[int] = None
+    knowledge_context: str = ""
     error_msg: str = ""
     regenerate_record_id: Optional[int] = None
     sample_data: str = ""

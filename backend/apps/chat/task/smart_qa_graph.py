@@ -1458,6 +1458,7 @@ def _prepare_existing_context(state: SmartQAGraphState) -> dict[str, Any]:
             ds_id = service.ds.id if isinstance(service.ds, CoreDatasource) else None
             service.load_data_skills(session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
             service.filter_custom_prompts(session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
+            service.load_knowledge_context(session, surface="smart_qa")
             service.save_agent_context_snapshot(session, CustomPromptTargetScopeEnum.SMART_QA)
             service.load_tracking_config(session)
             service.init_messages(session)

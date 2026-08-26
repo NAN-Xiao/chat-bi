@@ -20,6 +20,7 @@ from apps.analysis_assistant.service.analysis_time_policy import (
     parse_analysis_time_intent,
     resolve_analysis_time_policy,
 )
+from apps.knowledge_base.context import empty_knowledge_context
 from apps.system.schemas.system_schema import UserInfoDTO
 
 
@@ -32,6 +33,19 @@ class _FakeSession:
         if getattr(model, "__name__", "") == "CoreDatasource":
             return SimpleNamespace(id=obj_id, name="测试项目", type="postgresql")
         return None
+
+
+@pytest.fixture(autouse=True)
+def _empty_knowledge_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        analysis_api,
+        "_collect_knowledge_context",
+        lambda _session, current_user, datasource_id, *, surface: empty_knowledge_context(
+            tenant_id=current_user.tenant_id,
+            surface=surface,
+            datasource_id=datasource_id,
+        ),
+    )
 
 
 def _user() -> UserInfoDTO:

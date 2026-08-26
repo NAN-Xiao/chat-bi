@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     TENANT_USAGE_QUOTA_ENABLED: bool = True
     TENANT_USAGE_QUOTA_PLAN_LIMITS: str = ""
     MAX_UPLOAD_BYTES: int = 100 * 1024 * 1024
+    KNOWLEDGE_CONTEXT_MAX_CHARS: int = 32768
 
     CACHE_TYPE: Literal["redis", "memory", "none"] = "redis"
     CACHE_REDIS_URL: str | None = None  # Redis 地址示例："redis://[[username]:[password]]@localhost:6379/0"。
