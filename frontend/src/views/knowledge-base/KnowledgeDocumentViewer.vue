@@ -51,6 +51,10 @@ async function activateSection(sectionId: string, scroll = false) {
 function updateActiveSection() {
   const workspace = workspaceRef.value
   if (!workspace) return
+  if (workspace.scrollTop + workspace.clientHeight >= workspace.scrollHeight - 8) {
+    activeSectionId.value = sections.value[sections.value.length - 1]?.id || ''
+    return
+  }
   const workspaceTop = workspace.getBoundingClientRect().top
   let nearestId = sections.value[0]?.id || ''
   let nearestDistance = Number.POSITIVE_INFINITY
