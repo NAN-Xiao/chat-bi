@@ -25,6 +25,7 @@ export interface KnowledgeBaseItem {
 
 export interface KnowledgeBaseSavePayload {
   id?: number | string | null
+  tenant_id?: number | string
   name: string
   description?: string
   active: boolean
@@ -35,6 +36,7 @@ export interface KnowledgeBaseSavePayload {
 const buildFormData = (payload: KnowledgeBaseSavePayload) => {
   const formData = new FormData()
   if (payload.id) formData.append('id', String(payload.id))
+  if (payload.tenant_id !== undefined) formData.append('tenant_id', String(payload.tenant_id))
   formData.append('name', payload.name)
   formData.append('description', payload.description || '')
   formData.append('active', String(payload.active))
@@ -44,14 +46,23 @@ const buildFormData = (payload: KnowledgeBaseSavePayload) => {
 }
 
 export const knowledgeBaseApi = {
-  list: (params: { visibility_scope: KnowledgeBaseScope; keyword?: string }) =>
-    request.get<KnowledgeBaseItem[]>('/knowledge-base/list', { params }),
+  list: (params: {
+    visibility_scope: KnowledgeBaseScope
+    tenant_id?: number | string
+    keyword?: string
+  }) => request.get<KnowledgeBaseItem[]>('/knowledge-base/list', { params }),
   save: (payload: KnowledgeBaseSavePayload) =>
     request.post<KnowledgeBaseItem>('/knowledge-base/save', buildFormData(payload), {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     }),
-  delete: (id: number | string) => request.delete(`/knowledge-base/${id}`),
-  download: (id: number | string) => request.download(`/knowledge-base/${id}/download`),
+  delete: (id: number | string, tenantId?: number | string) =>
+    request.delete(`/knowledge-base/${id}`, {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }),
+  download: (id: number | string, tenantId?: number | string) =>
+    request.download(`/knowledge-base/${id}/download`, {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }),
 }

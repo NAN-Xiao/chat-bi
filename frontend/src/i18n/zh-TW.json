@@ -2148,6 +2148,7 @@
     "more": "更多",
     "file_not_found": "來源檔案不存在",
     "workspace_knowledge_base": "工作空間知識庫",
+    "select_workspace": "請選擇工作空間",
     "platform_knowledge_base": "平台知識庫",
     "saas_knowledge_base": "SaaS 知識庫",
     "delete_confirm": "是否刪除知識庫：{msg}？"

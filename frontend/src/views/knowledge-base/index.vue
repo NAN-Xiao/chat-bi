@@ -28,11 +28,13 @@ const drawerVisible = ref(false)
 const detailVisible = ref(false)
 const drawerTitle = ref('')
 const selectedCard = ref<KnowledgeBaseItem | null>(null)
+const selectedTenantId = ref<number | string | ''>('')
 const loading = ref(false)
 const saving = ref(false)
 const uploadFileName = ref('')
 const pendingFile = ref<File | null>(null)
 let refreshTimer: ReturnType<typeof window.setTimeout> | null = null
+let loadSequence = 0
 
 const isPlatformAdmin = computed(
   () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
@@ -46,9 +48,20 @@ const defaultScope = computed<KnowledgeBaseScope>(() => {
 })
 const pageTitle = computed(() => sourceText({ visibility_scope: defaultScope.value }))
 const scopeLabel = computed(() => sourceText({ visibility_scope: defaultScope.value }))
-const canManageScope = computed(() =>
-  defaultScope.value === 'PLATFORM_PUBLIC' ? isPlatformAdmin.value : userStore.isTenantAdminUser
+const showWorkspaceSelector = computed(
+  () => isPlatformAdmin.value && defaultScope.value === 'ADMIN_PUBLIC'
 )
+const workspaceTenants = computed(() =>
+  userStore.tenants.filter((tenant) => tenant.status === undefined || Number(tenant.status) === 1)
+)
+const selectedWorkspaceTenantId = computed<number | string | undefined>(() =>
+  showWorkspaceSelector.value && selectedTenantId.value !== '' ? selectedTenantId.value : undefined
+)
+const canManageScope = computed(() => {
+  if (defaultScope.value === 'PLATFORM_PUBLIC') return isPlatformAdmin.value
+  if (showWorkspaceSelector.value) return selectedWorkspaceTenantId.value !== undefined
+  return userStore.isTenantAdminUser
+})
 
 const defaultForm = {
   id: null as number | string | null,
@@ -133,15 +146,27 @@ function scheduleStatusRefresh() {
 }
 
 async function loadCards() {
+  if (showWorkspaceSelector.value && selectedWorkspaceTenantId.value === undefined) {
+    cardList.value = []
+    loading.value = false
+    return
+  }
+  const sequence = ++loadSequence
   loading.value = true
   try {
-    cardList.value = await knowledgeBaseApi.list({ visibility_scope: defaultScope.value })
+    const rows = await knowledgeBaseApi.list({
+      visibility_scope: defaultScope.value,
+      tenant_id: selectedWorkspaceTenantId.value,
+    })
+    if (sequence === loadSequence) cardList.value = rows
   } catch (error) {
     console.error(error)
-    cardList.value = []
+    if (sequence === loadSequence) cardList.value = []
   } finally {
-    loading.value = false
-    scheduleStatusRefresh()
+    if (sequence === loadSequence) {
+      loading.value = false
+      scheduleStatusRefresh()
+    }
   }
 }
 
@@ -220,6 +245,7 @@ function saveCard() {
     try {
       await knowledgeBaseApi.save({
         id: form.value.id,
+        tenant_id: selectedWorkspaceTenantId.value,
         name: form.value.name.trim(),
         description: form.value.description.trim(),
         active: form.value.active,
@@ -245,7 +271,7 @@ function deleteCard(row: KnowledgeBaseItem) {
     customClass: 'confirm-no_icon',
     autofocus: false,
   }).then(async () => {
-    await knowledgeBaseApi.delete(row.id)
+    await knowledgeBaseApi.delete(row.id, selectedWorkspaceTenantId.value)
     ElMessage.success(t('dashboard.delete_success'))
     await loadCards()
   })
@@ -262,7 +288,7 @@ async function downloadCard(row: KnowledgeBaseItem) {
     return
   }
   try {
-    const blob = await knowledgeBaseApi.download(row.id)
+    const blob = await knowledgeBaseApi.download(row.id, selectedWorkspaceTenantId.value)
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -277,13 +303,51 @@ async function downloadCard(row: KnowledgeBaseItem) {
 }
 
 watch(
-  defaultScope,
-  () => {
+  showWorkspaceSelector,
+  async (showSelector) => {
     clearRefreshTimer()
-    loadCards()
+    loadSequence += 1
+    drawerVisible.value = false
+    detailVisible.value = false
+    selectedCard.value = null
+
+    if (!showSelector) {
+      selectedTenantId.value = ''
+      await loadCards()
+      return
+    }
+
+    try {
+      await userStore.loadTenants()
+    } catch (error) {
+      console.error(error)
+      cardList.value = []
+      return
+    }
+    if (!showWorkspaceSelector.value) return
+
+    const currentTenant = workspaceTenants.value.find(
+      (tenant) => String(tenant.id) === String(selectedTenantId.value)
+    )
+    const nextTenantId = currentTenant?.id ?? workspaceTenants.value[0]?.id ?? ''
+    if (String(nextTenantId) === String(selectedTenantId.value)) {
+      await loadCards()
+    } else {
+      selectedTenantId.value = nextTenantId
+    }
   },
   { immediate: true }
 )
+
+watch(selectedTenantId, () => {
+  if (!showWorkspaceSelector.value) return
+  clearRefreshTimer()
+  loadSequence += 1
+  drawerVisible.value = false
+  detailVisible.value = false
+  selectedCard.value = null
+  loadCards()
+})
 
 onBeforeUnmount(() => {
   clearRefreshTimer()
@@ -305,6 +369,21 @@ onBeforeUnmount(() => {
         <div class="scope-chip" :class="sourceClass({ visibility_scope: defaultScope })">
           {{ scopeLabel }}
         </div>
+        <el-select
+          v-if="showWorkspaceSelector"
+          v-model="selectedTenantId"
+          class="workspace-select"
+          filterable
+          :loading="userStore.tenantLoading"
+          :placeholder="t('knowledge_base.select_workspace')"
+        >
+          <el-option
+            v-for="tenant in workspaceTenants"
+            :key="String(tenant.id)"
+            :label="tenant.name"
+            :value="tenant.id"
+          />
+        </el-select>
         <el-button v-if="canManageScope" type="primary" @click="openCreateCard">
           <template #icon>
             <icon_add_outlined />
@@ -549,6 +628,10 @@ onBeforeUnmount(() => {
 
   .knowledge-search {
     width: 240px;
+  }
+
+  .workspace-select {
+    width: 200px;
   }
 
   .scope-chip {

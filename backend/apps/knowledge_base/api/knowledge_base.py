@@ -19,7 +19,12 @@ from apps.knowledge_base.models import (
     KnowledgeBaseVisibilityScopeEnum,
 )
 from apps.knowledge_base.tasks import process_knowledge_base_document
-from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.tenant import (
+    DEFAULT_TENANT_ID,
+    TENANT_ADMIN_ROLES,
+    get_active_tenant,
+    normalize_tenant_role,
+)
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
 from apps.system.schemas.access_context import require_current_tenant_id
 from common.core.config import settings
@@ -71,20 +76,39 @@ def _can_manage_workspace_public(current_user: CurrentUser) -> bool:
     做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if _is_global_platform_admin(current_user):
-        return False
+        return True
     tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
     return is_platform_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
 
 
-def _scope_tenant_id(current_user: CurrentUser, scope: KnowledgeBaseVisibilityScopeEnum) -> int:
+def _scope_tenant_id(
+    session: SessionDep,
+    current_user: CurrentUser,
+    scope: KnowledgeBaseVisibilityScopeEnum,
+    requested_tenant_id: Optional[int] = None,
+) -> int:
     """
     是什么：_scope_tenant_id 是一个可以复用的小步骤，负责后端业务相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
+        if requested_tenant_id is not None and int(requested_tenant_id) != DEFAULT_TENANT_ID:
+            raise HTTPException(status_code=400, detail="平台知识库不支持指定工作空间")
         return DEFAULT_TENANT_ID
-    return require_current_tenant_id(current_user)
+
+    if _is_global_platform_admin(current_user):
+        if requested_tenant_id is None:
+            raise HTTPException(status_code=400, detail="请选择工作空间")
+        tenant_id = int(requested_tenant_id)
+        if not get_active_tenant(session, tenant_id):
+            raise HTTPException(status_code=404, detail="工作空间不存在或已停用")
+        return tenant_id
+
+    tenant_id = require_current_tenant_id(current_user)
+    if requested_tenant_id is not None and int(requested_tenant_id) != tenant_id:
+        raise HTTPException(status_code=403, detail="无权访问其他工作空间的知识库")
+    return tenant_id
 
 
 def _require_scope_manage(current_user: CurrentUser, scope: KnowledgeBaseVisibilityScopeEnum) -> None:
@@ -102,32 +126,44 @@ def _require_scope_manage(current_user: CurrentUser, scope: KnowledgeBaseVisibil
             raise HTTPException(status_code=403, detail="Only workspace admin can maintain workspace knowledge base")
 
 
-def _require_record_manage(current_user: CurrentUser, record: KnowledgeBase) -> None:
+def _require_record_manage(
+    current_user: CurrentUser,
+    record: KnowledgeBase,
+    scope_tenant_id: int,
+) -> None:
     """
     是什么：_require_record_manage 是一个可以复用的小步骤，负责后端业务相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：检查后端业务里的数据、权限或配置是否合法，不对就及时拦住。
     """
     scope = _parse_scope(record.visibility_scope)
-    if int(record.tenant_id) != _scope_tenant_id(current_user, scope):
+    if int(record.tenant_id) != scope_tenant_id:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     _require_scope_manage(current_user, scope)
 
 
-def _can_manage_record(current_user: CurrentUser, record: KnowledgeBase) -> bool:
+def _can_manage_record(
+    current_user: CurrentUser,
+    record: KnowledgeBase,
+    scope_tenant_id: int,
+) -> bool:
     """
     是什么：_can_manage_record 是一个可以复用的小步骤，负责后端业务相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
-        _require_record_manage(current_user, record)
+        _require_record_manage(current_user, record, scope_tenant_id)
         return True
     except HTTPException:
         return False
 
 
-def _serialize_record(current_user: CurrentUser, record: KnowledgeBase) -> KnowledgeBaseItem:
+def _serialize_record(
+    current_user: CurrentUser,
+    record: KnowledgeBase,
+    scope_tenant_id: int,
+) -> KnowledgeBaseItem:
     """
     是什么：_serialize_record 是一个可以复用的小步骤，负责后端业务相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
@@ -150,7 +186,7 @@ def _serialize_record(current_user: CurrentUser, record: KnowledgeBase) -> Knowl
         error_message=record.error_message,
         create_time=record.create_time,
         update_time=record.update_time,
-        can_manage=_can_manage_record(current_user, record),
+        can_manage=_can_manage_record(current_user, record, scope_tenant_id),
     )
 
 
@@ -179,6 +215,7 @@ async def list_knowledge_base(
     session: SessionDep,
     current_user: CurrentUser,
     visibility_scope: Optional[str] = Query(None),
+    tenant_id: Optional[int] = Query(None),
     keyword: Optional[str] = Query(None),
 ):
     """
@@ -187,9 +224,10 @@ async def list_knowledge_base(
     做了什么：把后端业务需要的数据找出来，整理成后面好用的样子。
     """
     scope = _parse_scope(visibility_scope)
+    scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
     filters = [
         KnowledgeBase.visibility_scope == scope.value,
-        KnowledgeBase.tenant_id == _scope_tenant_id(current_user, scope),
+        KnowledgeBase.tenant_id == scope_tenant_id,
     ]
 
     value = (keyword or "").strip()
@@ -209,7 +247,7 @@ async def list_knowledge_base(
         .where(*filters)
         .order_by(desc(KnowledgeBase.update_time), desc(KnowledgeBase.id))
     ).all()
-    return [_serialize_record(current_user, row) for row in rows]
+    return [_serialize_record(current_user, row, scope_tenant_id) for row in rows]
 
 
 @router.post("/save", response_model=KnowledgeBaseItem)
@@ -222,6 +260,7 @@ async def save_knowledge_base(
     description: str = Form(""),
     active: bool = Form(True),
     visibility_scope: str = Form(KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value),
+    tenant_id: Optional[int] = Form(None),
     file: Optional[UploadFile] = File(None),
 ):
     """
@@ -241,15 +280,17 @@ async def save_knowledge_base(
         record = session.get(KnowledgeBase, int(id))
         if not record:
             raise HTTPException(status_code=404, detail="Knowledge base not found")
-        _require_record_manage(current_user, record)
         scope = _parse_scope(record.visibility_scope)
+        scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
+        _require_record_manage(current_user, record, scope_tenant_id)
     else:
         _require_scope_manage(current_user, requested_scope)
         if file is None:
             raise HTTPException(status_code=400, detail="Knowledge base file is required")
         scope = requested_scope
+        scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
         record = KnowledgeBase(
-            tenant_id=_scope_tenant_id(current_user, scope),
+            tenant_id=scope_tenant_id,
             create_by=int(current_user.id),
             name=clean_name,
             description=description.strip(),
@@ -303,17 +344,23 @@ async def save_knowledge_base(
         session.commit()
         session.refresh(record)
 
-    return _serialize_record(current_user, record)
+    return _serialize_record(current_user, record, scope_tenant_id)
 
 
 @router.get("/{id}/download")
-async def download_knowledge_base_file(session: SessionDep, current_user: CurrentUser, id: int):
+async def download_knowledge_base_file(
+    session: SessionDep,
+    current_user: CurrentUser,
+    id: int,
+    tenant_id: Optional[int] = Query(None),
+):
     """Download the source document after applying the same scope checks as management."""
     record = session.get(KnowledgeBase, int(id))
     if not record:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     scope = _parse_scope(record.visibility_scope)
-    if int(record.tenant_id) != _scope_tenant_id(current_user, scope):
+    scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
+    if int(record.tenant_id) != scope_tenant_id:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     if not record.file_id:
         raise HTTPException(status_code=404, detail="Knowledge base file not found")
@@ -328,7 +375,12 @@ async def download_knowledge_base_file(session: SessionDep, current_user: Curren
 
 
 @router.delete("/{id}")
-async def delete_knowledge_base(session: SessionDep, current_user: CurrentUser, id: int):
+async def delete_knowledge_base(
+    session: SessionDep,
+    current_user: CurrentUser,
+    id: int,
+    tenant_id: Optional[int] = Query(None),
+):
     """
     是什么：delete_knowledge_base 是一个接口入口，负责接住后端业务相关请求。
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
@@ -337,7 +389,9 @@ async def delete_knowledge_base(session: SessionDep, current_user: CurrentUser, 
     record = session.get(KnowledgeBase, int(id))
     if not record:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
-    _require_record_manage(current_user, record)
+    scope = _parse_scope(record.visibility_scope)
+    scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
+    _require_record_manage(current_user, record, scope_tenant_id)
     AppFileUtils.delete_file(record.file_id)
     session.delete(record)
     return {"id": id}

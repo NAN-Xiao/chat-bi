@@ -2100,6 +2100,7 @@
     "more": "더 보기",
     "file_not_found": "원본 파일이 없습니다",
     "workspace_knowledge_base": "워크스페이스 지식 베이스",
+    "select_workspace": "워크스페이스를 선택하세요",
     "platform_knowledge_base": "플랫폼 지식 베이스",
     "saas_knowledge_base": "SaaS 지식 베이스",
     "delete_confirm": "지식 베이스를 삭제하시겠습니까: {msg}?"
