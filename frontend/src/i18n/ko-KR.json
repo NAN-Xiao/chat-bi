@@ -2067,6 +2067,8 @@
     "description_placeholder": "지식 베이스 설명을 입력하세요",
     "empty_description": "설명 없음",
     "document_content": "문서 내용",
+    "document_directory": "문서 목차",
+    "empty_content": "문서 내용 없음",
     "content_placeholder": "문서 내용을 입력하세요. Markdown으로 설명, 절차, FAQ 또는 업무 규칙을 기록할 수 있습니다.",
     "content_required": "문서 내용을 입력하세요",
     "upload_source": "업로드 소스",

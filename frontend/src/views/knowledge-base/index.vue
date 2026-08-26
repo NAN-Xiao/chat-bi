@@ -15,6 +15,7 @@ import { formatTimestamp } from '@/utils/date'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
+import KnowledgeDocumentViewer from './KnowledgeDocumentViewer.vue'
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -462,46 +463,54 @@ onBeforeUnmount(() => {
       v-model="detailVisible"
       :title="t('menu.Details')"
       destroy-on-close
-      size="640px"
-      modal-class="knowledge-base-drawer"
+      size="calc(100% - 48px)"
+      modal-class="knowledge-base-drawer knowledge-document-drawer"
     >
-      <el-form label-width="180px" label-position="top" class="form-content_error" @submit.prevent>
-        <el-form-item :label="t('knowledge_base.name')">
-          <div class="detail-content">{{ selectedCard?.name || '-' }}</div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.source')">
-          <div class="detail-content">{{ sourceText(selectedCard) }}</div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.status')">
-          <div class="detail-content">
-            {{ selectedCard ? releaseVersionText(selectedCard) : '-' }}
+      <div class="knowledge-detail-reader">
+        <section class="knowledge-detail-summary">
+          <div class="summary-item summary-name">
+            <span class="summary-label">{{ t('knowledge_base.name') }}</span>
+            <span class="summary-value">{{ selectedCard?.name || '-' }}</span>
           </div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.process_status')">
-          <div class="detail-content">
-            {{ processStatusText(selectedCard) }}
-            <span v-if="selectedCard?.error_message" class="detail-error">
-              {{ selectedCard.error_message }}
+          <div class="summary-item">
+            <span class="summary-label">{{ t('knowledge_base.source') }}</span>
+            <span class="summary-value">{{ sourceText(selectedCard) }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">{{ t('knowledge_base.status') }}</span>
+            <span class="summary-value">
+              {{ selectedCard ? releaseVersionText(selectedCard) : '-' }}
             </span>
           </div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.selected_file')">
-          <div class="detail-content">{{ selectedCard?.file_name || '-' }}</div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.description')">
-          <div class="detail-content">
-            {{ selectedCard?.description || t('knowledge_base.empty_description') }}
+          <div class="summary-item summary-file">
+            <span class="summary-label">{{ t('knowledge_base.selected_file') }}</span>
+            <span class="summary-value ellipsis" :title="selectedCard?.file_name || '-'">
+              {{ selectedCard?.file_name || '-' }}
+            </span>
           </div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.updated_at')">
-          <div class="detail-content">
-            {{ formatCardTime(selectedCard?.update_time) }}
+          <div class="summary-item">
+            <span class="summary-label">{{ t('knowledge_base.updated_at') }}</span>
+            <span class="summary-value">{{ formatCardTime(selectedCard?.update_time) }}</span>
           </div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.document_content')">
-          <div class="detail-content pre-wrap">{{ selectedCard?.content || '-' }}</div>
-        </el-form-item>
-      </el-form>
+          <div class="summary-item summary-description">
+            <span class="summary-label">{{ t('knowledge_base.description') }}</span>
+            <span class="summary-value">
+              {{ selectedCard?.description || t('knowledge_base.empty_description') }}
+            </span>
+          </div>
+          <div v-if="selectedCard?.error_message" class="summary-error">
+            {{ processStatusText(selectedCard) }}：{{ selectedCard.error_message }}
+          </div>
+        </section>
+
+        <KnowledgeDocumentViewer
+          :content="selectedCard?.content"
+          :title="selectedCard?.name || t('knowledge_base.document_content')"
+          :directory-label="t('knowledge_base.document_directory')"
+          :empty-text="t('knowledge_base.empty_content')"
+          :ready-label="t('knowledge_base.process_ready')"
+        />
+      </div>
     </el-drawer>
   </div>
 </template>
@@ -991,6 +1000,104 @@ onBeforeUnmount(() => {
     min-width: 0;
     color: #1f2329;
     font-weight: 500;
+  }
+}
+
+.knowledge-document-drawer {
+  .ed-drawer {
+    max-width: calc(100vw - 24px);
+  }
+
+  .ed-drawer__body {
+    min-height: 0;
+    padding: 0 20px 20px;
+    overflow: hidden;
+  }
+
+  .knowledge-detail-reader {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .knowledge-detail-summary {
+    display: grid;
+    flex: 0 0 auto;
+    grid-template-columns: minmax(180px, 1.2fr) repeat(4, minmax(120px, 0.8fr));
+    gap: 10px 20px;
+    padding: 12px 0 14px;
+    border-bottom: 1px solid #eaecf0;
+  }
+
+  .summary-item {
+    min-width: 0;
+  }
+
+  .summary-description {
+    grid-column: 1 / -1;
+  }
+
+  .summary-label,
+  .summary-value {
+    display: block;
+  }
+
+  .summary-label {
+    margin-bottom: 3px;
+    color: #98a2b3;
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .summary-value {
+    color: #344054;
+    font-size: 13px;
+    line-height: 20px;
+    overflow-wrap: anywhere;
+  }
+
+  .summary-name .summary-value {
+    color: #1d2939;
+    font-weight: 600;
+  }
+
+  .summary-error {
+    grid-column: 1 / -1;
+    color: #d92d20;
+    font-size: 12px;
+    line-height: 18px;
+  }
+}
+
+@media (max-width: 900px) {
+  .knowledge-document-drawer {
+    .knowledge-detail-summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .summary-description {
+      grid-column: 1 / -1;
+    }
+  }
+}
+
+@media (max-width: 680px) {
+  .knowledge-document-drawer {
+    .ed-drawer__body {
+      padding: 0 10px 10px;
+    }
+
+    .knowledge-detail-reader {
+      gap: 10px;
+    }
+
+    .knowledge-detail-summary {
+      max-height: 128px;
+      overflow-y: auto;
+      padding: 8px 0 10px;
+    }
   }
 }
 

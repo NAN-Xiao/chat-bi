@@ -2115,6 +2115,8 @@
     "description_placeholder": "請輸入知識庫描述",
     "empty_description": "暫無描述",
     "document_content": "文件內容",
+    "document_directory": "文件目錄",
+    "empty_content": "暫無文件內容",
     "content_placeholder": "請輸入文件內容，可使用 Markdown 記錄說明、流程、FAQ 或業務規則。",
     "content_required": "請輸入文件內容",
     "upload_source": "上傳來源",
