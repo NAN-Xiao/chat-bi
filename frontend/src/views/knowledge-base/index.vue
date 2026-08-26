@@ -10,6 +10,7 @@ import {
   knowledgeBaseApi,
   type KnowledgeBaseItem,
   type KnowledgeBaseScope,
+  type KnowledgeBaseStatus,
 } from '@/api/knowledgeBase'
 import { formatTimestamp } from '@/utils/date'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
@@ -67,7 +68,8 @@ const defaultForm = {
   id: null as number | string | null,
   name: '',
   description: '',
-  active: true,
+  active: false,
+  status: null as KnowledgeBaseStatus | null,
 }
 
 const form = ref(cloneDeep(defaultForm))
@@ -77,6 +79,13 @@ const rules = computed(() => ({
     {
       required: true,
       message: t('knowledge_base.name_required'),
+      trigger: 'blur',
+    },
+  ],
+  description: [
+    {
+      required: true,
+      message: t('knowledge_base.description_required'),
       trigger: 'blur',
     },
   ],
@@ -113,13 +122,19 @@ function processStatusText(row: Pick<KnowledgeBaseItem, 'status'> | null) {
   return t('knowledge_base.process_pending')
 }
 
-function releaseVersionText(row: Pick<KnowledgeBaseItem, 'status' | 'active'> | null) {
+function releaseVersionText(
+  row: Pick<KnowledgeBaseItem, 'status' | 'active' | 'description'> | null
+) {
+  if (!row?.description?.trim()) return t('knowledge_base.usage_instruction_missing')
   if (row?.active === false) return t('knowledge_base.inactive')
   if (row?.status === 'READY') return t('knowledge_base.published')
   return processStatusText(row)
 }
 
-function releaseVersionClass(row: Pick<KnowledgeBaseItem, 'status' | 'active'> | null) {
+function releaseVersionClass(
+  row: Pick<KnowledgeBaseItem, 'status' | 'active' | 'description'> | null
+) {
+  if (!row?.description?.trim()) return 'is-error'
   return row?.active !== false && row?.status === 'READY' ? 'is-published' : 'is-unpublished'
 }
 
@@ -189,6 +204,7 @@ function openEditCard(row: KnowledgeBaseItem) {
     name: row.name,
     description: row.description || '',
     active: row.active,
+    status: row.status,
   }
   drawerTitle.value = t('knowledge_base.edit_knowledge_base')
   uploadFileName.value = row.file_name || ''
@@ -228,6 +244,8 @@ const beforeKnowledgeUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFi
 
   pendingFile.value = rawFile
   uploadFileName.value = rawFile.name
+  form.value.active = false
+  form.value.status = 'PENDING'
   setNameFromFile(rawFile)
   ElMessage.success(t('knowledge_base.upload_selected'))
   return false
@@ -502,6 +520,7 @@ onBeforeUnmount(() => {
         <el-form-item prop="active" :label="t('knowledge_base.status')">
           <el-switch
             v-model="form.active"
+            :disabled="form.status !== 'READY' || Boolean(pendingFile)"
             :active-text="t('knowledge_base.active')"
             :inactive-text="t('knowledge_base.inactive')"
           />
@@ -746,6 +765,12 @@ onBeforeUnmount(() => {
     color: #667085;
     background: #f5f7fa;
     border-color: #d0d5dd;
+  }
+
+  .release-tag.is-error {
+    color: #d92d20;
+    background: #fef3f2;
+    border-color: #fecdca;
   }
 
   .table-actions {

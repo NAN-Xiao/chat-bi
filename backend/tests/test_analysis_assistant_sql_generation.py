@@ -1025,6 +1025,40 @@ def test_initial_outline_receives_backend_resolved_time_policy() -> None:
     assert "2026-07-26" in prompt
 
 
+def test_analysis_assistant_messages_keep_knowledge_rules_and_context_separate() -> None:
+    knowledge_context = (
+        '<knowledge-context version="1"><workspace-knowledge tenant-id="23">'
+        "分析参考知识</workspace-knowledge></knowledge-context>"
+    )
+    request = analysis_api.AnalysisAssistantRequest(
+        datasource_id=1,
+        context="当前图表可见数据",
+        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="分析收入")],
+    )
+    time_resolution = _resolved_time()
+
+    outline_messages = analysis_api._initial_outline_messages(
+        request,
+        knowledge_context=knowledge_context,
+        time_resolution=time_resolution,
+    )
+    final_messages = analysis_api._final_answer_messages(
+        "分析收入",
+        "分析收入趋势",
+        [],
+        knowledge_context=knowledge_context,
+        time_resolution=time_resolution,
+    )
+    report_messages = analysis_api._report_interpretation_messages(
+        request,
+        knowledge_context=knowledge_context,
+    )
+
+    for messages in (outline_messages, final_messages, report_messages):
+        assert analysis_api.KNOWLEDGE_CONTEXT_SYSTEM_RULES in messages[0].content
+        assert knowledge_context in messages[-1].content
+
+
 def test_unresolved_time_policy_context_limits_plan_scope() -> None:
     context = analysis_api._time_policy_context(
         AnalysisTimeResolution(policy=None, status="unresolved")

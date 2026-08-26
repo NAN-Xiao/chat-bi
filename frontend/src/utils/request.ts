@@ -55,6 +55,7 @@ const errorResponseMessage = (data: any) => {
   if (!data) return ''
   if (typeof data === 'string') return normalizeErrorText(data)
   if (typeof data?.detail === 'string') return normalizeErrorText(data.detail)
+  if (typeof data?.detail?.message === 'string') return normalizeErrorText(data.detail.message)
   if (typeof data?.message === 'string') return normalizeErrorText(data.message)
   if (typeof data?.msg === 'string') return normalizeErrorText(data.msg)
   try {
