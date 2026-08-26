@@ -1,30 +1,24 @@
-# Build shuzhi
-ARG SHUZHI_BUILD_BASE_IMAGE=shuzhi-base:latest
-ARG SHUZHI_RUNTIME_IMAGE=shuzhi-python-pg:latest
-ARG VITE_API_BASE_URL=./api/v1
-
-FROM --platform=${BUILDPLATFORM} ${SHUZHI_BUILD_BASE_IMAGE} AS shuzhi-ui-builder
-ARG VITE_API_BASE_URL=./api/v1
-ENV SHUZHI_HOME=/opt/shuzhi
-ENV APP_HOME=${SHUZHI_HOME}/app
-ENV UI_HOME=${SHUZHI_HOME}/frontend
-ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+# Build sqlbot
+FROM ghcr.io/1panel-dev/maxkb-vector-model:v1.0.1 AS vector-model
+FROM --platform=${BUILDPLATFORM} registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS sqlbot-ui-builder
+ENV SQLBOT_HOME=/opt/sqlbot
+ENV APP_HOME=${SQLBOT_HOME}/app
+ENV UI_HOME=${SQLBOT_HOME}/frontend
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
 COPY frontend /tmp/frontend
-RUN cd /tmp/frontend && npm ci && npm run build && mv dist ${UI_HOME}/dist
+RUN cd /tmp/frontend && npm install && npm run build && mv dist ${UI_HOME}/dist
 
 
-FROM ${SHUZHI_BUILD_BASE_IMAGE} AS shuzhi-builder
-ARG PYTHON_DEPENDENCY_EXTRA=cpu
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS sqlbot-builder
 # Set build environment variables
 ENV PYTHONUNBUFFERED=1
-ENV SHUZHI_HOME=/opt/shuzhi
-ENV APP_HOME=${SHUZHI_HOME}/app
-ENV UI_HOME=${SHUZHI_HOME}/frontend
-ENV PYTHONPATH=${SHUZHI_HOME}/app
+ENV SQLBOT_HOME=/opt/sqlbot
+ENV APP_HOME=${SQLBOT_HOME}/app
+ENV UI_HOME=${SQLBOT_HOME}/frontend
+ENV PYTHONPATH=${SQLBOT_HOME}/app
 ENV PATH="${APP_HOME}/.venv/bin:$PATH"
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
@@ -35,21 +29,22 @@ RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
 WORKDIR ${APP_HOME}
 
-COPY  --from=shuzhi-ui-builder ${UI_HOME} ${UI_HOME}
-COPY backend/pyproject.toml backend/uv.lock ${APP_HOME}/
-# Install dependencies from the committed lockfile so CI does not resolve
-# fresh dependency candidates on every image build.
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --extra "${PYTHON_DEPENDENCY_EXTRA}" --no-install-project
+COPY  --from=sqlbot-ui-builder ${UI_HOME} ${UI_HOME}
+# Install dependencies
+RUN test -f "./uv.lock" && \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=backend/uv.lock,target=uv.lock \
+    --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project || echo "uv.lock file not found, skipping intermediate-layers"
 
 COPY ./backend ${APP_HOME}
 
 # Final sync to ensure all dependencies are installed
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --extra "${PYTHON_DEPENDENCY_EXTRA}"
+    uv sync --extra cpu
 
 # Build g2-ssr
-FROM ${SHUZHI_BUILD_BASE_IMAGE} AS ssr-builder
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS ssr-builder
 
 WORKDIR /app
 
@@ -70,43 +65,36 @@ COPY g2-ssr/charts/* /app/charts/
 RUN npm install
 
 # Runtime stage
-FROM ${SHUZHI_RUNTIME_IMAGE}
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone
 
-# 复用基础镜像中已安装的 Oracle Instant Client，避免 CI 依赖私有 zip 构建资产。
-ENV ORACLE_CLIENT_PATH=/opt/shuzhi/db_client/oracle_instant_client
-ENV LD_LIBRARY_PATH=${ORACLE_CLIENT_PATH}:${LD_LIBRARY_PATH}
-
-# This runtime image is the all-in-one evaluation image. It starts PostgreSQL
-# from start.sh and carries development database defaults for first-run demos.
-# Production deployments must override secrets and follow the external
-# PostgreSQL/Redis/Nginx/worker baseline in docs/single_tenant_production_readiness.md.
 # Set runtime environment variables
 ENV PYTHONUNBUFFERED=1
-ENV SHUZHI_HOME=/opt/shuzhi
-ENV PYTHONPATH=${SHUZHI_HOME}/app
-ENV PATH="${SHUZHI_HOME}/app/.venv/bin:$PATH"
+ENV SQLBOT_HOME=/opt/sqlbot
+ENV PYTHONPATH=${SQLBOT_HOME}/app
+ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
 
-ENV POSTGRES_DB=shuzhi_bi
+ENV POSTGRES_DB=zhishu_bi_1.1.1
 ENV POSTGRES_USER=root
 ENV POSTGRES_PASSWORD=Password123@pg
 
 # Copy necessary files from builder
-COPY start.sh /opt/shuzhi/app/start.sh
+COPY start.sh /opt/sqlbot/app/start.sh
 COPY g2-ssr/*.ttf /usr/share/fonts/truetype/liberation/
-COPY --from=shuzhi-builder ${SHUZHI_HOME} ${SHUZHI_HOME}
-COPY --from=ssr-builder /app /opt/shuzhi/g2-ssr
+COPY --from=sqlbot-builder ${SQLBOT_HOME} ${SQLBOT_HOME}
+COPY --from=ssr-builder /app /opt/sqlbot/g2-ssr
+COPY --from=vector-model /opt/maxkb/app/model /opt/sqlbot/models
 
-WORKDIR ${SHUZHI_HOME}/app
+WORKDIR ${SQLBOT_HOME}/app
 
-RUN mkdir -p /opt/shuzhi/images /opt/shuzhi/g2-ssr
+RUN mkdir -p /opt/sqlbot/images /opt/sqlbot/g2-ssr
 
 EXPOSE 3000 8000 8001 5432
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python3 -c "import os, urllib.request; port=os.environ.get('API_PORT','8000'); p=os.environ.get('CONTEXT_PATH','').strip('/'); urllib.request.urlopen(f'http://localhost:{port}/' + ((p + '/') if p else '') + 'health', timeout=3)" || exit 1
+    CMD python3 -c "import os, urllib.request; urllib.request.urlopen(f'http://localhost:8000/{os.environ.get(\"CONTEXT_PATH\", \"\")}', timeout=3)" || exit 1
 
 ENTRYPOINT ["sh", "start.sh"]
