@@ -8,7 +8,11 @@ export interface KnowledgeDocumentSection {
 }
 
 function createSection(index: number, title: string, html: string): KnowledgeDocumentSection {
-  return { id: `document-section-${index + 1}`, title: title.trim(), html }
+  return {
+    id: `document-section-${index + 1}`,
+    title: title.trim().replace(/^\d{1,3}[.、．]\s*/, ''),
+    html,
+  }
 }
 
 function parseMarkdownHeadings(
@@ -25,7 +29,18 @@ function parseMarkdownHeadings(
 
   if (!headingLevels.length) return []
 
-  const sectionLevel = Math.min(...headingLevels)
+  const headingCounts = headingLevels.reduce<Record<number, number>>((counts, level) => {
+    counts[level] = (counts[level] || 0) + 1
+    return counts
+  }, {})
+  const shallowestLevel = Math.min(...headingLevels)
+  const nestedSectionLevel = [...new Set(headingLevels)]
+    .sort((left, right) => left - right)
+    .find((level) => level > shallowestLevel && headingCounts[level] >= 2)
+  const sectionLevel =
+    headingCounts[shallowestLevel] === 1 && nestedSectionLevel
+      ? nestedSectionLevel
+      : shallowestLevel
   const sections: KnowledgeDocumentSection[] = []
   let sectionTitle = ''
   let sectionTokens: Token[] = []
@@ -40,9 +55,15 @@ function parseMarkdownHeadings(
     const token = tokens[index]
     const level = token.type === 'heading_open' ? Number(token.tag.slice(1)) : 0
     if (token.type === 'heading_open' && level === sectionLevel) {
-      flushSection()
+      if (sectionTitle) {
+        flushSection()
+        sectionTokens = []
+      }
       sectionTitle = tokens[index + 1]?.content?.trim() || fallbackTitle
-      sectionTokens = []
+      index += 2
+      continue
+    }
+    if (!sectionTitle && token.type === 'heading_open' && level < sectionLevel) {
       index += 2
       continue
     }
