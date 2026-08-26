@@ -212,28 +212,20 @@ function updateActiveSection() {
 }
 .document-section {
   min-width: 0;
-  overflow: hidden;
   scroll-margin-top: 20px;
-  border: 1px solid #e4e7ec;
-  border-radius: 4px;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 .document-section + .document-section {
-  margin-top: 14px;
+  margin-top: 28px;
 }
-.document-section.is-active {
-  border-color: #84adff;
-  box-shadow: 0 0 0 2px rgba(47, 107, 255, 0.08);
+.document-section.is-active .section-header h2 {
+  color: #175cd3;
 }
 .section-header {
   display: flex;
-  min-height: 48px;
+  min-height: 36px;
   align-items: center;
   gap: 8px;
-  padding: 7px 12px;
-  border-bottom: 1px solid #eaecf0;
-  background: #f8f9fb;
+  padding: 0 2px 10px;
 }
 .section-index {
   flex: 0 0 24px;
@@ -254,7 +246,7 @@ function updateActiveSection() {
 }
 .section-content {
   min-height: 72px;
-  padding: 16px 20px 18px;
+  padding: 0;
   color: #344054;
   font-size: 13px;
   line-height: 1.8;
