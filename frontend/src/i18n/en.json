@@ -2148,6 +2148,7 @@
     "more": "More",
     "file_not_found": "Source file not found",
     "workspace_knowledge_base": "Workspace Knowledge Base",
+    "select_workspace": "Select a workspace",
     "platform_knowledge_base": "Platform Knowledge Base",
     "saas_knowledge_base": "SaaS Knowledge Base",
     "delete_confirm": "Delete knowledge base: {msg}?"

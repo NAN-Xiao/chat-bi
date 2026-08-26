@@ -2149,6 +2149,7 @@
     "more": "更多",
     "file_not_found": "源文件不存在",
     "workspace_knowledge_base": "工作空间知识库",
+    "select_workspace": "请选择工作空间",
     "platform_knowledge_base": "平台知识库",
     "saas_knowledge_base": "SaaS 知识库",
     "delete_confirm": "是否删除知识库：{msg}？"
