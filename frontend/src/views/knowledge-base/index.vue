@@ -444,6 +444,10 @@ onBeforeUnmount(() => {
                   <el-icon><Upload /></el-icon>
                   {{ t('knowledge_base.replace_document') }}
                 </el-button>
+                <el-button v-if="row.can_manage" link type="danger" @click="deleteCard(row)">
+                  <el-icon><IconOpeDelete /></el-icon>
+                  {{ t('dashboard.delete') }}
+                </el-button>
                 <el-popover
                   v-if="row.can_manage"
                   trigger="click"
@@ -457,10 +461,6 @@ onBeforeUnmount(() => {
                     <div class="item" @click="openEditCard(row)">
                       <el-icon size="16"><IconOpeEdit /></el-icon>
                       {{ t('datasource.edit') }}
-                    </div>
-                    <div class="item" @click="deleteCard(row)">
-                      <el-icon size="16"><IconOpeDelete /></el-icon>
-                      {{ t('dashboard.delete') }}
                     </div>
                   </div>
                 </el-popover>

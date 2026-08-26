@@ -2146,7 +2146,7 @@
     "publish_version": "发布版本",
     "published": "已发布",
     "download": "下载",
-    "replace_document": "上传覆盖",
+    "replace_document": "上传",
     "more": "更多",
     "file_not_found": "源文件不存在",
     "workspace_knowledge_base": "工作空间知识库",
