@@ -2145,6 +2145,7 @@
     "publish_version": "發布版本",
     "published": "已發布",
     "download": "下載",
+    "replace_document": "上傳覆蓋",
     "more": "更多",
     "file_not_found": "來源檔案不存在",
     "workspace_knowledge_base": "工作空間知識庫",

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
-import { Download, Search, UploadFilled } from '@element-plus/icons-vue'
+import { Download, Search, Upload, UploadFilled } from '@element-plus/icons-vue'
 import type { UploadFile, UploadProps, UploadRawFile } from 'element-plus'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
@@ -194,6 +194,11 @@ function openEditCard(row: KnowledgeBaseItem) {
   uploadFileName.value = row.file_name || ''
   pendingFile.value = null
   drawerVisible.value = true
+}
+
+function openReplaceCard(row: KnowledgeBaseItem) {
+  openEditCard(row)
+  drawerTitle.value = t('knowledge_base.replace_document')
 }
 
 function closeForm() {
@@ -425,7 +430,7 @@ onBeforeUnmount(() => {
           <el-table-column :label="t('knowledge_base.updated_at')" width="220">
             <template #default="{ row }">{{ formatCardTime(row.update_time) }}</template>
           </el-table-column>
-          <el-table-column fixed="right" :label="t('ds.actions')" width="210">
+          <el-table-column fixed="right" :label="t('ds.actions')" width="280">
             <template #default="{ row }">
               <div class="table-actions">
                 <el-button link type="primary" @click="openDetail(row)">{{
@@ -434,6 +439,10 @@ onBeforeUnmount(() => {
                 <el-button link type="primary" :disabled="!row.file_id" @click="downloadCard(row)">
                   <el-icon><Download /></el-icon>
                   {{ t('knowledge_base.download') }}
+                </el-button>
+                <el-button v-if="row.can_manage" link type="primary" @click="openReplaceCard(row)">
+                  <el-icon><Upload /></el-icon>
+                  {{ t('knowledge_base.replace_document') }}
                 </el-button>
                 <el-popover
                   v-if="row.can_manage"
@@ -507,7 +516,11 @@ onBeforeUnmount(() => {
         </el-form-item>
         <el-form-item :label="t('knowledge_base.document_content')">
           <div class="knowledge-upload-source">
-            <div class="upload-source-title">{{ t('knowledge_base.upload_source') }}</div>
+            <div class="upload-source-title">
+              {{
+                form.id ? t('knowledge_base.replace_document') : t('knowledge_base.upload_source')
+              }}
+            </div>
             <el-upload
               class="knowledge-upload"
               drag
