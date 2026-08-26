@@ -2145,6 +2145,7 @@
     "publish_version": "Release Version",
     "published": "Published",
     "download": "Download",
+    "replace_document": "Replace document",
     "more": "More",
     "file_not_found": "Source file not found",
     "workspace_knowledge_base": "Workspace Knowledge Base",

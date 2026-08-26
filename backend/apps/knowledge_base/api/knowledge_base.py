@@ -309,6 +309,7 @@ async def save_knowledge_base(
     if file is not None:
         old_file_id = record.file_id
         file_id, file_name, file_ext = await _save_upload(file)
+        record.content = None
         record.file_id = file_id
         record.file_name = file_name
         record.file_ext = file_ext
