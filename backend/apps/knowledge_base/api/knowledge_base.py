@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import desc, or_
 from sqlmodel import select
 
@@ -303,6 +304,27 @@ async def save_knowledge_base(
         session.refresh(record)
 
     return _serialize_record(current_user, record)
+
+
+@router.get("/{id}/download")
+async def download_knowledge_base_file(session: SessionDep, current_user: CurrentUser, id: int):
+    """Download the source document after applying the same scope checks as management."""
+    record = session.get(KnowledgeBase, int(id))
+    if not record:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    scope = _parse_scope(record.visibility_scope)
+    if int(record.tenant_id) != _scope_tenant_id(current_user, scope):
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    if not record.file_id:
+        raise HTTPException(status_code=404, detail="Knowledge base file not found")
+    file_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, record.file_id)
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Knowledge base file not found")
+    return FileResponse(
+        path=file_path,
+        filename=record.file_name or record.file_id,
+        media_type="application/octet-stream",
+    )
 
 
 @router.delete("/{id}")

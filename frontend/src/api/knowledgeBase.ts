@@ -53,4 +53,5 @@ export const knowledgeBaseApi = {
       },
     }),
   delete: (id: number | string) => request.delete(`/knowledge-base/${id}`),
+  download: (id: number | string) => request.download(`/knowledge-base/${id}/download`),
 }
