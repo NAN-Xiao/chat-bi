@@ -28,7 +28,7 @@ const drawerVisible = ref(false)
 const detailVisible = ref(false)
 const drawerTitle = ref('')
 const selectedCard = ref<KnowledgeBaseItem | null>(null)
-const selectedTenantId = ref<number | string | ''>('')
+const selectedTenantId = ref<string>('')
 const loading = ref(false)
 const saving = ref(false)
 const uploadFileName = ref('')
@@ -54,7 +54,7 @@ const showWorkspaceSelector = computed(
 const workspaceTenants = computed(() =>
   userStore.tenants.filter((tenant) => tenant.status === undefined || Number(tenant.status) === 1)
 )
-const selectedWorkspaceTenantId = computed<number | string | undefined>(() =>
+const selectedWorkspaceTenantId = computed<string | undefined>(() =>
   showWorkspaceSelector.value && selectedTenantId.value !== '' ? selectedTenantId.value : undefined
 )
 const canManageScope = computed(() => {
@@ -329,8 +329,12 @@ watch(
     const currentTenant = workspaceTenants.value.find(
       (tenant) => String(tenant.id) === String(selectedTenantId.value)
     )
-    const nextTenantId = currentTenant?.id ?? workspaceTenants.value[0]?.id ?? ''
-    if (String(nextTenantId) === String(selectedTenantId.value)) {
+    const nextTenantId = currentTenant
+      ? String(currentTenant.id)
+      : workspaceTenants.value[0]
+        ? String(workspaceTenants.value[0].id)
+        : ''
+    if (nextTenantId === selectedTenantId.value) {
       await loadCards()
     } else {
       selectedTenantId.value = nextTenantId
@@ -381,7 +385,7 @@ onBeforeUnmount(() => {
             v-for="tenant in workspaceTenants"
             :key="String(tenant.id)"
             :label="tenant.name"
-            :value="tenant.id"
+            :value="String(tenant.id)"
           />
         </el-select>
         <el-button v-if="canManageScope" type="primary" @click="openCreateCard">
