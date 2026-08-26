@@ -107,8 +107,7 @@ function updateActiveSection() {
           @click="activateSection(section.id)"
         >
           <header class="section-header">
-            <span class="section-index">{{ index + 1 }}</span>
-            <h2>{{ section.title }}</h2>
+            <h2>{{ index + 1 }}. {{ section.title }}</h2>
           </header>
           <div v-dompurify-html="section.html" class="section-content markdown-body" />
         </section>
@@ -203,54 +202,42 @@ function updateActiveSection() {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  background: #fff;
 }
 .document-canvas {
-  width: min(100%, 920px);
+  width: min(100%, 960px);
   min-width: 0;
   margin: 0 auto;
-  padding: 28px 30px 80px;
+  padding: 36px 48px 80px;
 }
 .document-section {
   min-width: 0;
   scroll-margin-top: 20px;
 }
 .document-section + .document-section {
-  margin-top: 28px;
-}
-.document-section.is-active .section-header h2 {
-  color: #175cd3;
+  margin-top: 40px;
 }
 .section-header {
-  display: flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 8px;
-  padding: 0 2px 10px;
-}
-.section-index {
-  flex: 0 0 24px;
-  color: #667085;
-  font-size: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #d8dee4;
 }
 .section-header h2 {
-  min-width: 0;
   margin: 0;
-  overflow: hidden;
-  color: #344054;
-  font-size: 13px;
+  color: #1f2328;
+  font-size: 20px;
   font-weight: 600;
-  line-height: 22px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 30px;
   letter-spacing: 0;
 }
 .section-content {
   min-height: 72px;
-  padding: 0;
+  padding-top: 16px;
   background-color: transparent;
-  color: #344054;
-  font-size: 13px;
-  line-height: 1.8;
+  color: #1f2328;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
   overflow-wrap: anywhere;
 }
 .section-content :deep(> :first-child) {
@@ -319,10 +306,14 @@ function updateActiveSection() {
   }
   .document-canvas {
     width: 100%;
-    padding: 14px 10px 64px;
+    padding: 20px 16px 64px;
   }
   .section-content {
-    padding: 14px 12px 16px;
+    padding-top: 14px;
+  }
+  .section-header h2 {
+    font-size: 18px;
+    line-height: 28px;
   }
 }
 </style>
