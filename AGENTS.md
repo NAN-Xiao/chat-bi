@@ -6,6 +6,13 @@ Scope: entire repository.
 
 - When generating Git commit messages, push summaries, PR titles, PR descriptions, changelog entries, or release notes for this repository, use Chinese by default unless the user explicitly asks for another language.
 
+### Mandatory Remote Sync Before Code Changes
+
+- Before modifying any source code, tests, scripts, migrations, or runtime/configuration files, first synchronize remote refs with `git fetch --prune`, then update the intended base branch with `git pull --ff-only` when it can be fast-forwarded safely. Read-only investigation, review, status checks, and documentation-only edits are exempt.
+- Perform this synchronization before creating the dedicated task branch/worktree, so new work starts from the latest remote base. If the primary checkout contains pre-existing changes, do not clean, stash, reset, overwrite, or merge them merely to pull; fetch the remote and create the task worktree from the latest intended remote base instead.
+- If the remote update fails, the base branch has diverged, 
+- or the correct remote/base branch cannot be determined safely, stop and report the blocker before making scoped code changes. Do not silently continue from stale code.
+
 ### Mandatory Worktree Isolation
 
 - Before modifying any source code, tests, scripts, migrations, or runtime/configuration files, first detect whether the current checkout is already a linked Git worktree. Read-only investigation, review, status checks, and documentation-only edits are exempt.
