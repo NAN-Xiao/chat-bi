@@ -53,6 +53,7 @@ _DATABASE_CURRENT_DATE_PATTERN = re.compile(
     r"\b(?:curdate\s*\(|current_date\b|now\s*\(|current_timestamp\b|localtime\b|localtimestamp\b|getdate\s*\(|getutcdate\s*\()",
     flags=re.IGNORECASE,
 )
+RETENTION_COHORT_DAYS = 7
 
 
 class DashboardManualChartGraphState(TypedDict, total=False):
@@ -241,7 +242,7 @@ def _tracking_event_name_from_field(field: Any) -> str:
         if len(parts) >= 3 and parts[0] == "tracking-event":
             return parts[-1].strip()
         return ""
-    if isinstance(field, dict) and str(field.get("kind") or "") == "tracking-event":
+    if isinstance(field, dict) and str(field.get("kind") or "") in {"tracking-event", "tracking-property"}:
         return str(field.get("eventName") or field.get("event_name") or "").strip()
     return ""
 
@@ -615,7 +616,13 @@ def _normalize_manual_config(
         time_config.get("dateParameterType") or time_config.get("date_parameter_type") or ""
     ).strip()
     time_config["date_expression"] = time_config.get("dateExpression") or time_config.get("date_expression")
+    analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
+    if analysis_model not in {"event", "retention"}:
+        analysis_model = "event"
+    retention = dict(context.get("retention") or {}) if isinstance(context.get("retention"), dict) else {}
     return {
+        "analysis_model": analysis_model,
+        "retention": retention,
         "chart": context.get("chart") if isinstance(context.get("chart"), dict) else {
             "title": request.title,
             "type": request.chart_type,
@@ -1181,6 +1188,22 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
         table_name = str(base_metric.get("table") or "").strip()
         if table_name:
             tables.add(table_name)
+    retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
+    simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
+    related_property = retention.get("relatedProperty") if isinstance(retention.get("relatedProperty"), dict) else {}
+    retention_fields = [
+        retention.get("entityField") or retention.get("entity_field"),
+        retention.get("initialEvent") or retention.get("initial_event"),
+        retention.get("returnEvent") or retention.get("return_event"),
+        simultaneous.get("event"),
+        related_property.get("initialProperty") or related_property.get("initial_property"),
+        related_property.get("returnProperty") or related_property.get("return_property"),
+        related_property.get("simultaneousProperty") or related_property.get("simultaneous_property"),
+    ]
+    for field in retention_fields:
+        table_name = _field_table_name(field)
+        if table_name:
+            tables.add(table_name)
     return tables
 
 
@@ -1218,10 +1241,75 @@ def _deterministic_validate_manual_config(
         if not isinstance(time_config.get("date_expression"), dict):
             issues.append("生成 SQL 前请选择有效日期表达式。")
 
+    analysis_model = str(normalized_config.get("analysis_model") or "event")
     metrics = _list_dict_items(normalized_config.get("metrics"))
     formula_metrics = _list_dict_items(normalized_config.get("formula_metrics"))
-    if not metrics and not formula_metrics:
+    if analysis_model == "event" and not metrics and not formula_metrics:
         issues.append("至少需要配置一个分析指标或公式指标。")
+
+    if analysis_model == "retention":
+        retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
+        entity_field = retention.get("entityField") or retention.get("entity_field")
+        initial_event = retention.get("initialEvent") or retention.get("initial_event")
+        return_event = retention.get("returnEvent") or retention.get("return_event")
+        if not _field_has_resolvable_reference(entity_field):
+            issues.append("留存分析请先选择分析主体。")
+        if not _field_has_resolvable_reference(initial_event):
+            issues.append("留存分析请先选择初始事件。")
+        if not _field_has_resolvable_reference(return_event):
+            issues.append("留存分析请先选择回访事件。")
+        if not _field_has_resolvable_reference(time_config.get("field")):
+            issues.append("留存分析请先选择时间字段。")
+        initial_event_name = _tracking_event_name_from_field(initial_event)
+        return_event_name = _tracking_event_name_from_field(return_event)
+        if initial_event_name and initial_event_name == return_event_name:
+            issues.append("初始事件和回访事件不能相同。")
+        if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "table":
+            issues.append("留存分析只能使用留存表结果。")
+        simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
+        simultaneous_enabled = simultaneous.get("enabled") is True
+        simultaneous_event = simultaneous.get("event")
+        simultaneous_aggregation = str(simultaneous.get("aggregation") or "count")
+        if simultaneous_enabled and not _field_has_resolvable_reference(simultaneous_event):
+            issues.append("使用同时展示时请选择参与事件。")
+        if simultaneous_enabled and simultaneous_aggregation not in {"count", "count_distinct"}:
+            issues.append("同时展示只支持总次数或去重数。")
+
+        related_property = retention.get("relatedProperty") if isinstance(retention.get("relatedProperty"), dict) else {}
+        related_enabled = related_property.get("enabled") is True
+        initial_property = related_property.get("initialProperty") or related_property.get("initial_property")
+        return_property = related_property.get("returnProperty") or related_property.get("return_property")
+        simultaneous_property = related_property.get("simultaneousProperty") or related_property.get("simultaneous_property")
+        if related_enabled and not _field_has_resolvable_reference(initial_property):
+            issues.append("使用关联属性时请选择初始事件属性。")
+        if related_enabled and not _field_has_resolvable_reference(return_property):
+            issues.append("使用关联属性时请选择回访事件属性。")
+        if related_enabled and simultaneous_enabled and not _field_has_resolvable_reference(simultaneous_property):
+            issues.append("使用关联属性和同时展示时请选择同时展示事件属性。")
+
+        for field, label in (
+            (entity_field, "分析主体"),
+            (initial_event, "初始事件"),
+            (return_event, "回访事件"),
+            (simultaneous_event if simultaneous_enabled else None, "同时展示事件"),
+            (initial_property if related_enabled else None, "初始事件关联属性"),
+            (return_property if related_enabled else None, "回访事件关联属性"),
+            (simultaneous_property if related_enabled and simultaneous_enabled else None, "同时展示关联属性"),
+        ):
+            if field:
+                issues.extend(_tracking_event_metadata_issues(field, label))
+                issues.extend(_json_subfield_mapping_issues(field, label))
+                issues.extend(_field_table_permission_issues(field, label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(field, label, allowed_fields_by_table))
+        for property_field, event_field, label in (
+            (initial_property, initial_event, "初始事件关联属性"),
+            (return_property, return_event, "回访事件关联属性"),
+            (simultaneous_property, simultaneous_event, "同时展示关联属性"),
+        ):
+            property_event_name = _tracking_event_name_from_field(property_field)
+            expected_event_name = _tracking_event_name_from_field(event_field)
+            if related_enabled and property_event_name and expected_event_name and property_event_name != expected_event_name:
+                issues.append(f"{label}不属于当前选择的事件。")
 
     for index, metric in enumerate(metrics):
         label = str(metric.get("alias") or metric.get("label") or f"分析指标{index + 1}").strip()
@@ -1272,6 +1360,8 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
         time_config,
     )
     return {
+        "analysis_model": normalized_config.get("analysis_model") or "event",
+        "retention": normalized_config.get("retention") or {},
         "time": time_config,
         "date_parameters": {
             "enabled": uses_date_parameters,
@@ -1367,6 +1457,23 @@ def _dashboard_config_prompt(
             else ["看板日期参数类型缺失，不能生成 SQL。"]
         )
     )
+    analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
+    retention = context.get("retention") if isinstance(context.get("retention"), dict) else {}
+    retention_rules: list[str] = []
+    if analysis_model == "retention":
+        simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
+        related_property = retention.get("relatedProperty") if isinstance(retention.get("relatedProperty"), dict) else {}
+        retention_rules = [
+            "当前 analysisModel=retention，必须严格按 retention.entityField、initialEvent 和 returnEvent 生成 cohort 留存查询。",
+            "初始事件定义分母 cohort，回访事件定义后续行为；两个事件都必须使用各自字段对象中的 eventTable、eventNameField 和 eventName，不得猜测事件名。",
+            f"基础结果使用固定 Cohort 宽表，范围为第 0 日到第 {RETENTION_COHORT_DAYS} 日的留存比例：第一列 cohort_date，第二列 cohort_size，后续列为 day_0 到 day_{RETENTION_COHORT_DAYS}。",
+            "retention.simultaneous.enabled=true 时，额外按 simultaneous.event 和 simultaneous.aggregation 计算回访用户参与该事件的统计值，并以 simultaneous_value 输出。",
+            "retention.relatedProperty.enabled=true 时，初始事件、回访事件以及已启用的同时展示事件必须按各自配置的关联属性值相等进行关联，不得改用同名字段猜测。",
+            "retention.relatedProperty.asGroup=true 时，结果必须额外输出 related_property 分组列。",
+            f"当前同时展示配置：{_safe_json(simultaneous)}。",
+            f"当前关联属性配置：{_safe_json(related_property)}。",
+            "最终返回 chart_type 必须为 table。",
+        ]
     return "\n".join([
         "请处理下面的手动图表配置。",
         "",
@@ -1405,7 +1512,8 @@ def _dashboard_config_prompt(
         "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段；必须使用字段对象的 expression，不得把用户属性改为 user 表或其他表的同名字段。",
         "字段对象包含 sourceField、jsonPath 和 expression 时，JSON 子字段必须使用 expression；不得自行改写 JSON 宿主列或路径。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
-        "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters 字段信息生成 SQL；不要编造未提供字段。",
+        "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention 字段信息生成 SQL；不要编造未提供字段。",
+        *retention_rules,
         *date_parameter_rules,
         *_dashboard_sql_dialect_rules(sql_dialect, datasource),
     ])
@@ -1420,6 +1528,25 @@ def _dashboard_date_sql_issues(sql: str, time_config: dict[str, Any]) -> list[st
     if _DATABASE_CURRENT_DATE_PATTERN.search(sql):
         issues.append("生成 SQL 使用了数据库当前日期函数，请改用看板日期参数。")
     return _unique_text_items(issues)
+
+
+def _retention_sql_result_issues(sql: str, normalized_config: dict[str, Any]) -> list[str]:
+    if str(normalized_config.get("analysis_model") or "event") != "retention":
+        return []
+    retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
+    required_aliases = ["cohort_date", "cohort_size"]
+    required_aliases.extend(f"day_{day}" for day in range(RETENTION_COHORT_DAYS + 1))
+    simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
+    related_property = retention.get("relatedProperty") if isinstance(retention.get("relatedProperty"), dict) else {}
+    if simultaneous.get("enabled") is True:
+        required_aliases.append("simultaneous_value")
+    if related_property.get("enabled") is True and related_property.get("asGroup") is True:
+        required_aliases.append("related_property")
+    normalized_sql = str(sql or "").lower()
+    missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
+    if not missing:
+        return []
+    return [f"留存 SQL 缺少固定结果列：{'、'.join(missing)}。"]
 
 
 def _dashboard_sql_system_prompt() -> str:
@@ -1882,6 +2009,14 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 未满足看板日期参数要求。"
         response.advice = "请使用当前图表配置的起止日期参数重新生成。"
         response.issues = _unique_text_items(list(response.issues or []) + date_issues)
+    elif retention_issues := _retention_sql_result_issues(
+        sql,
+        state.get("normalized_config") or {},
+    ):
+        response.success = False
+        response.message = "生成 SQL 未满足留存表结果格式。"
+        response.advice = "请按当前留存周期生成固定 Cohort 宽表列。"
+        response.issues = _unique_text_items(list(response.issues or []) + retention_issues)
     elif json_issues := _json_subfield_sql_issues(
         sql,
         state.get("json_subfield_requirements") or [],
@@ -1937,6 +2072,20 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         message="Agent 没有返回可用结果。",
         advice="请补充生成意图或检查配置后重试。",
     )
+    normalized_config = state.get("normalized_config") or {}
+    analysis_model = str(normalized_config.get("analysis_model") or "event")
+    response.analysis_model = "retention" if analysis_model == "retention" else "event"
+    if response.analysis_model == "retention":
+        retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
+        simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
+        related_property = retention.get("relatedProperty") if isinstance(retention.get("relatedProperty"), dict) else {}
+        response.chart_type = "table"
+        response.result_config = {
+            "type": "cohort_table",
+            "simultaneous_enabled": simultaneous.get("enabled") is True,
+            "related_property_enabled": related_property.get("enabled") is True,
+            "related_property_as_group": related_property.get("asGroup") is True,
+        }
     return {
         "response": response,
         "graph_trace": _append_trace(state, "finalize_response"),

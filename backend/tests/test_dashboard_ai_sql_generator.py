@@ -1153,6 +1153,145 @@ def test_dashboard_prompt_recommends_cte_layers_for_complex_analysis() -> None:
     assert "成熟窗口" in prompt
 
 
+def _retention_request(**overrides):
+    retention = {
+        "entityField": {"table": "event", "field": "user_id", "value": "event.user_id"},
+        "initialEvent": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "register", "field": "event_name",
+        },
+        "returnEvent": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "login", "field": "event_name",
+        },
+        "simultaneous": {"enabled": False, "event": None, "aggregation": "count"},
+        "relatedProperty": {
+            "enabled": False,
+            "initialProperty": None,
+            "returnProperty": None,
+            "simultaneousProperty": None,
+            "asGroup": False,
+        },
+    }
+    retention.update(overrides)
+    return DashboardAiSqlGenerateRequest(
+        datasource=1,
+        chart_type="table",
+        context={
+            "analysisModel": "retention",
+            "chart": {"type": "table"},
+            "time": {
+                "field": {"table": "event", "field": "dt"},
+                "dateParameterType": "yyyymmdd_number",
+                "dateExpression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+            },
+            "retention": retention,
+            "groups": [],
+            "filters": {},
+            "selectedFields": [],
+        },
+    )
+
+
+def test_retention_config_uses_independent_deterministic_validation() -> None:
+    request = _retention_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        formula_ir,
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+    )
+
+    assert result.success is True
+    assert "至少需要配置一个分析指标" not in result.issues
+
+
+def test_retention_config_rejects_missing_subject_and_events() -> None:
+    request = _retention_request(entityField=None, initialEvent=None, returnEvent=None)
+    normalized = ai_sql_generator._normalize_manual_config(request)
+
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+    )
+
+    assert result.success is False
+    assert "留存分析请先选择分析主体。" in result.issues
+    assert "留存分析请先选择初始事件。" in result.issues
+    assert "留存分析请先选择回访事件。" in result.issues
+
+
+def test_retention_prompt_and_sql_validation_require_fixed_cohort_columns() -> None:
+    request = _retention_request()
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
+        "",
+        "",
+    )
+    invalid_sql = (
+        "SELECT cohort_date, cohort_size, day_0 FROM retention_result "
+        "WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
+    )
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(success=True, sql=invalid_sql, chart_type="table")
+    validated = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": ai_sql_generator._normalize_manual_config(request),
+        "graph_trace": [],
+    })["response"]
+
+    assert "固定 Cohort 宽表" in prompt
+    assert "day_0 到 day_7" in prompt
+    assert validated.success is False
+    assert "day_7" in validated.issues[0]
+
+
+def test_retention_simultaneous_and_related_property_are_validated() -> None:
+    request = _retention_request(
+        simultaneous={
+            "enabled": True,
+            "event": {
+                "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+                "eventName": "purchase", "field": "event_name",
+            },
+            "aggregation": "count",
+        },
+        relatedProperty={
+            "enabled": True,
+            "initialProperty": {
+                "kind": "tracking-property", "table": "event", "field": "account_id", "eventName": "register",
+            },
+            "returnProperty": {
+                "kind": "tracking-property", "table": "event", "field": "account_id", "eventName": "login",
+            },
+            "simultaneousProperty": {
+                "kind": "tracking-property", "table": "event", "field": "account_id", "eventName": "purchase",
+            },
+            "asGroup": True,
+        },
+    )
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "account_id", "dt"}},
+    )
+    required_sql = "SELECT cohort_date, cohort_size, " + ", ".join(
+        [f"day_{day}" for day in range(8)] + ["simultaneous_value", "related_property"]
+    )
+
+    assert result.success is True
+    assert ai_sql_generator._retention_sql_result_issues(required_sql, normalized) == []
+
+
 def test_dashboard_prompt_requires_safe_cte_time_boundaries() -> None:
     """
     是什么：时间边界层必须先独立计算聚合结果，不能把聚合或窗口函数放进同层 WHERE。

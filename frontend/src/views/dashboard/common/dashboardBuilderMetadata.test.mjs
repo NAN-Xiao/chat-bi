@@ -49,6 +49,32 @@ assert.equal(loadCount, 1, '同一 datasource + tenant 下重复打开弹窗应�
 assert.equal(secondLoad, firstLoad, '重复读取应返回缓存中的同一个 metadata 对象')
 assert.equal(secondLoad.marker, 'first')
 
+let upgradedLoadCount = 0
+const upgradedMetadata = await getCachedDashboardBuilderMetadata(
+  cacheKey,
+  async () => {
+    upgradedLoadCount += 1
+    return {
+      schemaTables: [{ table_name: 'event' }],
+      trackingEventCatalog: { groups: [{ label: '登录', value: 'login', events: [] }] },
+    }
+  },
+  (metadata) => Object.hasOwn(metadata, 'trackingEventCatalog')
+)
+
+assert.equal(upgradedLoadCount, 1, '旧缓存缺少事件目录时必须重新加载 builder metadata')
+assert.equal(upgradedMetadata.trackingEventCatalog.groups[0].value, 'login')
+
+await getCachedDashboardBuilderMetadata(
+  cacheKey,
+  async () => {
+    upgradedLoadCount += 1
+    return { schemaTables: [], trackingEventCatalog: null }
+  },
+  (metadata) => Object.hasOwn(metadata, 'trackingEventCatalog')
+)
+assert.equal(upgradedLoadCount, 1, '包含事件目录字段的新版缓存应继续复用')
+
 const catalog = buildTrackingEventCatalogFromConfig({
   tenant_id: 'tenant-a',
   datasource_id: 3,

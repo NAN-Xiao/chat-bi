@@ -28,7 +28,6 @@ import {
 import { metricFilterRecoveryCandidates } from '@/views/dashboard/common/metricFilterRecovery.ts'
 import {
   buildDashboardBuilderMetadataCacheKey,
-  buildTrackingEventCatalogFromConfig,
   createFieldOptionIndex,
   getEventScopedFields,
   getCachedDashboardBuilderMetadata,
@@ -141,6 +140,24 @@ type SqlBuilderMetricItem = {
   alias: string
   filterLogic: SqlBuilderFilterLogic
   filters: SqlBuilderFilter[]
+}
+type AnalysisModel = 'event' | 'retention'
+type SqlBuilderRetentionConfig = {
+  entityField: string
+  initialEvent: string
+  returnEvent: string
+  simultaneous: {
+    enabled: boolean
+    event: string
+    aggregation: 'count' | 'count_distinct'
+  }
+  relatedProperty: {
+    enabled: boolean
+    initialProperty: string
+    returnProperty: string
+    simultaneousProperty: string
+    asGroup: boolean
+  }
 }
 type SqlBuilderCalculatedMetricItem = {
   id: string
@@ -270,6 +287,7 @@ const form = reactive({
 const donutSeriesFields = ref<string[]>([])
 const sqlBuilder = reactive({
   activeTab: 'builder',
+  analysisModel: 'event' as AnalysisModel,
   timeField: SQL_EDITOR_TIME_FIELD,
   timeGrain: SQL_EDITOR_TIME_GRAIN,
   timeRange: 'expression',
@@ -283,6 +301,23 @@ const sqlBuilder = reactive({
   globalFilters: [] as SqlBuilderFilter[],
   globalFilterLogic: 'and' as SqlBuilderFilterLogic,
   approximate: false,
+  retention: {
+    entityField: '',
+    initialEvent: '',
+    returnEvent: '',
+    simultaneous: {
+      enabled: false,
+      event: '',
+      aggregation: 'count',
+    },
+    relatedProperty: {
+      enabled: false,
+      initialProperty: '',
+      returnProperty: '',
+      simultaneousProperty: '',
+      asGroup: false,
+    },
+  } as SqlBuilderRetentionConfig,
 })
 const builderAgentAdvice = reactive({
   visible: false,
@@ -717,6 +752,16 @@ const analysisFieldOptions = computed(() => {
 })
 const analysisFieldPickerMode = computed(() => usesTrackingEventPicker.value ? 'tracking-event' : 'property')
 const formulaFieldPickerPlaceholder = computed(() => usesTrackingEventPicker.value ? '选择事件' : '选择字段')
+const analysisModelOptions = [
+  { label: '事件分析', value: 'event' as AnalysisModel },
+  { label: '留存分析', value: 'retention' as AnalysisModel },
+]
+const isRetentionAnalysis = computed(() => sqlBuilder.analysisModel === 'retention')
+const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
+const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
+const retentionSimultaneousAggregationOptions = builderAggregationOptions.filter((option) => (
+  option.value === 'count' || option.value === 'count_distinct'
+))
 const builderMetricOptions = computed(() =>
   sqlBuilder.metricItems.map((item, index) => ({
     label: metricOutputAlias(item, index),
@@ -1422,6 +1467,7 @@ function quoteIdentifier(value: string) {
 
 function resetSqlBuilderState() {
   sqlBuilder.activeTab = 'builder'
+  sqlBuilder.analysisModel = 'event'
   sqlBuilder.timeField = SQL_EDITOR_TIME_FIELD
   sqlBuilder.timeGrain = SQL_EDITOR_TIME_GRAIN
   sqlBuilder.timeRange = 'expression'
@@ -1437,6 +1483,7 @@ function resetSqlBuilderState() {
   sqlBuilder.globalFilters = []
   sqlBuilder.globalFilterLogic = 'and'
   sqlBuilder.approximate = false
+  resetRetentionConfig()
   clearBuilderAgentAdvice()
 }
 
@@ -1791,6 +1838,26 @@ function restoreBuilderFilters(value: any): SqlBuilderFilter[] {
 function builderConfigForSave() {
   const usesDashboardDateParameters = shouldUseDashboardDateParameters()
   return {
+    analysisModel: sqlBuilder.analysisModel,
+    retention: sqlBuilder.analysisModel === 'retention' ? {
+      entityField: sqlBuilder.retention.entityField,
+      initialEvent: sqlBuilder.retention.initialEvent,
+      returnEvent: sqlBuilder.retention.returnEvent,
+      simultaneous: {
+        enabled: sqlBuilder.retention.simultaneous.enabled,
+        event: sqlBuilder.retention.simultaneous.enabled ? sqlBuilder.retention.simultaneous.event : '',
+        aggregation: sqlBuilder.retention.simultaneous.aggregation,
+      },
+      relatedProperty: {
+        enabled: sqlBuilder.retention.relatedProperty.enabled,
+        initialProperty: sqlBuilder.retention.relatedProperty.enabled ? sqlBuilder.retention.relatedProperty.initialProperty : '',
+        returnProperty: sqlBuilder.retention.relatedProperty.enabled ? sqlBuilder.retention.relatedProperty.returnProperty : '',
+        simultaneousProperty: sqlBuilder.retention.relatedProperty.enabled && sqlBuilder.retention.simultaneous.enabled
+          ? sqlBuilder.retention.relatedProperty.simultaneousProperty
+          : '',
+        asGroup: sqlBuilder.retention.relatedProperty.enabled && sqlBuilder.retention.relatedProperty.asGroup,
+      },
+    } : undefined,
     timeField: SQL_EDITOR_TIME_FIELD,
     timeGrain: SQL_EDITOR_TIME_GRAIN,
     timeRange: 'expression',
@@ -1817,6 +1884,33 @@ function restoreSqlBuilderState(value: any) {
   if (!value || typeof value !== 'object') {
     return
   }
+  sqlBuilder.analysisModel = value.analysisModel === 'retention' ? 'retention' : 'event'
+  const retention = value.retention && typeof value.retention === 'object' ? value.retention : {}
+  sqlBuilder.retention.entityField = typeof retention.entityField === 'string' ? retention.entityField : ''
+  sqlBuilder.retention.initialEvent = typeof retention.initialEvent === 'string' ? retention.initialEvent : ''
+  sqlBuilder.retention.returnEvent = typeof retention.returnEvent === 'string' ? retention.returnEvent : ''
+  const simultaneous = retention.simultaneous && typeof retention.simultaneous === 'object' ? retention.simultaneous : {}
+  sqlBuilder.retention.simultaneous.enabled = simultaneous.enabled === true
+  sqlBuilder.retention.simultaneous.event = sqlBuilder.retention.simultaneous.enabled && typeof simultaneous.event === 'string'
+    ? simultaneous.event
+    : ''
+  sqlBuilder.retention.simultaneous.aggregation = simultaneous.aggregation === 'count_distinct' ? 'count_distinct' : 'count'
+  const relatedProperty = retention.relatedProperty && typeof retention.relatedProperty === 'object'
+    ? retention.relatedProperty
+    : {}
+  sqlBuilder.retention.relatedProperty.enabled = relatedProperty.enabled === true
+  sqlBuilder.retention.relatedProperty.initialProperty = sqlBuilder.retention.relatedProperty.enabled && typeof relatedProperty.initialProperty === 'string'
+    ? relatedProperty.initialProperty
+    : ''
+  sqlBuilder.retention.relatedProperty.returnProperty = sqlBuilder.retention.relatedProperty.enabled && typeof relatedProperty.returnProperty === 'string'
+    ? relatedProperty.returnProperty
+    : ''
+  sqlBuilder.retention.relatedProperty.simultaneousProperty = sqlBuilder.retention.relatedProperty.enabled
+    && sqlBuilder.retention.simultaneous.enabled
+    && typeof relatedProperty.simultaneousProperty === 'string'
+    ? relatedProperty.simultaneousProperty
+    : ''
+  sqlBuilder.retention.relatedProperty.asGroup = sqlBuilder.retention.relatedProperty.enabled && relatedProperty.asGroup === true
   sqlBuilder.dateExpressionPickerEnabled = true
   sqlBuilder.metricDateExpressionEnabled = value.metricDateExpressionEnabled === true
   const timeExpression = normalizeDashboardDateExpression(value.timeExpression)
@@ -1869,6 +1963,41 @@ function pruneAutoSeededMetricItemsForFormulaOnlyBuilder() {
 
 function fieldOptionByValue(value: string) {
   return fieldOptionIndex.value.find(value)
+}
+
+function retentionPropertyOptions(eventValue: string) {
+  const eventOption = fieldOptionByValue(eventValue)
+  if (eventOption?.kind !== 'tracking-event' || !eventOption.eventName) {
+    return []
+  }
+  return trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
+}
+
+function handleRetentionEventPropertyChange(type: 'initial' | 'return' | 'simultaneous', eventValue: string) {
+  const propertyKey = type === 'initial'
+    ? 'initialProperty'
+    : type === 'return'
+      ? 'returnProperty'
+      : 'simultaneousProperty'
+  const propertyValue = sqlBuilder.retention.relatedProperty[propertyKey]
+  if (propertyValue && !optionExists(propertyValue, retentionPropertyOptions(eventValue))) {
+    sqlBuilder.retention.relatedProperty[propertyKey] = ''
+  }
+}
+
+function handleRetentionSimultaneousToggle(enabled: boolean) {
+  if (enabled) return
+  sqlBuilder.retention.simultaneous.event = ''
+  sqlBuilder.retention.simultaneous.aggregation = 'count'
+  sqlBuilder.retention.relatedProperty.simultaneousProperty = ''
+}
+
+function handleRetentionRelatedPropertyToggle(enabled: boolean) {
+  if (enabled) return
+  sqlBuilder.retention.relatedProperty.initialProperty = ''
+  sqlBuilder.retention.relatedProperty.returnProperty = ''
+  sqlBuilder.retention.relatedProperty.simultaneousProperty = ''
+  sqlBuilder.retention.relatedProperty.asGroup = false
 }
 
 function builderFieldLabel(value: string) {
@@ -2275,6 +2404,96 @@ function builderBlockingScopeIssues() {
   ].filter(Boolean))
 }
 
+function resetRetentionConfig() {
+  sqlBuilder.retention.entityField = ''
+  sqlBuilder.retention.initialEvent = ''
+  sqlBuilder.retention.returnEvent = ''
+  sqlBuilder.retention.simultaneous.enabled = false
+  sqlBuilder.retention.simultaneous.event = ''
+  sqlBuilder.retention.simultaneous.aggregation = 'count'
+  sqlBuilder.retention.relatedProperty.enabled = false
+  sqlBuilder.retention.relatedProperty.initialProperty = ''
+  sqlBuilder.retention.relatedProperty.returnProperty = ''
+  sqlBuilder.retention.relatedProperty.simultaneousProperty = ''
+  sqlBuilder.retention.relatedProperty.asGroup = false
+}
+
+function handleAnalysisModelChange(model: AnalysisModel) {
+  sqlBuilder.analysisModel = model === 'retention' ? 'retention' : 'event'
+  if (sqlBuilder.analysisModel === 'retention') {
+    sqlBuilder.metricItems = []
+    sqlBuilder.calculatedMetrics = []
+    activeFormulaMetricId.value = ''
+    form.chartType = 'table'
+    resetRetentionConfig()
+  } else {
+    resetRetentionConfig()
+    sqlBuilder.metricItems = []
+    sqlBuilder.calculatedMetrics = []
+    addMetricItem()
+  }
+  sqlBuilder.groups = sqlBuilder.groups.filter((field) => optionExists(field, builderFieldOptions.value))
+  lastPreviewSignature.value = ''
+}
+
+function sanitizeRetentionConfig() {
+  if (!isRetentionAnalysis.value) return
+  const cleared: string[] = []
+  if (sqlBuilder.retention.entityField && !optionExists(sqlBuilder.retention.entityField, retentionEntityFieldOptions.value)) {
+    sqlBuilder.retention.entityField = ''
+    cleared.push('分析主体')
+  }
+  if (sqlBuilder.retention.initialEvent && !optionExists(sqlBuilder.retention.initialEvent, retentionEventOptions.value)) {
+    sqlBuilder.retention.initialEvent = ''
+    cleared.push('初始事件')
+  }
+  if (sqlBuilder.retention.returnEvent && !optionExists(sqlBuilder.retention.returnEvent, retentionEventOptions.value)) {
+    sqlBuilder.retention.returnEvent = ''
+    cleared.push('回访事件')
+  }
+  if (sqlBuilder.retention.simultaneous.event && !optionExists(sqlBuilder.retention.simultaneous.event, retentionEventOptions.value)) {
+    sqlBuilder.retention.simultaneous.event = ''
+    cleared.push('同时展示事件')
+  }
+  const relatedProperty = sqlBuilder.retention.relatedProperty
+  ;([
+    ['initialProperty', sqlBuilder.retention.initialEvent, '初始事件关联属性'],
+    ['returnProperty', sqlBuilder.retention.returnEvent, '回访事件关联属性'],
+    ['simultaneousProperty', sqlBuilder.retention.simultaneous.event, '同时展示关联属性'],
+  ] as const).forEach(([key, eventValue, label]) => {
+    if (relatedProperty[key] && !optionExists(relatedProperty[key], retentionPropertyOptions(eventValue))) {
+      relatedProperty[key] = ''
+      cleared.push(label)
+    }
+  })
+  if (cleared.length) {
+    ElMessage.warning(`${cleared.join('、')}在当前数据源中无效，已清除，请重新选择。`)
+  }
+}
+
+function retentionBlockingIssues() {
+  if (!isRetentionAnalysis.value) return []
+  const issues: string[] = []
+  if (!sqlBuilder.retention.entityField) issues.push('留存分析请先选择分析主体。')
+  if (!sqlBuilder.retention.initialEvent) issues.push('留存分析请先选择初始事件。')
+  if (!sqlBuilder.retention.returnEvent) issues.push('留存分析请先选择回访事件。')
+  if (!sqlBuilder.timeField) issues.push('留存分析请先选择时间字段。')
+  if (sqlBuilder.retention.initialEvent && sqlBuilder.retention.returnEvent && sqlBuilder.retention.initialEvent === sqlBuilder.retention.returnEvent) {
+    issues.push('初始事件和回访事件不能相同。')
+  }
+  if (sqlBuilder.retention.simultaneous.enabled && !sqlBuilder.retention.simultaneous.event) {
+    issues.push('使用同时展示时请选择参与事件。')
+  }
+  if (sqlBuilder.retention.relatedProperty.enabled) {
+    if (!sqlBuilder.retention.relatedProperty.initialProperty) issues.push('使用关联属性时请选择初始事件属性。')
+    if (!sqlBuilder.retention.relatedProperty.returnProperty) issues.push('使用关联属性时请选择回访事件属性。')
+    if (sqlBuilder.retention.simultaneous.enabled && !sqlBuilder.retention.relatedProperty.simultaneousProperty) {
+      issues.push('使用关联属性和同时展示时请选择同时展示事件属性。')
+    }
+  }
+  return issues
+}
+
 function metricMeasureField(item: SqlBuilderMetricItem) {
   return item.aggregation === 'count' ? item.field : item.metric || item.field
 }
@@ -2371,6 +2590,15 @@ function selectedBuilderFieldValues() {
   )
   return unique([
     sqlBuilder.timeField,
+    ...(sqlBuilder.analysisModel === 'retention' ? [
+      sqlBuilder.retention.entityField,
+      sqlBuilder.retention.initialEvent,
+      sqlBuilder.retention.returnEvent,
+      sqlBuilder.retention.simultaneous.event,
+      sqlBuilder.retention.relatedProperty.initialProperty,
+      sqlBuilder.retention.relatedProperty.returnProperty,
+      sqlBuilder.retention.relatedProperty.simultaneousProperty,
+    ] : []),
     ...sqlBuilder.metricItems.flatMap((item) => [item.field, item.metric]),
     ...sqlBuilder.calculatedMetrics.flatMap((item) => [item.pendingEventField, item.pendingMetricField]),
     ...formulaFields,
@@ -2389,6 +2617,32 @@ function collectBuilderAiContext() {
     metricAliasById.set(item.id, metricOutputAlias(item, index))
   })
   return {
+    analysisModel: sqlBuilder.analysisModel,
+    retention: sqlBuilder.analysisModel === 'retention' ? {
+      entityField: fieldOptionPayload(sqlBuilder.retention.entityField),
+      initialEvent: fieldOptionPayload(sqlBuilder.retention.initialEvent),
+      returnEvent: fieldOptionPayload(sqlBuilder.retention.returnEvent),
+      simultaneous: {
+        enabled: sqlBuilder.retention.simultaneous.enabled,
+        event: sqlBuilder.retention.simultaneous.enabled
+          ? fieldOptionPayload(sqlBuilder.retention.simultaneous.event)
+          : null,
+        aggregation: sqlBuilder.retention.simultaneous.aggregation,
+      },
+      relatedProperty: {
+        enabled: sqlBuilder.retention.relatedProperty.enabled,
+        initialProperty: sqlBuilder.retention.relatedProperty.enabled
+          ? fieldOptionPayload(sqlBuilder.retention.relatedProperty.initialProperty)
+          : null,
+        returnProperty: sqlBuilder.retention.relatedProperty.enabled
+          ? fieldOptionPayload(sqlBuilder.retention.relatedProperty.returnProperty)
+          : null,
+        simultaneousProperty: sqlBuilder.retention.relatedProperty.enabled && sqlBuilder.retention.simultaneous.enabled
+          ? fieldOptionPayload(sqlBuilder.retention.relatedProperty.simultaneousProperty)
+          : null,
+        asGroup: sqlBuilder.retention.relatedProperty.enabled && sqlBuilder.retention.relatedProperty.asGroup,
+      },
+    } : null,
     chart: {
       title: form.title,
       type: form.chartType,
@@ -2476,7 +2730,8 @@ function generatedSqlMatchesBuilderMetrics(sql: string) {
 
 function collectLocalBuilderConfigIssues() {
   const eventScopeIssues = builderBlockingScopeIssues()
-  const issues: string[] = [...eventScopeIssues]
+  const retentionIssues = retentionBlockingIssues()
+  const issues: string[] = [...eventScopeIssues, ...retentionIssues]
   const suggestions: string[] = []
   if (eventScopeIssues.length && eventFieldScope.value.defaultEventTable) {
     suggestions.push(`请重新选择 ${eventFieldScope.value.defaultEventTable} 表中的字段后再生成 SQL。`)
@@ -2658,6 +2913,21 @@ async function generateBuilderAiSql() {
     }
   }
   const eventScopeIssues = builderBlockingScopeIssues()
+  const retentionIssues = retentionBlockingIssues()
+  if (retentionIssues.length) {
+    const localAdvice = collectLocalBuilderConfigIssues()
+    setBuilderAgentAdvice({
+      severity: 'warning',
+      intent: inferBuilderIntentText(),
+      message: retentionIssues[0],
+      advice: '请先补全留存分析必填配置，再生成 SQL。',
+      issues: localAdvice.issues,
+      suggestions: localAdvice.suggestions,
+      raw: '',
+    })
+    ElMessage.warning(retentionIssues[0])
+    return false
+  }
   if (eventScopeIssues.length) {
     const localAdvice = collectLocalBuilderConfigIssues()
     setBuilderAgentAdvice({
@@ -2818,9 +3088,10 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
       tenantId,
     })
     const metadata = await getCachedDashboardBuilderMetadata(cacheKey, async () => {
-      const [metadata, trackingConfigResult] = await Promise.all([
+      const [metadata, trackingConfigResult, trackingEventCatalogResult] = await Promise.all([
         dashboardApi.execution_datasource_metadata(datasourceId),
-        trackingConfigApi.get().catch(() => null),
+        trackingConfigApi.get(),
+        trackingConfigApi.eventCatalog(),
       ])
       const trackingTableRoleByName = new Map<string, string>()
       ;(Array.isArray(trackingConfigResult?.tables) ? trackingConfigResult.tables : []).forEach((table: any) => {
@@ -2856,9 +3127,9 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
         datasource,
         schemaTables: tablesWithFields,
         trackingConfig: trackingConfigResult,
-        trackingEventCatalog: buildTrackingEventCatalogFromConfig(trackingConfigResult),
+        trackingEventCatalog: trackingEventCatalogResult,
       }
-    })
+    }, (cachedMetadata) => Object.prototype.hasOwnProperty.call(cachedMetadata, 'trackingEventCatalog'))
     if (!isCurrentSchemaLoad()) {
       return
     }
@@ -2866,8 +3137,11 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
     trackingConfig.value = metadata.trackingConfig
     trackingEventCatalog.value = metadata.trackingEventCatalog
     schemaTables.value = metadata.schemaTables.length ? metadata.schemaTables : previewSchemaTables()
-    if (!sqlBuilder.metricItems.length && !sqlBuilder.calculatedMetrics.length) {
-      addMetricItem()
+    sanitizeRetentionConfig()
+    if (sqlBuilder.analysisModel === 'event') {
+      if (!sqlBuilder.metricItems.length && !sqlBuilder.calculatedMetrics.length) {
+        addMetricItem()
+      }
     }
   } catch {
     if (!isCurrentSchemaLoad()) {
@@ -3280,6 +3554,8 @@ function applyDateExpression(value: DashboardDateExpression) {
 
 function currentPreviewSignature() {
   return JSON.stringify({
+    analysisModel: sqlBuilder.analysisModel,
+    retention: sqlBuilder.analysisModel === 'retention' ? sqlBuilder.retention : null,
     sources: [...form.sourceTypes],
     sql: hasSqlSource.value
       ? {
@@ -4033,7 +4309,11 @@ function resetFieldSelections() {
     return
   }
   form.columns = form.columns.filter((field) => fields.includes(field))
-  if (form.columns.length === 0) form.columns = fields.slice(0, 8)
+  if (isRetentionAnalysis.value) {
+    form.columns = [...fields]
+  } else if (form.columns.length === 0) {
+    form.columns = fields.slice(0, 8)
+  }
   if (form.chartType !== 'donut') {
     form.y = form.y.filter((field) => fields.includes(field))
     if (!fields.includes(form.x)) form.x = fields[0] || ''
@@ -4070,7 +4350,7 @@ function initEditor() {
   form.primarySource = sourceTypes.includes('external_mcp') && !sourceTypes.includes('sql') ? 'external_mcp' : 'sql'
   form.sql = viewInfo.sql || ''
   form.title = chart.title || ''
-  form.chartType = chart.sourceType || chart.type || 'table'
+  form.chartType = isRetentionAnalysis.value ? 'table' : (chart.sourceType || chart.type || 'table')
   form.columns = axisValues(chart.columns)
   form.x = axisValues(chart.xAxis)[0] || ''
   form.y = axisValues(chart.yAxis)
@@ -5000,7 +5280,30 @@ function closeDrawer() {
               class="sql-builder-content"
               @click="activeFormulaMetricId = ''"
             >
-            <section class="builder-section">
+            <section class="builder-section analysis-model-section">
+              <div class="analysis-model-row">
+                <div class="builder-section-head">
+                  <div class="builder-section-title">
+                    <BuilderSectionIcon class="builder-section-icon" />
+                    <span>分析模型</span>
+                  </div>
+                </div>
+                <el-select
+                  v-model="sqlBuilder.analysisModel"
+                  class="analysis-model-select"
+                  @change="handleAnalysisModelChange"
+                >
+                  <el-option
+                    v-for="option in analysisModelOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+              </div>
+            </section>
+
+            <section v-if="!isRetentionAnalysis" class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
                   <BuilderSectionIcon class="builder-section-icon" />
@@ -5336,6 +5639,128 @@ function closeDrawer() {
               </div>
             </section>
 
+            <section v-else class="builder-section retention-builder-section">
+              <div class="retention-heading-row">
+                <div class="builder-section-head">
+                  <div class="builder-section-title">
+                    <BuilderSectionIcon class="builder-section-icon" />
+                    <span>留存分析</span>
+                  </div>
+                </div>
+                <div class="retention-subject-line">
+                  <span>对</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.retention.entityField"
+                    :options="retentionEntityFieldOptions"
+                    :loading="schemaLoading"
+                    mode="property"
+                    placeholder="选择分析主体"
+                  />
+                  <span>进行分析</span>
+                </div>
+              </div>
+              <div class="retention-event-stack">
+                <div class="retention-field-block">
+                  <span class="retention-config-label">初始事件</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.retention.initialEvent"
+                    :options="retentionEventOptions"
+                    :loading="schemaLoading"
+                    mode="tracking-event"
+                    placeholder="选择初始事件"
+                    @update:modelValue="handleRetentionEventPropertyChange('initial', $event)"
+                  />
+                </div>
+                <div class="retention-field-block">
+                  <span class="retention-config-label">回访事件</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.retention.returnEvent"
+                    :options="retentionEventOptions"
+                    :loading="schemaLoading"
+                    mode="tracking-event"
+                    placeholder="选择回访事件"
+                    @update:modelValue="handleRetentionEventPropertyChange('return', $event)"
+                  />
+                </div>
+              </div>
+              <div class="retention-advanced-options">
+                <div class="retention-option-block">
+                  <span class="retention-option-title">使用同时展示</span>
+                  <el-switch
+                    v-model="sqlBuilder.retention.simultaneous.enabled"
+                    @change="handleRetentionSimultaneousToggle"
+                  />
+                  <template v-if="sqlBuilder.retention.simultaneous.enabled">
+                    <span class="retention-option-description">同时展示回访的用户参与</span>
+                    <div class="retention-option-flow">
+                      <BuilderFieldPicker
+                        v-model="sqlBuilder.retention.simultaneous.event"
+                        :options="retentionEventOptions"
+                        :loading="schemaLoading"
+                        mode="tracking-event"
+                        placeholder="选择参与事件"
+                        @update:modelValue="handleRetentionEventPropertyChange('simultaneous', $event)"
+                      />
+                      <span>的</span>
+                      <el-select v-model="sqlBuilder.retention.simultaneous.aggregation" size="small">
+                        <el-option
+                          v-for="option in retentionSimultaneousAggregationOptions"
+                          :key="option.value"
+                          :label="option.label"
+                          :value="option.value"
+                        />
+                      </el-select>
+                    </div>
+                  </template>
+                </div>
+
+                <div class="retention-option-block">
+                  <span class="retention-option-title">使用关联属性</span>
+                  <el-switch
+                    v-model="sqlBuilder.retention.relatedProperty.enabled"
+                    @change="handleRetentionRelatedPropertyToggle"
+                  />
+                  <template v-if="sqlBuilder.retention.relatedProperty.enabled">
+                    <div class="retention-property-flow">
+                      <span>初始事件的</span>
+                      <BuilderFieldPicker
+                        v-model="sqlBuilder.retention.relatedProperty.initialProperty"
+                        :options="retentionPropertyOptions(sqlBuilder.retention.initialEvent)"
+                        :loading="schemaLoading"
+                        mode="property"
+                        placeholder="选择属性"
+                      />
+                      <span>与</span>
+                    </div>
+                    <div class="retention-property-flow">
+                      <span>回访事件的</span>
+                      <BuilderFieldPicker
+                        v-model="sqlBuilder.retention.relatedProperty.returnProperty"
+                        :options="retentionPropertyOptions(sqlBuilder.retention.returnEvent)"
+                        :loading="schemaLoading"
+                        mode="property"
+                        placeholder="选择属性"
+                      />
+                      <span>{{ sqlBuilder.retention.simultaneous.enabled ? '与' : '的值相等' }}</span>
+                    </div>
+                    <div v-if="sqlBuilder.retention.simultaneous.enabled" class="retention-property-flow">
+                      <span>同时展示的</span>
+                      <BuilderFieldPicker
+                        v-model="sqlBuilder.retention.relatedProperty.simultaneousProperty"
+                        :options="retentionPropertyOptions(sqlBuilder.retention.simultaneous.event)"
+                        :loading="schemaLoading"
+                        mode="property"
+                        placeholder="选择属性"
+                      />
+                      <span>的值相等</span>
+                    </div>
+                    <span class="retention-option-title">关联属性作为分组展示</span>
+                    <el-switch v-model="sqlBuilder.retention.relatedProperty.asGroup" />
+                  </template>
+                </div>
+              </div>
+            </section>
+
             <section class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
@@ -5408,7 +5833,7 @@ function closeDrawer() {
           </div>
           <div class="builder-bottom-bar">
             <div class="builder-bottom-options">
-              <el-checkbox v-if="sqlBuilder.activeTab === 'builder'" v-model="sqlBuilder.approximate">
+              <el-checkbox v-if="sqlBuilder.activeTab === 'builder' && !isRetentionAnalysis" v-model="sqlBuilder.approximate">
                 近似计算
               </el-checkbox>
             </div>
@@ -5654,7 +6079,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-model="form.chartType" @change="handleChartTypeChange">
+            <el-select v-if="!isRetentionAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -5662,9 +6087,10 @@ function closeDrawer() {
                 :value="item.value"
               />
             </el-select>
+            <el-input v-else model-value="留存表" disabled />
           </el-form-item>
         </div>
-        <el-form-item v-if="form.chartType === 'table'" :label="t('dashboard.sql_editor_columns')">
+        <el-form-item v-if="form.chartType === 'table' && !isRetentionAnalysis" :label="t('dashboard.sql_editor_columns')">
           <el-select v-model="form.columns" multiple filterable>
             <el-option
               v-for="field in fieldOptions"
@@ -5674,7 +6100,7 @@ function closeDrawer() {
             />
           </el-select>
         </el-form-item>
-        <div v-else class="config-grid">
+        <div v-else-if="form.chartType !== 'table'" class="config-grid">
           <el-form-item v-if="showXAxis" :label="t('dashboard.sql_editor_x')">
             <el-select v-model="form.x" filterable clearable>
               <el-option
@@ -6198,6 +6624,129 @@ function closeDrawer() {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+}
+
+.analysis-model-select {
+  width: 220px;
+}
+
+.analysis-model-row,
+.retention-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.analysis-model-row .builder-section-head,
+.retention-heading-row .builder-section-head {
+  flex: 0 0 96px;
+  margin-bottom: 0;
+}
+
+.retention-heading-row {
+  margin-bottom: 24px;
+}
+
+.retention-subject-line {
+  flex: 1 1 420px;
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  color: #505968;
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .analysis-model-row,
+  .retention-heading-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .retention-heading-row .retention-subject-line {
+    flex-basis: 100%;
+  }
+}
+
+.retention-subject-line :deep(.builder-field-picker-trigger),
+.retention-option-flow :deep(.builder-field-picker-trigger),
+.retention-property-flow :deep(.builder-field-picker-trigger) {
+  width: 100%;
+}
+
+.retention-event-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.retention-field-block {
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.retention-field-block :deep(.builder-field-picker-trigger) {
+  width: auto;
+  max-width: 100%;
+}
+
+.retention-config-label {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.retention-advanced-options {
+  width: 100%;
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.retention-option-block {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+  color: #505968;
+  font-size: 12px;
+}
+
+.retention-option-title {
+  color: #4e5969;
+  line-height: 20px;
+}
+
+.retention-option-description {
+  margin-top: 4px;
+  color: #667085;
+  line-height: 20px;
+}
+
+.retention-option-flow {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto 104px;
+  align-items: center;
+  gap: 8px;
+}
+
+.retention-property-flow {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(100px, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  line-height: 24px;
 }
 
 .builder-icon-button {

@@ -126,10 +126,17 @@ export function buildDashboardBuilderMetadataCacheKey(input: MetadataCacheKeyInp
   return `${stableText(input.tenantId) || 'global'}:${stableText(input.datasourceId) || 'none'}`
 }
 
-export async function getCachedDashboardBuilderMetadata<T>(key: string, loader: () => Promise<T>): Promise<T> {
+export async function getCachedDashboardBuilderMetadata<T>(
+  key: string,
+  loader: () => Promise<T>,
+  isCachedValueValid: (value: T) => boolean = () => true
+): Promise<T> {
   const cached = metadataCache.get(key)
   if (cached?.value !== undefined) {
-    return cached.value as T
+    if (isCachedValueValid(cached.value as T)) {
+      return cached.value as T
+    }
+    metadataCache.delete(key)
   }
   if (cached?.promise) {
     return cached.promise as Promise<T>

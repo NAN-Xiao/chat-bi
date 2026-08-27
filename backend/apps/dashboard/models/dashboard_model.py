@@ -489,6 +489,8 @@ class DashboardAiSqlGenerateResponse(BaseModel):
     warnings: List[str] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
     raw: str = ''
+    analysis_model: Literal["event", "retention"] = "event"
+    result_config: Dict[str, Any] = Field(default_factory=dict)
 
 
 class DashboardDefaultRequest(BaseModel):
