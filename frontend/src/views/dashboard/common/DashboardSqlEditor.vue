@@ -143,6 +143,7 @@ type SqlBuilderMetricItem = {
 }
 type AnalysisModel = 'event' | 'retention'
 type RetentionEventTarget = 'initial' | 'return'
+const RETENTION_ANALYSIS_CONTEXT_CONTENT = '以某段时间做过初始事件的用户为样本，查看在指定日期后用户进行回访事件的留存情况'
 type SqlBuilderRetentionConfig = {
   entityField: string
   initialEvent: string
@@ -2812,6 +2813,7 @@ function collectBuilderAiContext() {
   return {
     analysisModel: sqlBuilder.analysisModel,
     retention: sqlBuilder.analysisModel === 'retention' ? {
+      content: RETENTION_ANALYSIS_CONTEXT_CONTENT,
       entityField: fieldOptionPayload(sqlBuilder.retention.entityField),
       initialEvent: fieldOptionPayload(sqlBuilder.retention.initialEvent),
       initialEventAlias: sqlBuilder.retention.initialEventAlias.trim(),
