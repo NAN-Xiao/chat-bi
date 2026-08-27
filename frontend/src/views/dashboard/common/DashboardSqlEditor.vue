@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CopyDocument, Delete, Filter, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
+import { CopyDocument, Delete, EditPen, Filter, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
 import { datasourceApi } from '@/api/datasource'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
@@ -335,6 +335,14 @@ const sqlBuilder = reactive({
 const retentionFilterExpanded = reactive<Record<RetentionEventTarget, boolean>>({
   initial: false,
   return: false,
+})
+const retentionAliasEditing = reactive<Record<RetentionEventTarget, boolean>>({
+  initial: false,
+  return: false,
+})
+const retentionAliasDraft = reactive<Record<RetentionEventTarget, string>>({
+  initial: '',
+  return: '',
 })
 const builderAgentAdvice = reactive({
   visible: false,
@@ -2019,6 +2027,8 @@ function handleRetentionEventPropertyChange(type: 'initial' | 'return' | 'simult
       sqlBuilder.retention.initialEventFilters = []
       sqlBuilder.retention.initialEventFilterLogic = 'and'
       retentionFilterExpanded.initial = false
+      retentionAliasEditing.initial = false
+      retentionAliasDraft.initial = ''
       if (hadScopedConfig) {
         ElMessage.warning('初始事件已切换，原重命名和筛选条件已清除。')
       }
@@ -2035,6 +2045,8 @@ function handleRetentionEventPropertyChange(type: 'initial' | 'return' | 'simult
       sqlBuilder.retention.returnEventFilters = []
       sqlBuilder.retention.returnEventFilterLogic = 'and'
       retentionFilterExpanded.return = false
+      retentionAliasEditing.return = false
+      retentionAliasDraft.return = ''
       if (hadScopedConfig) {
         ElMessage.warning('回访事件已切换，原重命名和筛选条件已清除。')
       }
@@ -2133,6 +2145,31 @@ function retentionEventFilterFieldOptions(target: RetentionEventTarget) {
 function retentionEventDefaultDisplayName(eventValue: string) {
   const option = fieldOptionByValue(eventValue)
   return option?.displayName || option?.label || option?.eventName || '事件名称'
+}
+
+function beginRetentionEventRename(target: RetentionEventTarget) {
+  const eventValue = target === 'initial' ? sqlBuilder.retention.initialEvent : sqlBuilder.retention.returnEvent
+  if (!eventValue) return
+  retentionAliasDraft[target] = target === 'initial'
+    ? sqlBuilder.retention.initialEventAlias
+    : sqlBuilder.retention.returnEventAlias
+  retentionAliasEditing[target] = true
+}
+
+function finishRetentionEventRename(target: RetentionEventTarget) {
+  if (!retentionAliasEditing[target]) return
+  const alias = retentionAliasDraft[target].trim()
+  if (target === 'initial') {
+    sqlBuilder.retention.initialEventAlias = alias
+  } else {
+    sqlBuilder.retention.returnEventAlias = alias
+  }
+  retentionAliasEditing[target] = false
+}
+
+function cancelRetentionEventRename(target: RetentionEventTarget) {
+  retentionAliasEditing[target] = false
+  retentionAliasDraft[target] = ''
 }
 
 function toggleRetentionEventFilter(target: RetentionEventTarget) {
@@ -2531,6 +2568,10 @@ function resetRetentionConfig() {
   sqlBuilder.retention.returnEventFilters = []
   retentionFilterExpanded.initial = false
   retentionFilterExpanded.return = false
+  retentionAliasEditing.initial = false
+  retentionAliasEditing.return = false
+  retentionAliasDraft.initial = ''
+  retentionAliasDraft.return = ''
   sqlBuilder.retention.simultaneous.enabled = false
   sqlBuilder.retention.simultaneous.event = ''
   sqlBuilder.retention.simultaneous.aggregation = 'count'
@@ -2572,6 +2613,8 @@ function sanitizeRetentionConfig() {
     sqlBuilder.retention.initialEventFilters = []
     sqlBuilder.retention.initialEventFilterLogic = 'and'
     retentionFilterExpanded.initial = false
+    retentionAliasEditing.initial = false
+    retentionAliasDraft.initial = ''
     cleared.push('初始事件')
   }
   if (sqlBuilder.retention.returnEvent && !optionExists(sqlBuilder.retention.returnEvent, retentionEventOptions.value)) {
@@ -2580,6 +2623,8 @@ function sanitizeRetentionConfig() {
     sqlBuilder.retention.returnEventFilters = []
     sqlBuilder.retention.returnEventFilterLogic = 'and'
     retentionFilterExpanded.return = false
+    retentionAliasEditing.return = false
+    retentionAliasDraft.return = ''
     cleared.push('回访事件')
   }
   ;([
@@ -5820,39 +5865,69 @@ function closeDrawer() {
               <div class="retention-event-stack">
                 <div class="retention-field-block">
                   <span class="retention-config-label">初始事件</span>
-                  <div class="retention-event-editor">
-                    <div class="retention-event-title-row">
+                  <div
+                    class="retention-event-editor"
+                    :class="{
+                      'is-active': retentionAliasEditing.initial || retentionFilterExpanded.initial,
+                      'has-alias': Boolean(sqlBuilder.retention.initialEventAlias.trim()),
+                    }"
+                  >
+                    <div
+                      v-if="retentionAliasEditing.initial || sqlBuilder.retention.initialEventAlias.trim()"
+                      class="retention-event-alias-row"
+                    >
                       <el-input
-                        v-model="sqlBuilder.retention.initialEventAlias"
+                        v-if="retentionAliasEditing.initial"
+                        v-model="retentionAliasDraft.initial"
                         class="retention-event-alias-input"
                         clearable
                         maxlength="80"
-                        :disabled="!sqlBuilder.retention.initialEvent"
                         :placeholder="retentionEventDefaultDisplayName(sqlBuilder.retention.initialEvent)"
                         aria-label="重命名初始事件"
+                        autofocus
                         @keydown.stop
                         @keyup.stop
+                        @keydown.enter.prevent="finishRetentionEventRename('initial')"
+                        @keydown.esc.prevent="cancelRetentionEventRename('initial')"
+                        @blur="finishRetentionEventRename('initial')"
                       />
-                      <button
-                        type="button"
-                        class="retention-event-action"
-                        :class="{ 'is-active': retentionFilterExpanded.initial || hasEffectiveBuilderFilters(sqlBuilder.retention.initialEventFilters) }"
-                        title="筛选初始事件"
-                        aria-label="筛选初始事件"
-                        :disabled="!sqlBuilder.retention.initialEvent"
-                        @click="toggleRetentionEventFilter('initial')"
-                      >
-                        <el-icon><Filter /></el-icon>
-                      </button>
+                      <span v-else class="retention-event-alias-text">
+                        {{ sqlBuilder.retention.initialEventAlias.trim() }}
+                      </span>
                     </div>
-                    <BuilderFieldPicker
-                      :model-value="sqlBuilder.retention.initialEvent"
-                      :options="retentionEventOptions"
-                      :loading="schemaLoading"
-                      mode="tracking-event"
-                      placeholder="选择初始事件"
-                      @update:modelValue="handleRetentionEventPropertyChange('initial', $event)"
-                    />
+                    <div class="retention-event-main-row">
+                      <BuilderFieldPicker
+                        :model-value="sqlBuilder.retention.initialEvent"
+                        :options="retentionEventOptions"
+                        :loading="schemaLoading"
+                        mode="tracking-event"
+                        placeholder="选择初始事件"
+                        @update:modelValue="handleRetentionEventPropertyChange('initial', $event)"
+                      />
+                      <div class="retention-event-actions">
+                        <button
+                          type="button"
+                          class="retention-event-action"
+                          title="重命名初始事件"
+                          aria-label="重命名初始事件"
+                          :disabled="!sqlBuilder.retention.initialEvent"
+                          @click="beginRetentionEventRename('initial')"
+                        >
+                          <el-icon><EditPen /></el-icon>
+                        </button>
+                        <button
+                          type="button"
+                          class="retention-event-action"
+                          :class="{ 'is-active': retentionFilterExpanded.initial || hasEffectiveBuilderFilters(sqlBuilder.retention.initialEventFilters) }"
+                          title="筛选初始事件"
+                          aria-label="筛选初始事件"
+                          :disabled="!sqlBuilder.retention.initialEvent"
+                          @click="toggleRetentionEventFilter('initial')"
+                        >
+                          <el-icon><Filter /></el-icon>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   <div v-if="retentionFilterExpanded.initial" class="retention-event-filter-panel">
                     <BuilderFilterTree
@@ -5871,39 +5946,69 @@ function closeDrawer() {
                 </div>
                 <div class="retention-field-block">
                   <span class="retention-config-label">回访事件</span>
-                  <div class="retention-event-editor">
-                    <div class="retention-event-title-row">
+                  <div
+                    class="retention-event-editor"
+                    :class="{
+                      'is-active': retentionAliasEditing.return || retentionFilterExpanded.return,
+                      'has-alias': Boolean(sqlBuilder.retention.returnEventAlias.trim()),
+                    }"
+                  >
+                    <div
+                      v-if="retentionAliasEditing.return || sqlBuilder.retention.returnEventAlias.trim()"
+                      class="retention-event-alias-row"
+                    >
                       <el-input
-                        v-model="sqlBuilder.retention.returnEventAlias"
+                        v-if="retentionAliasEditing.return"
+                        v-model="retentionAliasDraft.return"
                         class="retention-event-alias-input"
                         clearable
                         maxlength="80"
-                        :disabled="!sqlBuilder.retention.returnEvent"
                         :placeholder="retentionEventDefaultDisplayName(sqlBuilder.retention.returnEvent)"
                         aria-label="重命名回访事件"
+                        autofocus
                         @keydown.stop
                         @keyup.stop
+                        @keydown.enter.prevent="finishRetentionEventRename('return')"
+                        @keydown.esc.prevent="cancelRetentionEventRename('return')"
+                        @blur="finishRetentionEventRename('return')"
                       />
-                      <button
-                        type="button"
-                        class="retention-event-action"
-                        :class="{ 'is-active': retentionFilterExpanded.return || hasEffectiveBuilderFilters(sqlBuilder.retention.returnEventFilters) }"
-                        title="筛选回访事件"
-                        aria-label="筛选回访事件"
-                        :disabled="!sqlBuilder.retention.returnEvent"
-                        @click="toggleRetentionEventFilter('return')"
-                      >
-                        <el-icon><Filter /></el-icon>
-                      </button>
+                      <span v-else class="retention-event-alias-text">
+                        {{ sqlBuilder.retention.returnEventAlias.trim() }}
+                      </span>
                     </div>
-                    <BuilderFieldPicker
-                      :model-value="sqlBuilder.retention.returnEvent"
-                      :options="retentionEventOptions"
-                      :loading="schemaLoading"
-                      mode="tracking-event"
-                      placeholder="选择回访事件"
-                      @update:modelValue="handleRetentionEventPropertyChange('return', $event)"
-                    />
+                    <div class="retention-event-main-row">
+                      <BuilderFieldPicker
+                        :model-value="sqlBuilder.retention.returnEvent"
+                        :options="retentionEventOptions"
+                        :loading="schemaLoading"
+                        mode="tracking-event"
+                        placeholder="选择回访事件"
+                        @update:modelValue="handleRetentionEventPropertyChange('return', $event)"
+                      />
+                      <div class="retention-event-actions">
+                        <button
+                          type="button"
+                          class="retention-event-action"
+                          title="重命名回访事件"
+                          aria-label="重命名回访事件"
+                          :disabled="!sqlBuilder.retention.returnEvent"
+                          @click="beginRetentionEventRename('return')"
+                        >
+                          <el-icon><EditPen /></el-icon>
+                        </button>
+                        <button
+                          type="button"
+                          class="retention-event-action"
+                          :class="{ 'is-active': retentionFilterExpanded.return || hasEffectiveBuilderFilters(sqlBuilder.retention.returnEventFilters) }"
+                          title="筛选回访事件"
+                          aria-label="筛选回访事件"
+                          :disabled="!sqlBuilder.retention.returnEvent"
+                          @click="toggleRetentionEventFilter('return')"
+                        >
+                          <el-icon><Filter /></el-icon>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   <div v-if="retentionFilterExpanded.return" class="retention-event-filter-panel">
                     <BuilderFilterTree
@@ -6917,7 +7022,7 @@ function closeDrawer() {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 24px;
+  gap: 8px;
 }
 
 .retention-field-block {
@@ -6927,7 +7032,7 @@ function closeDrawer() {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 0;
 }
 
 .retention-field-block :deep(.builder-field-picker-trigger) {
@@ -6938,23 +7043,40 @@ function closeDrawer() {
 .retention-event-editor {
   width: 100%;
   min-width: 0;
+  padding: 5px 24px 7px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 5px;
+  gap: 4px;
+  transition: background-color 0.16s ease;
 }
 
-.retention-event-title-row {
+.retention-event-editor:hover,
+.retention-event-editor:focus-within,
+.retention-event-editor.is-active {
+  background: #f7f8fa;
+}
+
+.retention-event-alias-row,
+.retention-event-main-row {
   width: 100%;
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
+  display: flex;
   align-items: center;
-  gap: 8px;
+}
+
+.retention-event-main-row {
+  min-height: 28px;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.retention-event-main-row :deep(.builder-field-picker) {
+  min-width: 0;
 }
 
 .retention-event-alias-input {
-  width: 100%;
+  width: min(260px, 100%);
 }
 
 .retention-event-alias-input :deep(.ed-input__wrapper),
@@ -6971,6 +7093,33 @@ function closeDrawer() {
 .retention-event-alias-input :deep(.el-input__wrapper:hover),
 .retention-event-alias-input :deep(.el-input__wrapper.is-focus) {
   box-shadow: inset 0 -1px 0 #2f6bff;
+}
+
+.retention-event-alias-text {
+  min-width: 0;
+  color: #303643;
+  font-size: 14px;
+  line-height: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retention-event-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.16s ease;
+}
+
+.retention-event-editor:hover .retention-event-actions,
+.retention-event-editor:focus-within .retention-event-actions,
+.retention-event-editor.is-active .retention-event-actions {
+  opacity: 1;
+  visibility: visible;
 }
 
 .retention-event-action {
@@ -7009,6 +7158,7 @@ function closeDrawer() {
 }
 
 .retention-config-label {
+  padding: 0 24px;
   color: #6b7280;
   font-size: 12px;
   line-height: 20px;
