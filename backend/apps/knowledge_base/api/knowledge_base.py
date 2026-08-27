@@ -318,12 +318,6 @@ async def save_knowledge_base(
     if not clean_name:
         raise _knowledge_http_error(400, "knowledge_name_required", "请输入知识库名称。")
     clean_description = description.strip()
-    if not clean_description:
-        raise _knowledge_http_error(
-            400,
-            "knowledge_usage_instruction_required",
-            "请填写文档使用说明后再保存。",
-        )
     if active and file is not None:
         raise _knowledge_http_error(
             400,

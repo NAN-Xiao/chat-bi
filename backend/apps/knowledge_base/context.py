@@ -137,8 +137,6 @@ def _eligible_documents(session: Session, tenant_id: int) -> list[KnowledgeBase]
             KnowledgeBase.status == KnowledgeBaseStatusEnum.READY.value,
             KnowledgeBase.content.is_not(None),
             func.trim(KnowledgeBase.content) != "",
-            KnowledgeBase.description.is_not(None),
-            func.trim(KnowledgeBase.description) != "",
             or_(
                 (
                     (KnowledgeBase.visibility_scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC.value)

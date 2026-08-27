@@ -133,24 +133,40 @@ def test_platform_scope_permissions_remain_unchanged(monkeypatch) -> None:
     assert exc_info.value.detail["code"] == "knowledge_scope_forbidden"
 
 
-def test_save_requires_usage_instruction_with_structured_chinese_error() -> None:
+def test_save_allows_empty_usage_instruction(monkeypatch) -> None:
+    class _Session:
+        def add(self, _record):
+            return None
+
+        def flush(self):
+            return None
+
+        def commit(self):
+            return None
+
+        def refresh(self, _record):
+            return None
+
+    monkeypatch.setattr(knowledge_base_api, "_require_scope_manage", lambda *_args: None)
+    monkeypatch.setattr(knowledge_base_api, "_scope_tenant_id", lambda *_args, **_kwargs: 23)
+
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
             knowledge_base_api.save_knowledge_base(
-                object(),
+                _Session(),
                 _user(tenant_id=23, tenant_role="admin"),
                 BackgroundTasks(),
+                id=None,
                 name="测试知识库",
                 description="  ",
                 active=False,
+                visibility_scope=WORKSPACE_SCOPE.value,
+                tenant_id=23,
+                file=None,
             )
         )
 
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == {
-        "code": "knowledge_usage_instruction_required",
-        "message": "请填写文档使用说明后再保存。",
-    }
+    assert exc_info.value.detail["code"] == "knowledge_file_required"
 
 
 def test_non_ready_document_cannot_be_activated(monkeypatch) -> None:

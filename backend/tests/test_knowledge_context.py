@@ -133,7 +133,7 @@ def test_context_is_tenant_scoped_filtered_sorted_and_xml_escaped() -> None:
     )
 
     assert [item.id for item in context.platform_documents] == [5, 10]
-    assert [item.id for item in context.workspace_documents] == [20, 31]
+    assert [item.id for item in context.workspace_documents] == [20, 31, 52]
     assert "不得泄漏的其他租户正文" not in context.prompt
     assert "未启用" not in context.prompt
     assert "\n  仅租户 23 可见的秘密正文  \n" in context.prompt
@@ -156,7 +156,7 @@ def test_context_is_tenant_scoped_filtered_sorted_and_xml_escaped() -> None:
     assert snapshot["total_chars"] == len(context.prompt)
     assert snapshot["content_sha256"]
     assert "仅租户 23 可见的秘密正文" not in str(snapshot)
-    assert [item["id"] for item in snapshot["workspace_documents"]] == ["20", "31"]
+    assert [item["id"] for item in snapshot["workspace_documents"]] == ["20", "31", "52"]
 
 
 def test_context_capacity_accepts_exact_limit_and_rejects_one_less() -> None:
