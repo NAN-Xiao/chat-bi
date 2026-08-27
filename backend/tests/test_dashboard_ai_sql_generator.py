@@ -1292,6 +1292,87 @@ def test_retention_simultaneous_and_related_property_are_validated() -> None:
     assert ai_sql_generator._retention_sql_result_issues(required_sql, normalized) == []
 
 
+def test_retention_event_aliases_and_filters_keep_event_identity_and_validate_scope() -> None:
+    request = _retention_request(
+        initialEventAlias="新增用户",
+        returnEventAlias="活跃回访",
+        initialEventFilters={
+            "logic": "and",
+            "rules": [{
+                "type": "rule",
+                "field": {
+                    "kind": "tracking-property",
+                    "table": "event",
+                    "field": "channel",
+                    "eventName": "register",
+                },
+                "operator": "eq",
+                "value": "organic",
+            }],
+        },
+        returnEventFilters={
+            "logic": "or",
+            "rules": [{
+                "type": "rule",
+                "field": {
+                    "kind": "tracking-property",
+                    "table": "event",
+                    "field": "platform",
+                    "eventName": "login",
+                },
+                "operator": "eq",
+                "value": "ios",
+            }],
+        },
+    )
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt", "channel", "platform"}},
+    )
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
+        "",
+        "",
+    )
+
+    assert result.success is True
+    assert "不得替换 SQL 事件条件中的 eventName" in prompt
+    assert "必须分别应用于初始事件明细和回访事件明细" in prompt
+
+    invalid_request = _retention_request(
+        returnEventFilters={
+            "logic": "and",
+            "rules": [{
+                "type": "rule",
+                "field": {
+                    "kind": "tracking-property",
+                    "table": "event",
+                    "field": "channel",
+                    "eventName": "register",
+                },
+                "operator": "eq",
+                "value": "organic",
+            }],
+        },
+    )
+    invalid_normalized = ai_sql_generator._normalize_manual_config(invalid_request)
+    invalid_result = ai_sql_generator._deterministic_validate_manual_config(
+        invalid_request,
+        invalid_normalized,
+        ai_sql_generator._build_formula_ir(invalid_normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt", "channel"}},
+    )
+
+    assert invalid_result.success is False
+    assert "回访事件筛选1不属于当前选择的事件。" in invalid_result.issues
+
+
 def test_dashboard_prompt_requires_safe_cte_time_boundaries() -> None:
     """
     是什么：时间边界层必须先独立计算聚合结果，不能把聚合或窗口函数放进同层 WHERE。

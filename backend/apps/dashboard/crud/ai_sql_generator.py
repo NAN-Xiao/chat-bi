@@ -1204,6 +1204,14 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
         table_name = _field_table_name(field)
         if table_name:
             tables.add(table_name)
+    for filter_config in (
+        retention.get("initialEventFilters") or retention.get("initial_event_filters"),
+        retention.get("returnEventFilters") or retention.get("return_event_filters"),
+    ):
+        for field in _iter_filter_rule_fields(filter_config):
+            table_name = _field_table_name(field)
+            if table_name:
+                tables.add(table_name)
     return tables
 
 
@@ -1310,6 +1318,27 @@ def _deterministic_validate_manual_config(
             expected_event_name = _tracking_event_name_from_field(event_field)
             if related_enabled and property_event_name and expected_event_name and property_event_name != expected_event_name:
                 issues.append(f"{label}不属于当前选择的事件。")
+        for filter_config, event_field, label in (
+            (
+                retention.get("initialEventFilters") or retention.get("initial_event_filters"),
+                initial_event,
+                "初始事件筛选",
+            ),
+            (
+                retention.get("returnEventFilters") or retention.get("return_event_filters"),
+                return_event,
+                "回访事件筛选",
+            ),
+        ):
+            expected_event_name = _tracking_event_name_from_field(event_field)
+            for index, filter_field in enumerate(_iter_filter_rule_fields(filter_config)):
+                filter_label = f"{label}{index + 1}"
+                issues.extend(_json_subfield_mapping_issues(filter_field, filter_label))
+                issues.extend(_field_table_permission_issues(filter_field, filter_label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(filter_field, filter_label, allowed_fields_by_table))
+                filter_event_name = _tracking_event_name_from_field(filter_field)
+                if filter_event_name and expected_event_name and filter_event_name != expected_event_name:
+                    issues.append(f"{filter_label}不属于当前选择的事件。")
 
     for index, metric in enumerate(metrics):
         label = str(metric.get("alias") or metric.get("label") or f"分析指标{index + 1}").strip()
@@ -1466,6 +1495,8 @@ def _dashboard_config_prompt(
         retention_rules = [
             "当前 analysisModel=retention，必须严格按 retention.entityField、initialEvent 和 returnEvent 生成 cohort 留存查询。",
             "初始事件定义分母 cohort，回访事件定义后续行为；两个事件都必须使用各自字段对象中的 eventTable、eventNameField 和 eventName，不得猜测事件名。",
+            "initialEventAlias 和 returnEventAlias 只表示用户设置的展示名称，不得替换 SQL 事件条件中的 eventName。",
+            "initialEventFilters 和 returnEventFilters 与指标内筛选使用相同的 logic/rules 结构；必须分别应用于初始事件明细和回访事件明细，不得互换或合并到全局筛选。",
             f"基础结果使用固定 Cohort 宽表，范围为第 0 日到第 {RETENTION_COHORT_DAYS} 日的留存比例：第一列 cohort_date，第二列 cohort_size，后续列为 day_0 到 day_{RETENTION_COHORT_DAYS}。",
             "retention.simultaneous.enabled=true 时，额外按 simultaneous.event 和 simultaneous.aggregation 计算回访用户参与该事件的统计值，并以 simultaneous_value 输出。",
             "retention.relatedProperty.enabled=true 时，初始事件、回访事件以及已启用的同时展示事件必须按各自配置的关联属性值相等进行关联，不得改用同名字段猜测。",
@@ -2082,6 +2113,8 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         response.chart_type = "table"
         response.result_config = {
             "type": "cohort_table",
+            "initial_event_alias": str(retention.get("initialEventAlias") or retention.get("initial_event_alias") or "").strip(),
+            "return_event_alias": str(retention.get("returnEventAlias") or retention.get("return_event_alias") or "").strip(),
             "simultaneous_enabled": simultaneous.get("enabled") is True,
             "related_property_enabled": related_property.get("enabled") is True,
             "related_property_as_group": related_property.get("asGroup") is True,

@@ -142,10 +142,17 @@ type SqlBuilderMetricItem = {
   filters: SqlBuilderFilter[]
 }
 type AnalysisModel = 'event' | 'retention'
+type RetentionEventTarget = 'initial' | 'return'
 type SqlBuilderRetentionConfig = {
   entityField: string
   initialEvent: string
+  initialEventAlias: string
+  initialEventFilterLogic: SqlBuilderFilterLogic
+  initialEventFilters: SqlBuilderFilter[]
   returnEvent: string
+  returnEventAlias: string
+  returnEventFilterLogic: SqlBuilderFilterLogic
+  returnEventFilters: SqlBuilderFilter[]
   simultaneous: {
     enabled: boolean
     event: string
@@ -304,7 +311,13 @@ const sqlBuilder = reactive({
   retention: {
     entityField: '',
     initialEvent: '',
+    initialEventAlias: '',
+    initialEventFilterLogic: 'and',
+    initialEventFilters: [],
     returnEvent: '',
+    returnEventAlias: '',
+    returnEventFilterLogic: 'and',
+    returnEventFilters: [],
     simultaneous: {
       enabled: false,
       event: '',
@@ -318,6 +331,10 @@ const sqlBuilder = reactive({
       asGroup: false,
     },
   } as SqlBuilderRetentionConfig,
+})
+const retentionFilterExpanded = reactive<Record<RetentionEventTarget, boolean>>({
+  initial: false,
+  return: false,
 })
 const builderAgentAdvice = reactive({
   visible: false,
@@ -1842,7 +1859,17 @@ function builderConfigForSave() {
     retention: sqlBuilder.analysisModel === 'retention' ? {
       entityField: sqlBuilder.retention.entityField,
       initialEvent: sqlBuilder.retention.initialEvent,
+      initialEventAlias: sqlBuilder.retention.initialEventAlias.trim(),
+      initialEventFilters: {
+        logic: builderLogic(sqlBuilder.retention.initialEventFilterLogic),
+        rules: compactBuilderFilters(sqlBuilder.retention.initialEventFilters),
+      },
       returnEvent: sqlBuilder.retention.returnEvent,
+      returnEventAlias: sqlBuilder.retention.returnEventAlias.trim(),
+      returnEventFilters: {
+        logic: builderLogic(sqlBuilder.retention.returnEventFilterLogic),
+        rules: compactBuilderFilters(sqlBuilder.retention.returnEventFilters),
+      },
       simultaneous: {
         enabled: sqlBuilder.retention.simultaneous.enabled,
         event: sqlBuilder.retention.simultaneous.enabled ? sqlBuilder.retention.simultaneous.event : '',
@@ -1888,7 +1915,13 @@ function restoreSqlBuilderState(value: any) {
   const retention = value.retention && typeof value.retention === 'object' ? value.retention : {}
   sqlBuilder.retention.entityField = typeof retention.entityField === 'string' ? retention.entityField : ''
   sqlBuilder.retention.initialEvent = typeof retention.initialEvent === 'string' ? retention.initialEvent : ''
+  sqlBuilder.retention.initialEventAlias = typeof retention.initialEventAlias === 'string' ? retention.initialEventAlias : ''
+  sqlBuilder.retention.initialEventFilterLogic = builderLogic(retention.initialEventFilters?.logic)
+  sqlBuilder.retention.initialEventFilters = restoreBuilderFilters(retention.initialEventFilters?.rules)
   sqlBuilder.retention.returnEvent = typeof retention.returnEvent === 'string' ? retention.returnEvent : ''
+  sqlBuilder.retention.returnEventAlias = typeof retention.returnEventAlias === 'string' ? retention.returnEventAlias : ''
+  sqlBuilder.retention.returnEventFilterLogic = builderLogic(retention.returnEventFilters?.logic)
+  sqlBuilder.retention.returnEventFilters = restoreBuilderFilters(retention.returnEventFilters?.rules)
   const simultaneous = retention.simultaneous && typeof retention.simultaneous === 'object' ? retention.simultaneous : {}
   sqlBuilder.retention.simultaneous.enabled = simultaneous.enabled === true
   sqlBuilder.retention.simultaneous.event = sqlBuilder.retention.simultaneous.enabled && typeof simultaneous.event === 'string'
@@ -1974,6 +2007,41 @@ function retentionPropertyOptions(eventValue: string) {
 }
 
 function handleRetentionEventPropertyChange(type: 'initial' | 'return' | 'simultaneous', eventValue: string) {
+  if (type === 'initial') {
+    const previousEventValue = sqlBuilder.retention.initialEvent
+    const hadScopedConfig = Boolean(
+      sqlBuilder.retention.initialEventAlias.trim()
+      || sqlBuilder.retention.initialEventFilters.length
+    )
+    sqlBuilder.retention.initialEvent = eventValue
+    if (previousEventValue !== eventValue) {
+      sqlBuilder.retention.initialEventAlias = ''
+      sqlBuilder.retention.initialEventFilters = []
+      sqlBuilder.retention.initialEventFilterLogic = 'and'
+      retentionFilterExpanded.initial = false
+      if (hadScopedConfig) {
+        ElMessage.warning('初始事件已切换，原重命名和筛选条件已清除。')
+      }
+    }
+  } else if (type === 'return') {
+    const previousEventValue = sqlBuilder.retention.returnEvent
+    const hadScopedConfig = Boolean(
+      sqlBuilder.retention.returnEventAlias.trim()
+      || sqlBuilder.retention.returnEventFilters.length
+    )
+    sqlBuilder.retention.returnEvent = eventValue
+    if (previousEventValue !== eventValue) {
+      sqlBuilder.retention.returnEventAlias = ''
+      sqlBuilder.retention.returnEventFilters = []
+      sqlBuilder.retention.returnEventFilterLogic = 'and'
+      retentionFilterExpanded.return = false
+      if (hadScopedConfig) {
+        ElMessage.warning('回访事件已切换，原重命名和筛选条件已清除。')
+      }
+    }
+  } else {
+    sqlBuilder.retention.simultaneous.event = eventValue
+  }
   const propertyKey = type === 'initial'
     ? 'initialProperty'
     : type === 'return'
@@ -2034,12 +2102,14 @@ function recommendedMetricField(item: SqlBuilderMetricItem, preferredTable = '')
   return current || fieldOptionByValue(item.field)
 }
 
-function metricFilterFieldOptions(item: SqlBuilderMetricItem) {
-  const eventOption = fieldOptionByValue(item.field)
+function eventFilterFieldOptions(eventValue: string) {
+  const eventOption = fieldOptionByValue(eventValue)
+  const eventTable = eventOption?.eventTable || eventOption?.table
   if (
     eventOption?.kind !== 'tracking-event' ||
     !eventOption.eventName ||
-    (eventOption.eventTable || eventOption.table) !== 'event'
+    eventFieldScope.value.status !== 'active' ||
+    eventTable !== eventFieldScope.value.defaultEventTable
   ) {
     return []
   }
@@ -2048,6 +2118,33 @@ function metricFilterFieldOptions(item: SqlBuilderMetricItem) {
     ...eventUserPropertyOptions.value,
   ]
   return Array.from(new Map(options.map((option) => [option.value, option])).values())
+}
+
+function metricFilterFieldOptions(item: SqlBuilderMetricItem) {
+  return eventFilterFieldOptions(item.field)
+}
+
+function retentionEventFilterFieldOptions(target: RetentionEventTarget) {
+  return eventFilterFieldOptions(
+    target === 'initial' ? sqlBuilder.retention.initialEvent : sqlBuilder.retention.returnEvent
+  )
+}
+
+function retentionEventDefaultDisplayName(eventValue: string) {
+  const option = fieldOptionByValue(eventValue)
+  return option?.displayName || option?.label || option?.eventName || '事件名称'
+}
+
+function toggleRetentionEventFilter(target: RetentionEventTarget) {
+  const eventValue = target === 'initial' ? sqlBuilder.retention.initialEvent : sqlBuilder.retention.returnEvent
+  if (!eventValue) return
+  const filters = target === 'initial'
+    ? sqlBuilder.retention.initialEventFilters
+    : sqlBuilder.retention.returnEventFilters
+  if (!retentionFilterExpanded[target] && !filters.length) {
+    filters.push(emptyBuilderFilter())
+  }
+  retentionFilterExpanded[target] = !retentionFilterExpanded[target]
 }
 
 function metricMeasureFieldOptions(item: Pick<SqlBuilderMetricItem, 'field'> & { aggregation?: string }) {
@@ -2334,6 +2431,10 @@ function builderEventScopeIssues() {
       )
     })
   })
+  if (isRetentionAnalysis.value) {
+    appendEventScopeFilterIssues(sqlBuilder.retention.initialEventFilters, 'retention.initial_event_filter', issues)
+    appendEventScopeFilterIssues(sqlBuilder.retention.returnEventFilters, 'retention.return_event_filter', issues)
+  }
   sqlBuilder.groups.forEach((field, index) => appendEventScopeFieldIssue(field, `group[${index}]`, issues))
   appendEventScopeFilterIssues(sqlBuilder.globalFilters, 'global_filter', issues)
   return unique(issues)
@@ -2374,6 +2475,20 @@ function builderFilterScopeIssues() {
       )
     })
   })
+  if (isRetentionAnalysis.value) {
+    appendFilterRangeIssues(
+      sqlBuilder.retention.initialEventFilters,
+      retentionEventFilterFieldOptions('initial'),
+      'retention.initial_event_filter',
+      issues
+    )
+    appendFilterRangeIssues(
+      sqlBuilder.retention.returnEventFilters,
+      retentionEventFilterFieldOptions('return'),
+      'retention.return_event_filter',
+      issues
+    )
+  }
   appendFilterRangeIssues(sqlBuilder.globalFilters, eventUserPropertyOptions.value, 'global_filter', issues)
   return unique(issues)
 }
@@ -2407,7 +2522,15 @@ function builderBlockingScopeIssues() {
 function resetRetentionConfig() {
   sqlBuilder.retention.entityField = ''
   sqlBuilder.retention.initialEvent = ''
+  sqlBuilder.retention.initialEventAlias = ''
+  sqlBuilder.retention.initialEventFilterLogic = 'and'
+  sqlBuilder.retention.initialEventFilters = []
   sqlBuilder.retention.returnEvent = ''
+  sqlBuilder.retention.returnEventAlias = ''
+  sqlBuilder.retention.returnEventFilterLogic = 'and'
+  sqlBuilder.retention.returnEventFilters = []
+  retentionFilterExpanded.initial = false
+  retentionFilterExpanded.return = false
   sqlBuilder.retention.simultaneous.enabled = false
   sqlBuilder.retention.simultaneous.event = ''
   sqlBuilder.retention.simultaneous.aggregation = 'count'
@@ -2445,12 +2568,35 @@ function sanitizeRetentionConfig() {
   }
   if (sqlBuilder.retention.initialEvent && !optionExists(sqlBuilder.retention.initialEvent, retentionEventOptions.value)) {
     sqlBuilder.retention.initialEvent = ''
+    sqlBuilder.retention.initialEventAlias = ''
+    sqlBuilder.retention.initialEventFilters = []
+    sqlBuilder.retention.initialEventFilterLogic = 'and'
+    retentionFilterExpanded.initial = false
     cleared.push('初始事件')
   }
   if (sqlBuilder.retention.returnEvent && !optionExists(sqlBuilder.retention.returnEvent, retentionEventOptions.value)) {
     sqlBuilder.retention.returnEvent = ''
+    sqlBuilder.retention.returnEventAlias = ''
+    sqlBuilder.retention.returnEventFilters = []
+    sqlBuilder.retention.returnEventFilterLogic = 'and'
+    retentionFilterExpanded.return = false
     cleared.push('回访事件')
   }
+  ;([
+    ['initial', sqlBuilder.retention.initialEventFilters, '初始事件筛选条件'],
+    ['return', sqlBuilder.retention.returnEventFilters, '回访事件筛选条件'],
+  ] as const).forEach(([target, filters, label]) => {
+    const allowedOptions = retentionEventFilterFieldOptions(target)
+    const invalidFields = filterFieldValues(filters).filter((field) => !optionExists(field, allowedOptions))
+    if (!invalidFields.length) return
+    if (target === 'initial') {
+      sqlBuilder.retention.initialEventFilters = []
+    } else {
+      sqlBuilder.retention.returnEventFilters = []
+    }
+    retentionFilterExpanded[target] = false
+    cleared.push(label)
+  })
   if (sqlBuilder.retention.simultaneous.event && !optionExists(sqlBuilder.retention.simultaneous.event, retentionEventOptions.value)) {
     sqlBuilder.retention.simultaneous.event = ''
     cleared.push('同时展示事件')
@@ -2598,6 +2744,8 @@ function selectedBuilderFieldValues() {
       sqlBuilder.retention.relatedProperty.initialProperty,
       sqlBuilder.retention.relatedProperty.returnProperty,
       sqlBuilder.retention.relatedProperty.simultaneousProperty,
+      ...filterFieldValues(sqlBuilder.retention.initialEventFilters),
+      ...filterFieldValues(sqlBuilder.retention.returnEventFilters),
     ] : []),
     ...sqlBuilder.metricItems.flatMap((item) => [item.field, item.metric]),
     ...sqlBuilder.calculatedMetrics.flatMap((item) => [item.pendingEventField, item.pendingMetricField]),
@@ -2621,7 +2769,17 @@ function collectBuilderAiContext() {
     retention: sqlBuilder.analysisModel === 'retention' ? {
       entityField: fieldOptionPayload(sqlBuilder.retention.entityField),
       initialEvent: fieldOptionPayload(sqlBuilder.retention.initialEvent),
+      initialEventAlias: sqlBuilder.retention.initialEventAlias.trim(),
+      initialEventFilters: {
+        logic: sqlBuilder.retention.initialEventFilterLogic,
+        rules: filterContext(sqlBuilder.retention.initialEventFilters),
+      },
       returnEvent: fieldOptionPayload(sqlBuilder.retention.returnEvent),
+      returnEventAlias: sqlBuilder.retention.returnEventAlias.trim(),
+      returnEventFilters: {
+        logic: sqlBuilder.retention.returnEventFilterLogic,
+        rules: filterContext(sqlBuilder.retention.returnEventFilters),
+      },
       simultaneous: {
         enabled: sqlBuilder.retention.simultaneous.enabled,
         event: sqlBuilder.retention.simultaneous.enabled
@@ -5662,25 +5820,105 @@ function closeDrawer() {
               <div class="retention-event-stack">
                 <div class="retention-field-block">
                   <span class="retention-config-label">初始事件</span>
-                  <BuilderFieldPicker
-                    v-model="sqlBuilder.retention.initialEvent"
-                    :options="retentionEventOptions"
-                    :loading="schemaLoading"
-                    mode="tracking-event"
-                    placeholder="选择初始事件"
-                    @update:modelValue="handleRetentionEventPropertyChange('initial', $event)"
-                  />
+                  <div class="retention-event-editor">
+                    <div class="retention-event-title-row">
+                      <el-input
+                        v-model="sqlBuilder.retention.initialEventAlias"
+                        class="retention-event-alias-input"
+                        clearable
+                        maxlength="80"
+                        :disabled="!sqlBuilder.retention.initialEvent"
+                        :placeholder="retentionEventDefaultDisplayName(sqlBuilder.retention.initialEvent)"
+                        aria-label="重命名初始事件"
+                        @keydown.stop
+                        @keyup.stop
+                      />
+                      <button
+                        type="button"
+                        class="retention-event-action"
+                        :class="{ 'is-active': retentionFilterExpanded.initial || hasEffectiveBuilderFilters(sqlBuilder.retention.initialEventFilters) }"
+                        title="筛选初始事件"
+                        aria-label="筛选初始事件"
+                        :disabled="!sqlBuilder.retention.initialEvent"
+                        @click="toggleRetentionEventFilter('initial')"
+                      >
+                        <el-icon><Filter /></el-icon>
+                      </button>
+                    </div>
+                    <BuilderFieldPicker
+                      :model-value="sqlBuilder.retention.initialEvent"
+                      :options="retentionEventOptions"
+                      :loading="schemaLoading"
+                      mode="tracking-event"
+                      placeholder="选择初始事件"
+                      @update:modelValue="handleRetentionEventPropertyChange('initial', $event)"
+                    />
+                  </div>
+                  <div v-if="retentionFilterExpanded.initial" class="retention-event-filter-panel">
+                    <BuilderFilterTree
+                      :nodes="sqlBuilder.retention.initialEventFilters"
+                      :logic="sqlBuilder.retention.initialEventFilterLogic"
+                      :field-options="retentionEventFilterFieldOptions('initial')"
+                      :operator-options="builderFilterOperatorOptions"
+                      :schema-loading="schemaLoading"
+                      picker-mode="filter-property"
+                      :filter-property-tabs="['all', 'event', 'user']"
+                      :show-toolbar="true"
+                      empty-text="暂无初始事件筛选"
+                      @update:logic="sqlBuilder.retention.initialEventFilterLogic = $event"
+                    />
+                  </div>
                 </div>
                 <div class="retention-field-block">
                   <span class="retention-config-label">回访事件</span>
-                  <BuilderFieldPicker
-                    v-model="sqlBuilder.retention.returnEvent"
-                    :options="retentionEventOptions"
-                    :loading="schemaLoading"
-                    mode="tracking-event"
-                    placeholder="选择回访事件"
-                    @update:modelValue="handleRetentionEventPropertyChange('return', $event)"
-                  />
+                  <div class="retention-event-editor">
+                    <div class="retention-event-title-row">
+                      <el-input
+                        v-model="sqlBuilder.retention.returnEventAlias"
+                        class="retention-event-alias-input"
+                        clearable
+                        maxlength="80"
+                        :disabled="!sqlBuilder.retention.returnEvent"
+                        :placeholder="retentionEventDefaultDisplayName(sqlBuilder.retention.returnEvent)"
+                        aria-label="重命名回访事件"
+                        @keydown.stop
+                        @keyup.stop
+                      />
+                      <button
+                        type="button"
+                        class="retention-event-action"
+                        :class="{ 'is-active': retentionFilterExpanded.return || hasEffectiveBuilderFilters(sqlBuilder.retention.returnEventFilters) }"
+                        title="筛选回访事件"
+                        aria-label="筛选回访事件"
+                        :disabled="!sqlBuilder.retention.returnEvent"
+                        @click="toggleRetentionEventFilter('return')"
+                      >
+                        <el-icon><Filter /></el-icon>
+                      </button>
+                    </div>
+                    <BuilderFieldPicker
+                      :model-value="sqlBuilder.retention.returnEvent"
+                      :options="retentionEventOptions"
+                      :loading="schemaLoading"
+                      mode="tracking-event"
+                      placeholder="选择回访事件"
+                      @update:modelValue="handleRetentionEventPropertyChange('return', $event)"
+                    />
+                  </div>
+                  <div v-if="retentionFilterExpanded.return" class="retention-event-filter-panel">
+                    <BuilderFilterTree
+                      :nodes="sqlBuilder.retention.returnEventFilters"
+                      :logic="sqlBuilder.retention.returnEventFilterLogic"
+                      :field-options="retentionEventFilterFieldOptions('return')"
+                      :operator-options="builderFilterOperatorOptions"
+                      :schema-loading="schemaLoading"
+                      picker-mode="filter-property"
+                      :filter-property-tabs="['all', 'event', 'user']"
+                      :show-toolbar="true"
+                      empty-text="暂无回访事件筛选"
+                      @update:logic="sqlBuilder.retention.returnEventFilterLogic = $event"
+                    />
+                  </div>
                 </div>
               </div>
               <div class="retention-advanced-options">
@@ -6683,6 +6921,7 @@ function closeDrawer() {
 }
 
 .retention-field-block {
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   display: flex;
@@ -6694,6 +6933,79 @@ function closeDrawer() {
 .retention-field-block :deep(.builder-field-picker-trigger) {
   width: auto;
   max-width: 100%;
+}
+
+.retention-event-editor {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.retention-event-title-row {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+}
+
+.retention-event-alias-input {
+  width: 100%;
+}
+
+.retention-event-alias-input :deep(.ed-input__wrapper),
+.retention-event-alias-input :deep(.el-input__wrapper) {
+  min-height: 28px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.retention-event-alias-input :deep(.ed-input__wrapper:hover),
+.retention-event-alias-input :deep(.ed-input__wrapper.is-focus),
+.retention-event-alias-input :deep(.el-input__wrapper:hover),
+.retention-event-alias-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: inset 0 -1px 0 #2f6bff;
+}
+
+.retention-event-action {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #7b8190;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+
+.retention-event-action:hover,
+.retention-event-action.is-active {
+  background: #eef3ff;
+  color: #2f6bff;
+}
+
+.retention-event-action:disabled {
+  background: transparent;
+  color: #c4c9d2;
+  cursor: not-allowed;
+}
+
+.retention-event-filter-panel {
+  width: 100%;
+  min-width: 0;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid #edf0f5;
 }
 
 .retention-config-label {
