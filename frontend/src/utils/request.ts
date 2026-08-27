@@ -65,6 +65,27 @@ const errorResponseMessage = (data: any) => {
   }
 }
 
+const decodeBlobErrorResponse = async (error: AxiosError) => {
+  const response = error.response
+  const data = response?.data
+  if (!response || typeof Blob === 'undefined' || !(data instanceof Blob)) return
+
+  try {
+    const text = await data.text()
+    if (!text.trim()) {
+      response.data = ''
+      return
+    }
+    try {
+      response.data = JSONBig.parse(text)
+    } catch {
+      response.data = text
+    }
+  } catch {
+    response.data = ''
+  }
+}
+
 const statusErrorMessage = (status?: number) => {
   switch (status) {
     case 400:
@@ -345,6 +366,8 @@ class HttpService {
       async (error: AxiosError) => {
         const config = error.config as FullRequestConfig & { __retryCount?: number }
         const requestOptions = config?.requestOptions || {}
+
+        await decodeBlobErrorResponse(error)
 
         try {
           assertWorkspaceResponseConsumable(config, error.response)
