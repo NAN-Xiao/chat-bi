@@ -82,13 +82,6 @@ const rules = computed(() => ({
       trigger: 'blur',
     },
   ],
-  description: [
-    {
-      required: true,
-      message: t('knowledge_base.description_required'),
-      trigger: 'blur',
-    },
-  ],
 }))
 
 const filteredCards = computed(() => {
@@ -123,18 +116,16 @@ function processStatusText(row: Pick<KnowledgeBaseItem, 'status'> | null) {
 }
 
 function releaseVersionText(
-  row: Pick<KnowledgeBaseItem, 'status' | 'active' | 'description'> | null
+  row: Pick<KnowledgeBaseItem, 'status' | 'active'> | null
 ) {
-  if (!row?.description?.trim()) return t('knowledge_base.usage_instruction_missing')
   if (row?.active === false) return t('knowledge_base.inactive')
   if (row?.status === 'READY') return t('knowledge_base.published')
   return processStatusText(row)
 }
 
 function releaseVersionClass(
-  row: Pick<KnowledgeBaseItem, 'status' | 'active' | 'description'> | null
+  row: Pick<KnowledgeBaseItem, 'status' | 'active'> | null
 ) {
-  if (!row?.description?.trim()) return 'is-error'
   return row?.active !== false && row?.status === 'READY' ? 'is-published' : 'is-unpublished'
 }
 
