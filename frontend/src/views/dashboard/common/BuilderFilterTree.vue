@@ -19,6 +19,7 @@ defineOptions({ name: 'BuilderFilterTree' })
 
 const emits = defineEmits<{
   'update:logic': [value: FilterLogic]
+  'empty': []
 }>()
 
 const props = withDefaults(
@@ -68,6 +69,9 @@ function addRule(target: FilterNode[]) {
 
 function removeNode(target: FilterNode[], index: number) {
   target.splice(index, 1)
+  if (target === props.nodes && target.length === 0) {
+    emits('empty')
+  }
 }
 
 function treeLogic() {

@@ -5941,6 +5941,7 @@ function closeDrawer() {
                       :show-toolbar="true"
                       empty-text="暂无初始事件筛选"
                       @update:logic="sqlBuilder.retention.initialEventFilterLogic = $event"
+                      @empty="retentionFilterExpanded.initial = false"
                     />
                   </div>
                 </div>
@@ -6022,6 +6023,7 @@ function closeDrawer() {
                       :show-toolbar="true"
                       empty-text="暂无回访事件筛选"
                       @update:logic="sqlBuilder.retention.returnEventFilterLogic = $event"
+                      @empty="retentionFilterExpanded.return = false"
                     />
                   </div>
                 </div>

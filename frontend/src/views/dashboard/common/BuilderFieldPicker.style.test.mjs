@@ -32,6 +32,12 @@ assert.match(
   /justify-content:\s*center/,
   '字段选择器箭头需要水平居中'
 )
+assert.match(
+  source,
+  /class="builder-field-picker-arrow"[^>]*>[\s\S]*?<el-icon><ArrowDown\s*\/><\/el-icon>/,
+  '字段选择器应使用标准下拉图标，避免字符字形基线造成视觉偏移'
+)
+assert.doesNotMatch(source, /builder-field-picker-arrow">⌄/, '字段选择器不应继续使用带基线偏移的字符箭头')
 
 assert.match(
   optionsSource,

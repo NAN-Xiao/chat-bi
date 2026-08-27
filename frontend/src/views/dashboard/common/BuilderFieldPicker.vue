@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Search } from '@element-plus/icons-vue'
+import { ArrowDown, Search } from '@element-plus/icons-vue'
 import {
   fieldOptionDisplayName,
   isEventUserPropertyOption,
@@ -311,7 +311,9 @@ watch(
         :disabled="disabled"
       >
         <span>{{ selectedLabel || placeholder }}</span>
-        <span class="builder-field-picker-arrow">⌄</span>
+        <span class="builder-field-picker-arrow" aria-hidden="true">
+          <el-icon><ArrowDown /></el-icon>
+        </span>
       </button>
     </template>
 
@@ -484,8 +486,8 @@ watch(
   justify-content: center;
   flex: 0 0 16px;
   color: #5f687a;
-  font-size: 14px;
-  line-height: 16px;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .builder-field-picker {

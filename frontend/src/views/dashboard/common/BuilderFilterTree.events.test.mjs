@@ -20,3 +20,10 @@ assert.match(
   /@paste\.stop/,
   '筛选值输入框要阻止 paste 冒泡，避免被公式编辑器的 paste.prevent 拦截'
 )
+
+assert.match(source, /'empty': \[\]/, '筛选树需要声明根节点清空事件')
+assert.match(
+  source,
+  /if \(target === props\.nodes && target\.length === 0\) \{\s*emits\('empty'\)/,
+  '删除根级最后一条筛选条件时需要通知使用方收起空面板'
+)
