@@ -1456,7 +1456,12 @@ def _prepare_existing_context(state: SmartQAGraphState) -> dict[str, Any]:
 
         with _session_scope() as session:
             ds_id = service.ds.id if isinstance(service.ds, CoreDatasource) else None
-            service.load_data_skills(session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
+            service.load_data_skills(
+                session,
+                ds_id,
+                CustomPromptTargetScopeEnum.SMART_QA,
+                include_workspace_data_skills=settings.WORKSPACE_DATA_SKILL_SQL_GENERATION_ENABLED,
+            )
             service.filter_custom_prompts(session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
             service.load_knowledge_context(session, surface="smart_qa")
             service.save_agent_context_snapshot(session, CustomPromptTargetScopeEnum.SMART_QA)

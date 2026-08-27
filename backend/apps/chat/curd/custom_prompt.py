@@ -937,6 +937,7 @@ def find_data_skills(
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
         current_user: Any | None = None,
+        include_workspace_data_skills: bool = True,
 ) -> tuple[str, list[str], Optional[int]]:
     """
     是什么：find_data_skills 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -967,6 +968,7 @@ def find_data_skills(
         "disabled_pref": False,
         "can_manage_public": bool(can_manage_public or can_manage_all),
         "can_manage_platform_public": bool(can_manage_platform_public),
+        "include_workspace_data_skills": bool(include_workspace_data_skills),
     }
 
     rows = session.execute(
@@ -991,6 +993,10 @@ def find_data_skills(
                   AND (:can_manage_public OR COALESCE(visible, true) = true)
                 )
                 OR (visibility_scope = :private_scope AND create_by = :current_user_id)
+              )
+              AND (
+                :include_workspace_data_skills
+                OR COALESCE(visibility_scope, :public_scope) <> :public_scope
               )
               {target_scope_condition}
               AND (
@@ -1018,6 +1024,11 @@ def find_data_skills(
             continue
 
         visibility_scope = row.get("visibility_scope") or CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value
+        if (
+            not include_workspace_data_skills
+            and visibility_scope == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value
+        ):
+            continue
         if visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value:
             if current_user_id is None or str(row.get("create_by")) != str(current_user_id):
                 continue

@@ -1820,6 +1820,8 @@ class LLMService:
             _session: Session,
             ds_id: int = None,
             target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
+            *,
+            include_workspace_data_skills: bool = True,
     ):
         """
         是什么：LLMService.filter_data_skills 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
@@ -1857,6 +1859,7 @@ class LLMService:
             can_manage_public=_can_manage_tenant_prompt_runtime(self.current_user),
             can_manage_platform_public=_can_manage_platform_prompt_runtime(self.current_user),
             current_user=self.current_user,
+            include_workspace_data_skills=include_workspace_data_skills,
         )
         self.current_logs[OperationEnum.FILTER_DATA_SKILL] = end_log(session=_session,
                                                                      log=self.current_logs[
@@ -1868,13 +1871,20 @@ class LLMService:
             _session: Session,
             ds_id: int = None,
             target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
+            *,
+            include_workspace_data_skills: bool = True,
     ):
         """
         是什么：LLMService.load_data_skills 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
         谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
         做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
         """
-        self.filter_data_skills(_session, ds_id, target_scope)
+        self.filter_data_skills(
+            _session,
+            ds_id,
+            target_scope,
+            include_workspace_data_skills=include_workspace_data_skills,
+        )
 
     def load_tracking_config(self, _session: Session):
         """
@@ -2299,7 +2309,12 @@ class LLMService:
         if self.ds:
             ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
-            self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
+            self.load_data_skills(
+                _session,
+                ds_id,
+                CustomPromptTargetScopeEnum.SMART_QA,
+                include_workspace_data_skills=settings.WORKSPACE_DATA_SKILL_SQL_GENERATION_ENABLED,
+            )
 
             self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
 
