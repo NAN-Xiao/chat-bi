@@ -80,7 +80,7 @@ EXPECTED_COPY_SNIPPETS = {
 }
 
 EXPECTED_EXISTING_CORE_DB_SNIPPETS = {
-    "backend/common/core/config.py": ['SHUZHI_DB_DB: str = "zhishu_bi"'],
+    "backend/common/core/config.py": ['SHUZHI_DB_DB: str = "zhishu_bi_1.6"'],
     "tools/backend-local.ps1": ['$appSystemDbName = "zhishu_bi"'],
     "tools/stack-local.ps1": ['$appSystemDbName = "zhishu_bi"'],
     "tools/worker-local.ps1": [

@@ -23,7 +23,7 @@ services:
       # Database configuration
       POSTGRES_SERVER: localhost
       POSTGRES_PORT: 5432
-      POSTGRES_DB: shuzhi_bi
+      POSTGRES_DB: zhishu_bi_1.6
       POSTGRES_USER: root
       POSTGRES_PASSWORD: Password123@pg
       # Project basic settings
