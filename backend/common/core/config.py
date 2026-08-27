@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     TENANT_USAGE_QUOTA_ENABLED: bool = True
     TENANT_USAGE_QUOTA_PLAN_LIMITS: str = ""
     MAX_UPLOAD_BYTES: int = 100 * 1024 * 1024
+    KNOWLEDGE_CONTEXT_MAX_CHARS: int = 32768
 
     CACHE_TYPE: Literal["redis", "memory", "none"] = "redis"
     CACHE_REDIS_URL: str | None = None  # Redis 地址示例："redis://[[username]:[password]]@localhost:6379/0"。
@@ -283,6 +284,8 @@ class Settings(BaseSettings):
     # 是否启用SQL查询行数限制，默认值，可被参数配置覆盖
     GENERATE_SQL_QUERY_LIMIT_ENABLED: bool = True
     GENERATE_SQL_QUERY_HISTORY_ROUND_COUNT: int = 3
+    # 暂时屏蔽工作空间级 Data Skill 注入 SQL 生成上下文；平台级和用户私有 Skill 不受影响。
+    WORKSPACE_DATA_SKILL_SQL_GENERATION_ENABLED: bool = False
 
     # 安全配置：是否允许元数据查询（SHOW/DESCRIBE/DESC/EXPLAIN）
     # 默认关闭，防止通过元数据查询泄露数据库结构
@@ -308,6 +311,7 @@ class Settings(BaseSettings):
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'GENERATE_SQL_QUERY_LIMIT_ENABLED',
+                     'WORKSPACE_DATA_SKILL_SQL_GENERATION_ENABLED',
                      'MCP_ENABLED',
                      'PARSE_REASONING_BLOCK_ENABLED',
                      'PG_POOL_PRE_PING',

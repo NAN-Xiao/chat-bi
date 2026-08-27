@@ -31,6 +31,7 @@ from apps.datasource.crud.sql_engine_executor import (
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import get_sqlglot_dialect
 from apps.system.crud.tracking_config import find_tracking_prompt_context
+from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
 
 
@@ -122,6 +123,7 @@ class BusinessSqlContextService:
         can_manage_all: bool = False,
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
+        include_workspace_data_skills: bool | None = None,
     ) -> BusinessSqlContext:
         """
         是什么：构建 Agent 生成 SQL 需要的唯一业务库上下文。
@@ -134,6 +136,8 @@ class BusinessSqlContextService:
             raise HTTPException(status_code=403, detail=f"当前用户无权访问项目 {datasource_id}")
         datasource_type = getattr(datasource, "type", None) or getattr(datasource, "type_name", None)
         sql_dialect = get_sqlglot_dialect(datasource_type)
+        if include_workspace_data_skills is None:
+            include_workspace_data_skills = settings.WORKSPACE_DATA_SKILL_SQL_GENERATION_ENABLED
 
         data_skill, skill_list, skill_model_id = find_data_skills(
             session,
@@ -148,6 +152,7 @@ class BusinessSqlContextService:
             can_manage_public=can_manage_public,
             can_manage_platform_public=can_manage_platform_public,
             current_user=current_user,
+            include_workspace_data_skills=include_workspace_data_skills,
         )
         schema, allowed_tables = get_ai_table_schema(
             session=session,

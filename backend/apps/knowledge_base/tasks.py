@@ -3,6 +3,7 @@
 """
 from __future__ import annotations
 
+import logging
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +16,9 @@ from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseStatusEnum
 from common.core.db import engine
 from common.core.task_queue import current_task_tenant_id, task_handler
 from common.utils.file_utils import AppFileUtils
+
+logger = logging.getLogger(__name__)
+KNOWLEDGE_PROCESS_FAILED_MESSAGE = "文档处理失败，请确认文件格式和内容后重试。"
 
 
 def _decode_markdown(path: Path) -> str:
@@ -69,7 +73,7 @@ def _decode_docx(path: Path) -> str:
         try:
             document_xml = archive.read("word/document.xml")
         except KeyError as exc:
-            raise ValueError("Word document is missing word/document.xml") from exc
+            raise ValueError("Word 文档结构无效，缺少正文内容。") from exc
 
     root = ET.fromstring(document_xml)
     paragraphs = [
@@ -87,10 +91,10 @@ def _extract_content(record: KnowledgeBase) -> str:
     做了什么：把后端业务的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if not record.file_id:
-        raise ValueError("Knowledge base file is missing")
+        raise ValueError("知识库源文件不存在。")
     path = Path(AppFileUtils.get_file_path(record.file_id))
     if not path.exists():
-        raise ValueError("Knowledge base file does not exist")
+        raise ValueError("知识库源文件不存在。")
 
     ext = (record.file_ext or path.suffix or "").lower()
     if ext in {".md", ".markdown"}:
@@ -98,9 +102,9 @@ def _extract_content(record: KnowledgeBase) -> str:
     elif ext == ".docx":
         content = _decode_docx(path)
     else:
-        raise ValueError(f"Unsupported file type: {ext}")
+        raise ValueError(f"不支持的知识库文件类型：{ext or '未知类型'}。")
     if not content:
-        raise ValueError("Document content is empty")
+        raise ValueError("文档正文为空，无法处理。")
     return content
 
 
@@ -121,6 +125,7 @@ def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
 
         now = datetime.now()
         record.status = KnowledgeBaseStatusEnum.PROCESSING
+        record.active = False
         record.error_message = None
         record.update_time = now
         session.add(record)
@@ -133,8 +138,20 @@ def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
             record.status = KnowledgeBaseStatusEnum.READY
             record.error_message = None
         except Exception as exc:
+            logger.exception(
+                "Knowledge base document processing failed: id=%s tenant_id=%s",
+                record_id,
+                tenant_id,
+            )
             record.status = KnowledgeBaseStatusEnum.FAILED
-            record.error_message = str(exc)[:1000]
+            message = str(exc).strip()
+            record.error_message = (
+                message[:1000]
+                if isinstance(exc, ValueError)
+                and message
+                and any("\u4e00" <= char <= "\u9fff" for char in message)
+                else KNOWLEDGE_PROCESS_FAILED_MESSAGE
+            )
         record.update_time = datetime.now()
         session.add(record)
         session.commit()

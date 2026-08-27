@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
-import { Download, Search, UploadFilled } from '@element-plus/icons-vue'
+import { Download, Search, Upload, UploadFilled } from '@element-plus/icons-vue'
 import type { UploadFile, UploadProps, UploadRawFile } from 'element-plus'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
@@ -10,6 +10,7 @@ import {
   knowledgeBaseApi,
   type KnowledgeBaseItem,
   type KnowledgeBaseScope,
+  type KnowledgeBaseStatus,
 } from '@/api/knowledgeBase'
 import { formatTimestamp } from '@/utils/date'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
@@ -28,7 +29,7 @@ const drawerVisible = ref(false)
 const detailVisible = ref(false)
 const drawerTitle = ref('')
 const selectedCard = ref<KnowledgeBaseItem | null>(null)
-const selectedTenantId = ref<number | string | ''>('')
+const selectedTenantId = ref<string>('')
 const loading = ref(false)
 const saving = ref(false)
 const uploadFileName = ref('')
@@ -54,7 +55,7 @@ const showWorkspaceSelector = computed(
 const workspaceTenants = computed(() =>
   userStore.tenants.filter((tenant) => tenant.status === undefined || Number(tenant.status) === 1)
 )
-const selectedWorkspaceTenantId = computed<number | string | undefined>(() =>
+const selectedWorkspaceTenantId = computed<string | undefined>(() =>
   showWorkspaceSelector.value && selectedTenantId.value !== '' ? selectedTenantId.value : undefined
 )
 const canManageScope = computed(() => {
@@ -67,7 +68,8 @@ const defaultForm = {
   id: null as number | string | null,
   name: '',
   description: '',
-  active: true,
+  active: false,
+  status: null as KnowledgeBaseStatus | null,
 }
 
 const form = ref(cloneDeep(defaultForm))
@@ -113,13 +115,17 @@ function processStatusText(row: Pick<KnowledgeBaseItem, 'status'> | null) {
   return t('knowledge_base.process_pending')
 }
 
-function releaseVersionText(row: Pick<KnowledgeBaseItem, 'status' | 'active'> | null) {
+function releaseVersionText(
+  row: Pick<KnowledgeBaseItem, 'status' | 'active'> | null
+) {
   if (row?.active === false) return t('knowledge_base.inactive')
   if (row?.status === 'READY') return t('knowledge_base.published')
   return processStatusText(row)
 }
 
-function releaseVersionClass(row: Pick<KnowledgeBaseItem, 'status' | 'active'> | null) {
+function releaseVersionClass(
+  row: Pick<KnowledgeBaseItem, 'status' | 'active'> | null
+) {
   return row?.active !== false && row?.status === 'READY' ? 'is-published' : 'is-unpublished'
 }
 
@@ -189,11 +195,17 @@ function openEditCard(row: KnowledgeBaseItem) {
     name: row.name,
     description: row.description || '',
     active: row.active,
+    status: row.status,
   }
   drawerTitle.value = t('knowledge_base.edit_knowledge_base')
   uploadFileName.value = row.file_name || ''
   pendingFile.value = null
   drawerVisible.value = true
+}
+
+function openReplaceCard(row: KnowledgeBaseItem) {
+  openEditCard(row)
+  drawerTitle.value = t('knowledge_base.replace_document')
 }
 
 function closeForm() {
@@ -223,6 +235,8 @@ const beforeKnowledgeUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFi
 
   pendingFile.value = rawFile
   uploadFileName.value = rawFile.name
+  form.value.active = false
+  form.value.status = 'PENDING'
   setNameFromFile(rawFile)
   ElMessage.success(t('knowledge_base.upload_selected'))
   return false
@@ -329,8 +343,12 @@ watch(
     const currentTenant = workspaceTenants.value.find(
       (tenant) => String(tenant.id) === String(selectedTenantId.value)
     )
-    const nextTenantId = currentTenant?.id ?? workspaceTenants.value[0]?.id ?? ''
-    if (String(nextTenantId) === String(selectedTenantId.value)) {
+    const nextTenantId = currentTenant
+      ? String(currentTenant.id)
+      : workspaceTenants.value[0]
+        ? String(workspaceTenants.value[0].id)
+        : ''
+    if (nextTenantId === selectedTenantId.value) {
       await loadCards()
     } else {
       selectedTenantId.value = nextTenantId
@@ -381,7 +399,7 @@ onBeforeUnmount(() => {
             v-for="tenant in workspaceTenants"
             :key="String(tenant.id)"
             :label="tenant.name"
-            :value="tenant.id"
+            :value="String(tenant.id)"
           />
         </el-select>
         <el-button v-if="canManageScope" type="primary" @click="openCreateCard">
@@ -421,7 +439,7 @@ onBeforeUnmount(() => {
           <el-table-column :label="t('knowledge_base.updated_at')" width="220">
             <template #default="{ row }">{{ formatCardTime(row.update_time) }}</template>
           </el-table-column>
-          <el-table-column fixed="right" :label="t('ds.actions')" width="210">
+          <el-table-column fixed="right" :label="t('ds.actions')" width="280">
             <template #default="{ row }">
               <div class="table-actions">
                 <el-button link type="primary" @click="openDetail(row)">{{
@@ -430,6 +448,14 @@ onBeforeUnmount(() => {
                 <el-button link type="primary" :disabled="!row.file_id" @click="downloadCard(row)">
                   <el-icon><Download /></el-icon>
                   {{ t('knowledge_base.download') }}
+                </el-button>
+                <el-button v-if="row.can_manage" link type="primary" @click="openReplaceCard(row)">
+                  <el-icon><Upload /></el-icon>
+                  {{ t('knowledge_base.replace_document') }}
+                </el-button>
+                <el-button v-if="row.can_manage" link type="danger" @click="deleteCard(row)">
+                  <el-icon><IconOpeDelete /></el-icon>
+                  {{ t('dashboard.delete') }}
                 </el-button>
                 <el-popover
                   v-if="row.can_manage"
@@ -444,10 +470,6 @@ onBeforeUnmount(() => {
                     <div class="item" @click="openEditCard(row)">
                       <el-icon size="16"><IconOpeEdit /></el-icon>
                       {{ t('datasource.edit') }}
-                    </div>
-                    <div class="item" @click="deleteCard(row)">
-                      <el-icon size="16"><IconOpeDelete /></el-icon>
-                      {{ t('dashboard.delete') }}
                     </div>
                   </div>
                 </el-popover>
@@ -489,6 +511,7 @@ onBeforeUnmount(() => {
         <el-form-item prop="active" :label="t('knowledge_base.status')">
           <el-switch
             v-model="form.active"
+            :disabled="form.status !== 'READY' || Boolean(pendingFile)"
             :active-text="t('knowledge_base.active')"
             :inactive-text="t('knowledge_base.inactive')"
           />
@@ -503,7 +526,11 @@ onBeforeUnmount(() => {
         </el-form-item>
         <el-form-item :label="t('knowledge_base.document_content')">
           <div class="knowledge-upload-source">
-            <div class="upload-source-title">{{ t('knowledge_base.upload_source') }}</div>
+            <div class="upload-source-title">
+              {{
+                form.id ? t('knowledge_base.replace_document') : t('knowledge_base.upload_source')
+              }}
+            </div>
             <el-upload
               class="knowledge-upload"
               drag
@@ -729,6 +756,12 @@ onBeforeUnmount(() => {
     color: #667085;
     background: #f5f7fa;
     border-color: #d0d5dd;
+  }
+
+  .release-tag.is-error {
+    color: #d92d20;
+    background: #fef3f2;
+    border-color: #fecdca;
   }
 
   .table-actions {

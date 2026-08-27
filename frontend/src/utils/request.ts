@@ -55,12 +55,34 @@ const errorResponseMessage = (data: any) => {
   if (!data) return ''
   if (typeof data === 'string') return normalizeErrorText(data)
   if (typeof data?.detail === 'string') return normalizeErrorText(data.detail)
+  if (typeof data?.detail?.message === 'string') return normalizeErrorText(data.detail.message)
   if (typeof data?.message === 'string') return normalizeErrorText(data.message)
   if (typeof data?.msg === 'string') return normalizeErrorText(data.msg)
   try {
     return normalizeErrorText(JSON.stringify(data))
   } catch {
     return normalizeErrorText(String(data))
+  }
+}
+
+const decodeBlobErrorResponse = async (error: AxiosError) => {
+  const response = error.response
+  const data = response?.data
+  if (!response || typeof Blob === 'undefined' || !(data instanceof Blob)) return
+
+  try {
+    const text = await data.text()
+    if (!text.trim()) {
+      response.data = ''
+      return
+    }
+    try {
+      response.data = JSONBig.parse(text)
+    } catch {
+      response.data = text
+    }
+  } catch {
+    response.data = ''
   }
 }
 
@@ -344,6 +366,8 @@ class HttpService {
       async (error: AxiosError) => {
         const config = error.config as FullRequestConfig & { __retryCount?: number }
         const requestOptions = config?.requestOptions || {}
+
+        await decodeBlobErrorResponse(error)
 
         try {
           assertWorkspaceResponseConsumable(config, error.response)

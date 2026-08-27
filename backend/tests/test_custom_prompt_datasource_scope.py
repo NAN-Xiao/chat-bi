@@ -100,6 +100,33 @@ def _required_tables_skill_prompt() -> str:
 当天实时事件选表规则'''
 
 
+def test_find_data_skills_can_temporarily_exclude_workspace_skills() -> None:
+    workspace_skill = _skill_row(
+        skill_id=1,
+        name="工作空间口径",
+        visibility_scope="ADMIN_PUBLIC",
+    )
+    platform_skill = _skill_row(
+        skill_id=2,
+        name="平台通用规则",
+        visibility_scope="PLATFORM_PUBLIC",
+    )
+
+    skill_text, skill_list, _ = find_data_skills(
+        _FakeSession([workspace_skill, platform_skill]),
+        datasource=7,
+        tenant_id=10,
+        current_user_id=1,
+        current_user=object(),
+        question="查看收入",
+        include_workspace_data_skills=False,
+    )
+
+    assert "工作空间口径 prompt" not in skill_text
+    assert "平台通用规则 prompt" in skill_text
+    assert [item.split("\n", 1)[0] for item in skill_list] == ["名称：平台通用规则"]
+
+
 def test_find_data_skills_excludes_platform_skill_when_required_table_is_missing(
     monkeypatch,
 ) -> None:

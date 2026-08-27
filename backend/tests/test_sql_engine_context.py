@@ -42,7 +42,15 @@ def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monk
         return "【Schema】\n# Table: event\n[(event_name:text)]\n", ["event"]
 
     def _skills(*args, **kwargs):
-        calls.append(("skills", args[1], args[2], kwargs.get("question")))
+        calls.append(
+            (
+                "skills",
+                args[1],
+                args[2],
+                kwargs.get("question"),
+                kwargs.get("include_workspace_data_skills"),
+            )
+        )
         return "<Data-Skills>口径</Data-Skills>", ["口径"], 99
 
     def _tracking(_session, tenant_id, datasource_id, **kwargs):
@@ -87,7 +95,7 @@ def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monk
     assert snapshot["tracking_warnings"] == ["ok"]
     assert snapshot["data_skill_count"] == 1
     assert calls == [
-        ("skills", 1, CustomPromptTargetScopeEnum.SMART_QA, "看登录人数"),
+        ("skills", 1, CustomPromptTargetScopeEnum.SMART_QA, "看登录人数", False),
         ("schema", 1, "看登录人数", "<Data-Skills>口径</Data-Skills>", 2001),
         ("tracking", 2001, 1, "postgresql", "看登录人数", "<Data-Skills>口径</Data-Skills>"),
     ]

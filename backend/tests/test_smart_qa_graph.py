@@ -308,6 +308,10 @@ class FakeSmartQAService:
         """
         pass
 
+    def load_knowledge_context(self, *args, **kwargs):
+        """Provide the explicit empty knowledge context used by graph tests."""
+        self.chat_question.knowledge_context = ""
+
     def init_messages(self, *args, **kwargs):
         """
         是什么：FakeSmartQAService.init_messages 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。

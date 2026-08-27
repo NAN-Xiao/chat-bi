@@ -7,11 +7,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from sqlalchemy import desc, or_
 from sqlmodel import select
 
+from apps.knowledge_base.context import KnowledgeContextError, build_knowledge_context
 from apps.knowledge_base.models import (
     KnowledgeBase,
     KnowledgeBaseItem,
@@ -39,6 +48,19 @@ ALLOWED_EXTENSIONS = {".md", ".markdown", ".docx"}
 KNOWLEDGE_FILE_MAX_BYTES = 50 * 1024 * 1024
 
 
+def _knowledge_http_error(
+    status_code: int,
+    code: str,
+    message: str,
+    *,
+    details: dict | None = None,
+) -> HTTPException:
+    detail = {"code": code, "message": message}
+    if details:
+        detail["details"] = details
+    return HTTPException(status_code=status_code, detail=detail)
+
+
 def _now() -> datetime:
     """
     是什么：_now 是一个可以复用的小步骤，负责后端业务相关的一件事。
@@ -57,7 +79,7 @@ def _parse_scope(value: Optional[str]) -> KnowledgeBaseVisibilityScopeEnum:
     try:
         return KnowledgeBaseVisibilityScopeEnum(value or KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Unsupported knowledge base visibility scope") from exc
+        raise _knowledge_http_error(400, "knowledge_scope_invalid", "不支持该知识库范围。") from exc
 
 
 def _is_global_platform_admin(current_user: CurrentUser) -> bool:
@@ -94,20 +116,36 @@ def _scope_tenant_id(
     """
     if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
         if requested_tenant_id is not None and int(requested_tenant_id) != DEFAULT_TENANT_ID:
-            raise HTTPException(status_code=400, detail="平台知识库不支持指定工作空间")
+            raise _knowledge_http_error(
+                400,
+                "knowledge_scope_invalid",
+                "平台知识库不支持指定工作空间。",
+            )
         return DEFAULT_TENANT_ID
 
     if _is_global_platform_admin(current_user):
         if requested_tenant_id is None:
-            raise HTTPException(status_code=400, detail="请选择工作空间")
+            raise _knowledge_http_error(
+                400,
+                "knowledge_workspace_context_missing",
+                "请选择工作空间后再管理工作空间知识库。",
+            )
         tenant_id = int(requested_tenant_id)
         if not get_active_tenant(session, tenant_id):
-            raise HTTPException(status_code=404, detail="工作空间不存在或已停用")
+            raise _knowledge_http_error(
+                404,
+                "knowledge_workspace_not_found",
+                "工作空间不存在或已停用。",
+            )
         return tenant_id
 
     tenant_id = require_current_tenant_id(current_user)
     if requested_tenant_id is not None and int(requested_tenant_id) != tenant_id:
-        raise HTTPException(status_code=403, detail="无权访问其他工作空间的知识库")
+        raise _knowledge_http_error(
+            403,
+            "knowledge_scope_forbidden",
+            "无权访问其他工作空间的知识库。",
+        )
     return tenant_id
 
 
@@ -119,11 +157,19 @@ def _require_scope_manage(current_user: CurrentUser, scope: KnowledgeBaseVisibil
     """
     if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
         if not _is_global_platform_admin(current_user):
-            raise HTTPException(status_code=403, detail="仅 SaaS 管理员可以维护 SaaS 知识库")
+            raise _knowledge_http_error(
+                403,
+                "knowledge_scope_forbidden",
+                "仅 SaaS 管理员可以维护 SaaS 知识库。",
+            )
         return
     if scope == KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC:
         if not _can_manage_workspace_public(current_user):
-            raise HTTPException(status_code=403, detail="Only workspace admin can maintain workspace knowledge base")
+            raise _knowledge_http_error(
+                403,
+                "knowledge_scope_forbidden",
+                "只有工作空间管理员可以维护工作空间知识库。",
+            )
 
 
 def _require_record_manage(
@@ -138,7 +184,7 @@ def _require_record_manage(
     """
     scope = _parse_scope(record.visibility_scope)
     if int(record.tenant_id) != scope_tenant_id:
-        raise HTTPException(status_code=404, detail="Knowledge base not found")
+        raise _knowledge_http_error(404, "knowledge_not_found", "知识库不存在。")
     _require_scope_manage(current_user, scope)
 
 
@@ -258,7 +304,7 @@ async def save_knowledge_base(
     id: Optional[int] = Form(None),
     name: str = Form(...),
     description: str = Form(""),
-    active: bool = Form(True),
+    active: bool = Form(False),
     visibility_scope: str = Form(KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value),
     tenant_id: Optional[int] = Form(None),
     file: Optional[UploadFile] = File(None),
@@ -270,7 +316,14 @@ async def save_knowledge_base(
     """
     clean_name = name.strip()
     if not clean_name:
-        raise HTTPException(status_code=400, detail="Knowledge base name is required")
+        raise _knowledge_http_error(400, "knowledge_name_required", "请输入知识库名称。")
+    clean_description = description.strip()
+    if active and file is not None:
+        raise _knowledge_http_error(
+            400,
+            "knowledge_content_not_ready",
+            "新建或更换文档时请先停用知识库，待文档处理完成后再启用。",
+        )
 
     requested_scope = _parse_scope(visibility_scope)
     now = _now()
@@ -279,21 +332,21 @@ async def save_knowledge_base(
     if id:
         record = session.get(KnowledgeBase, int(id))
         if not record:
-            raise HTTPException(status_code=404, detail="Knowledge base not found")
+            raise _knowledge_http_error(404, "knowledge_not_found", "知识库不存在。")
         scope = _parse_scope(record.visibility_scope)
         scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
         _require_record_manage(current_user, record, scope_tenant_id)
     else:
         _require_scope_manage(current_user, requested_scope)
         if file is None:
-            raise HTTPException(status_code=400, detail="Knowledge base file is required")
+            raise _knowledge_http_error(400, "knowledge_file_required", "请先选择知识库文档。")
         scope = requested_scope
         scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
         record = KnowledgeBase(
             tenant_id=scope_tenant_id,
             create_by=int(current_user.id),
             name=clean_name,
-            description=description.strip(),
+            description=clean_description,
             active=active,
             visibility_scope=scope,
             status=KnowledgeBaseStatusEnum.PENDING,
@@ -302,23 +355,50 @@ async def save_knowledge_base(
         )
 
     record.name = clean_name
-    record.description = description.strip()
+    record.description = clean_description
     record.active = active
     record.update_time = now
 
     if file is not None:
         old_file_id = record.file_id
         file_id, file_name, file_ext = await _save_upload(file)
+        record.content = None
         record.file_id = file_id
         record.file_name = file_name
         record.file_ext = file_ext
         record.status = KnowledgeBaseStatusEnum.PENDING
+        record.active = False
         record.error_message = None
         record.task_id = None
         if old_file_id and old_file_id != file_id:
             AppFileUtils.delete_file(old_file_id)
 
+    if record.active:
+        if record.status != KnowledgeBaseStatusEnum.READY and record.status != KnowledgeBaseStatusEnum.READY.value:
+            raise _knowledge_http_error(
+                400,
+                "knowledge_content_not_ready",
+                "文档尚未处理完成，请检查处理状态后重试。",
+            )
+        if not (record.content or "").strip():
+            raise _knowledge_http_error(
+                400,
+                "knowledge_content_not_ready",
+                "文档正文为空，无法启用知识库。",
+            )
+
     session.add(record)
+    session.flush()
+    if record.active:
+        try:
+            build_knowledge_context(
+                session,
+                tenant_id=int(record.tenant_id),
+                surface="knowledge_base_activation",
+            )
+        except KnowledgeContextError as exc:
+            session.rollback()
+            raise _knowledge_http_error(400, exc.code, exc.message, details=exc.details) from exc
     session.commit()
     session.refresh(record)
 
@@ -357,16 +437,16 @@ async def download_knowledge_base_file(
     """Download the source document after applying the same scope checks as management."""
     record = session.get(KnowledgeBase, int(id))
     if not record:
-        raise HTTPException(status_code=404, detail="Knowledge base not found")
+        raise _knowledge_http_error(404, "knowledge_not_found", "知识库不存在。")
     scope = _parse_scope(record.visibility_scope)
     scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
     if int(record.tenant_id) != scope_tenant_id:
-        raise HTTPException(status_code=404, detail="Knowledge base not found")
+        raise _knowledge_http_error(404, "knowledge_not_found", "知识库不存在。")
     if not record.file_id:
-        raise HTTPException(status_code=404, detail="Knowledge base file not found")
+        raise _knowledge_http_error(404, "knowledge_file_not_found", "知识库源文件不存在。")
     file_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, record.file_id)
     if not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Knowledge base file not found")
+        raise _knowledge_http_error(404, "knowledge_file_not_found", "知识库源文件不存在。")
     return FileResponse(
         path=file_path,
         filename=record.file_name or record.file_id,
@@ -388,7 +468,7 @@ async def delete_knowledge_base(
     """
     record = session.get(KnowledgeBase, int(id))
     if not record:
-        raise HTTPException(status_code=404, detail="Knowledge base not found")
+        raise _knowledge_http_error(404, "knowledge_not_found", "知识库不存在。")
     scope = _parse_scope(record.visibility_scope)
     scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
     _require_record_manage(current_user, record, scope_tenant_id)

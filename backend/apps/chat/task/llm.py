@@ -82,6 +82,11 @@ from apps.datasource.crud.sql_engine import (
 )
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
+from apps.knowledge_base.context import (
+    KNOWLEDGE_CONTEXT_SYSTEM_RULES,
+    KnowledgeContext,
+    build_knowledge_context,
+)
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
@@ -1423,6 +1428,7 @@ class LLMService:
     chunk_list: List[str]
     future: Future
     business_sql_context: Optional[BusinessSqlContext] = None
+    knowledge_context: Optional[KnowledgeContext] = None
 
     trans: I18nHelper = None
 
@@ -1452,6 +1458,7 @@ class LLMService:
 
         self.table_name_list = []
         self.business_sql_context = None
+        self.knowledge_context = None
         self.chat_date_pivot = None
 
         chat_id = chat_question.chat_id
@@ -1644,6 +1651,12 @@ class LLMService:
         if _system_templates.get('data_skill'):
             self.sql_message.append(HumanPromptMessage(content=_system_templates['data_skill']))
             self.sql_message.append(AIPromptMessage(content='我已确认您提供的数据 Skill，我会优先参考其中的业务口径与查询范式。'))
+        if self.chat_question.knowledge_context:
+            self.sql_message.append(SystemPromptMessage(content=KNOWLEDGE_CONTEXT_SYSTEM_RULES))
+            self.sql_message.append(HumanPromptMessage(content=self.chat_question.knowledge_context))
+            self.sql_message.append(
+                AIPromptMessage(content='我已确认当前平台和工作空间知识；我只会把它们作为业务背景参考。')
+            )
         if not self.dashboard_date_filter_enabled:
             self.sql_message.append(HumanPromptMessage(content=DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE))
             self.sql_message.append(
@@ -1728,6 +1741,9 @@ class LLMService:
             ai_model_name=self.chat_question.ai_modal_name,
             target_scope=target_scope.value if target_scope else None,
             business_context=self.business_sql_context.snapshot_metadata() if self.business_sql_context else None,
+            knowledge_context=(
+                self.knowledge_context.snapshot_metadata() if self.knowledge_context else None
+            ),
         )
         save_agent_context_snapshot(session, self.record.id, snapshot)
 
@@ -1804,6 +1820,8 @@ class LLMService:
             _session: Session,
             ds_id: int = None,
             target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
+            *,
+            include_workspace_data_skills: bool = True,
     ):
         """
         是什么：LLMService.filter_data_skills 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
@@ -1841,6 +1859,7 @@ class LLMService:
             can_manage_public=_can_manage_tenant_prompt_runtime(self.current_user),
             can_manage_platform_public=_can_manage_platform_prompt_runtime(self.current_user),
             current_user=self.current_user,
+            include_workspace_data_skills=include_workspace_data_skills,
         )
         self.current_logs[OperationEnum.FILTER_DATA_SKILL] = end_log(session=_session,
                                                                      log=self.current_logs[
@@ -1852,13 +1871,20 @@ class LLMService:
             _session: Session,
             ds_id: int = None,
             target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
+            *,
+            include_workspace_data_skills: bool = True,
     ):
         """
         是什么：LLMService.load_data_skills 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
         谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
         做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
         """
-        self.filter_data_skills(_session, ds_id, target_scope)
+        self.filter_data_skills(
+            _session,
+            ds_id,
+            target_scope,
+            include_workspace_data_skills=include_workspace_data_skills,
+        )
 
     def load_tracking_config(self, _session: Session):
         """
@@ -1879,6 +1905,22 @@ class LLMService:
             question=self.chat_question.question,
             data_skill_text=self.chat_question.data_skill,
         )
+
+    def load_knowledge_context(self, _session: Session, *, surface: str) -> KnowledgeContext:
+        """Load the platform and current-workspace knowledge shared by assistant calls."""
+        tenant_id = require_current_tenant_id(self.current_user)
+        datasource_id = getattr(self.ds, "id", None) if isinstance(self.ds, CoreDatasource) else None
+        if self.knowledge_context is not None and self.knowledge_context.surface == surface:
+            self.chat_question.knowledge_context = self.knowledge_context.prompt
+            return self.knowledge_context
+        self.knowledge_context = build_knowledge_context(
+            _session,
+            tenant_id=tenant_id,
+            surface=surface,
+            datasource_id=int(datasource_id) if datasource_id is not None else None,
+        )
+        self.chat_question.knowledge_context = self.knowledge_context.prompt
+        return self.knowledge_context
 
     def load_business_sql_context(
             self,
@@ -1966,6 +2008,8 @@ class LLMService:
         self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
         self.load_tracking_config(_session)
 
+        self.load_knowledge_context(_session, surface="smart_qa_analysis")
+
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.ANALYSIS, ds_id)
 
         self.save_agent_context_snapshot(
@@ -1975,6 +2019,9 @@ class LLMService:
         )
 
         analysis_msg.append(SystemPromptMessage(content=self.chat_question.analysis_sys_question()))
+        if self.chat_question.knowledge_context:
+            analysis_msg.append(SystemPromptMessage(content=KNOWLEDGE_CONTEXT_SYSTEM_RULES))
+            analysis_msg.append(HumanPromptMessage(content=self.chat_question.knowledge_context))
         analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
 
         self.current_logs[OperationEnum.ANALYSIS] = start_log(session=_session,
@@ -2020,6 +2067,8 @@ class LLMService:
         self.load_business_sql_context(_session, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
         self.filter_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
         self.load_tracking_config(_session)
+
+        self.load_knowledge_context(_session, surface="smart_qa_prediction")
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.PREDICT_DATA, ds_id)
 
         self.save_agent_context_snapshot(
@@ -2030,6 +2079,9 @@ class LLMService:
 
         predict_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         predict_msg.append(SystemPromptMessage(content=self.chat_question.predict_sys_question()))
+        if self.chat_question.knowledge_context:
+            predict_msg.append(SystemPromptMessage(content=KNOWLEDGE_CONTEXT_SYSTEM_RULES))
+            predict_msg.append(HumanPromptMessage(content=self.chat_question.knowledge_context))
         predict_msg.append(HumanMessage(content=self.chat_question.predict_user_question()))
 
         self.current_logs[OperationEnum.PREDICT_DATA] = start_log(session=_session,
@@ -2257,9 +2309,16 @@ class LLMService:
         if self.ds:
             ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
-            self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
+            self.load_data_skills(
+                _session,
+                ds_id,
+                CustomPromptTargetScopeEnum.SMART_QA,
+                include_workspace_data_skills=settings.WORKSPACE_DATA_SKILL_SQL_GENERATION_ENABLED,
+            )
 
             self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
+
+            self.load_knowledge_context(_session, surface="smart_qa")
 
             self.save_agent_context_snapshot(_session, CustomPromptTargetScopeEnum.SMART_QA)
 
