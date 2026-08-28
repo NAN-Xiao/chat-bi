@@ -6977,25 +6977,33 @@ function closeDrawer() {
   width: 220px;
 }
 
-.analysis-model-row,
-.retention-heading-row {
+.analysis-model-row {
   display: flex;
   align-items: center;
   gap: 20px;
 }
 
-.analysis-model-row .builder-section-head,
-.retention-heading-row .builder-section-head {
+.analysis-model-row .builder-section-head {
   flex: 0 0 96px;
   margin-bottom: 0;
 }
 
 .retention-heading-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
   margin-bottom: 24px;
 }
 
+.retention-heading-row .builder-section-head {
+  margin-bottom: 0;
+}
+
 .retention-subject-line {
-  flex: 1 1 420px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 24px;
   display: grid;
   grid-template-columns: auto minmax(220px, 1fr) auto;
   align-items: center;
@@ -7005,14 +7013,9 @@ function closeDrawer() {
 }
 
 @media (max-width: 720px) {
-  .analysis-model-row,
-  .retention-heading-row {
+  .analysis-model-row {
     flex-wrap: wrap;
     gap: 10px;
-  }
-
-  .retention-heading-row .retention-subject-line {
-    flex-basis: 100%;
   }
 }
 

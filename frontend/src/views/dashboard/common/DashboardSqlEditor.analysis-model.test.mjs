@@ -18,6 +18,16 @@ test('renders the analysis model selector before event metrics', () => {
   assert.match(source, /事件分析[\s\S]*?留存分析/, '本期只需提供事件分析和留存分析')
   assert.match(source, /class="analysis-model-row"/)
   assert.match(source, /class="retention-heading-row"/)
+  assert.match(
+    source,
+    /\.retention-heading-row\s*\{[\s\S]*?flex-direction:\s*column;[\s\S]*?align-items:\s*flex-start;/,
+    '留存分析主体必须在标题下方左对齐展示'
+  )
+  assert.match(
+    source,
+    /\.retention-subject-line\s*\{[\s\S]*?width:\s*100%;[\s\S]*?padding:\s*0 24px;/,
+    '分析主体必须与事件配置使用相同的左侧内边距'
+  )
 })
 
 test('loads retention events from the workspace event catalog', () => {
