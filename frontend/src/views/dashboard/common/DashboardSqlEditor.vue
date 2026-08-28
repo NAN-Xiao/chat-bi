@@ -3344,7 +3344,10 @@ function isNonBlockingBuilderAdviceItem(value: string) {
 }
 
 function resultBlockingIssueItems(result: any) {
-  return resultAdviceItems(result, 'issues').filter((item) => !isNonBlockingBuilderAdviceItem(item))
+  const issues = resultAdviceItems(result, 'issues')
+  return result?.success === false
+    ? issues
+    : issues.filter((item) => !isNonBlockingBuilderAdviceItem(item))
 }
 
 function resultNonBlockingIssueItems(result: any) {
@@ -3353,20 +3356,18 @@ function resultNonBlockingIssueItems(result: any) {
 
 function builderAgentBlockingIssues(result: any) {
   const localAdvice = collectLocalBuilderConfigIssues()
-  return unique([
-    ...localAdvice.issues,
-    ...resultBlockingIssueItems(result),
-  ])
+  return unique([...localAdvice.issues, ...resultBlockingIssueItems(result)])
 }
 
 function stopBuilderExecutionWithAdvice(result: any, generatedSql = '') {
   const localAdvice = collectLocalBuilderConfigIssues()
+  const blockingIssues = unique([...localAdvice.issues, ...resultBlockingIssueItems(result)])
   setBuilderAgentAdvice({
     severity: 'warning',
     intent: result?.intent || inferBuilderIntentText(),
     message: result?.message || '配置 Agent 判断当前配置需要调整，未执行 SQL',
     advice: result?.advice || '按下面配置项改完再生成。',
-    issues: unique([...localAdvice.issues, ...resultBlockingIssueItems(result)]),
+    issues: blockingIssues,
     suggestions: unique([
       ...localAdvice.suggestions,
       ...resultWarningItems(result),
@@ -3378,7 +3379,9 @@ function stopBuilderExecutionWithAdvice(result: any, generatedSql = '') {
   if (generatedSql && sqlBuilder.activeTab === 'sql') {
     form.sql = generatedSql
   }
-  ElMessage.warning('配置 Agent 发现问题，已停止执行，请查看提示建议')
+  ElMessage.warning(
+    blockingIssues[0] || result?.message || '配置 Agent 发现问题，已停止执行，请查看提示建议'
+  )
 }
 
 function showLocalBuilderAgentAdvice() {

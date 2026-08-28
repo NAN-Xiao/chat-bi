@@ -83,6 +83,7 @@ class DashboardManualChartGraphState(TypedDict, total=False):
     validation_result: DashboardAiSqlGenerateResponse
     sql_plan: dict[str, Any]
     response: DashboardAiSqlGenerateResponse
+    sql_repair_attempts: int
     graph_trace: list[dict[str, Any]]
     last_node: str
 
@@ -1474,6 +1475,7 @@ def _deterministic_validate_manual_config(
         issues=issues,
         warnings=warnings,
         suggestions=_unique_text_items(suggestions),
+        analysis_model=analysis_model if analysis_model in {"retention", "funnel"} else "event",
     )
 
 
@@ -1488,10 +1490,33 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
         (normalized_config.get("chart") or {}).get("type"),
         time_config,
     )
+    analysis_model = str(normalized_config.get("analysis_model") or "event")
+    retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
+    result_contract: dict[str, Any] = {}
+    if analysis_model == "retention":
+        simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
+        related_property = retention.get("relatedProperty") if isinstance(retention.get("relatedProperty"), dict) else {}
+        required_columns = ["cohort_date", "cohort_size"]
+        required_columns.extend(f"day_{day}" for day in range(RETENTION_COHORT_DAYS + 1))
+        if simultaneous.get("enabled") is True:
+            required_columns.append("simultaneous_value")
+        if related_property.get("enabled") is True and related_property.get("asGroup") is True:
+            required_columns.append("related_property")
+        result_contract = {
+            "type": "cohort_table",
+            "window_days": RETENTION_COHORT_DAYS,
+            "required_columns": required_columns,
+            "day_value": "retention_rate",
+            "final_grain": [
+                "cohort_date",
+                *(["related_property"] if "related_property" in required_columns else []),
+            ],
+        }
     return {
-        "analysis_model": normalized_config.get("analysis_model") or "event",
-        "retention": normalized_config.get("retention") or {},
+        "analysis_model": analysis_model,
+        "retention": retention,
         "funnel": normalized_config.get("funnel") or {},
+        "result_contract": result_contract,
         "time": time_config,
         "date_parameters": {
             "enabled": uses_date_parameters,
@@ -1892,8 +1917,8 @@ def _funnel_sql_result_issues(
     return [f"漏斗 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
 
 
-def _dashboard_sql_system_prompt() -> str:
-    return (
+def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
+    common_prompt = (
         "你是 BI 手动看板 SQL 生成节点。确定性配置校验已经通过，你只负责根据当前配置、公式 IR 和 SQL plan 生成只读 SELECT SQL。\n"
         "必须使用配置里的时间字段、时间粒度、指标、筛选、分组、计算指标；time.field + time.grain 要生成日期维度；groups 只生成额外维度。不要编造未提供字段。\n"
         "请求中的 chart_type 非空时，返回的 chart_type 必须保持一致，不得改成其他图表类型。"
@@ -1907,6 +1932,40 @@ def _dashboard_sql_system_prompt() -> str:
         "- 禁止生成 WHERE date_field >= <包含 MAX(date_field) 的表达式>。\n"
         "- 仅当当前图表配置要求可变时间范围时，日期边界必须使用当前配置提供的看板日期参数占位符，不能使用数据库当前日期函数。\n"
         "- 具体日期格式和分区字段类型必须服从当前 SQL 方言与配置的日期参数类型。\n"
+    )
+    if str(analysis_model or "event") == "retention":
+        structure_prompt = (
+            "当前 SQL plan 的 analysis_model=retention，必须使用留存专用 Cohort 宽表结构；禁止把最终结果生成为按 period_offset 展开的长表。\n"
+            "留存 SQL 结构范式：\n"
+            "WITH bounds AS (...仅一行时间边界...),\n"
+            "cohort AS (\n"
+            "    SELECT DISTINCT <entity_id> AS entity_id, <parsed_cohort_date> AS cohort_date\n"
+            "    FROM <configured_initial_event_table>\n"
+            "    WHERE <configured_date_filter> AND <configured_initial_event_filter>\n"
+            "),\n"
+            "behavior AS (\n"
+            "    SELECT DISTINCT <entity_id> AS entity_id, <parsed_behavior_date> AS behavior_date\n"
+            "    FROM <configured_return_event_table>\n"
+            "    WHERE <configured_return_event_filter>\n"
+            "),\n"
+            "matched AS (\n"
+            "    SELECT c.entity_id, c.cohort_date, b.behavior_date,\n"
+            "           <dialect_date_diff>(b.behavior_date, c.cohort_date) AS period_offset\n"
+            "    FROM cohort c LEFT JOIN behavior b ON <configured_entity_and_window_join>\n"
+            ")\n"
+            "SELECT cohort_date,\n"
+            "       COUNT(DISTINCT entity_id) AS cohort_size,\n"
+            "       ROUND(COUNT(DISTINCT CASE WHEN period_offset = 0 THEN entity_id END) * 100.0 / NULLIF(COUNT(DISTINCT entity_id), 0), 2) AS day_0,\n"
+            "       ...按同一条件聚合规则继续输出 day_1 到 day_7...\n"
+            "FROM matched\n"
+            "GROUP BY cohort_date\n"
+            "ORDER BY cohort_date。\n"
+            "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。"
+            "period_offset 只能作为中间计算字段，不能出现在基础 Cohort 最终结果中。\n"
+            "day_0 到 day_7 都表示对应周期回访人数占 cohort_size 的比例；不得输出长表 matched_rate 代替这些固定列。\n"
+        )
+    else:
+        structure_prompt = (
         "推荐 SQL 结构范式：\n"
         "WITH bounds AS (\n"
         "    -- 1. 时间边界层：统一管理查询窗口和数据成熟窗口\n"
@@ -2006,7 +2065,11 @@ def _dashboard_sql_system_prompt() -> str:
         "    dimension_2,\n"
         "    period_offset\n"
         "LIMIT <limit_size>;\n"
-        "只能输出单个 JSON 对象："
+        )
+    return (
+        common_prompt
+        + structure_prompt
+        + "只能输出单个 JSON 对象："
         '{"success":true,"sql":"SELECT ...","tables":["..."],"chart_type":"table|line|bar|column|grouped_column|pie|donut|area|metric|scatter|heatmap|funnel|sankey|treemap","brief":"图表标题","intent":"一句话用户意图","message":"","advice":"","issues":[],"suggestions":[]}。'
     )
 
@@ -2301,10 +2364,12 @@ def _node_build_sql_plan(state: DashboardManualChartGraphState) -> dict[str, Any
 
 async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
+    analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
     response = await _async_invoke_llm_json(llm, [
-        SystemMessage(content=_dashboard_sql_system_prompt()),
+        SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ], node="generate_sql")
+    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel"} else "event"
     validation = state.get("validation_result")
     if validation:
         response.intent = response.intent or validation.intent
@@ -2312,6 +2377,42 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
         "response": response,
         "graph_trace": _append_trace(state, "generate_sql"),
         "last_node": "generate_sql",
+    }
+
+
+def _dashboard_sql_repair_user_prompt(state: DashboardManualChartGraphState) -> str:
+    response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
+    return "\n".join([
+        _dashboard_sql_user_prompt(state),
+        "",
+        "<failed-sql>",
+        _trim_text(response.sql, 30000),
+        "</failed-sql>",
+        "",
+        "<sql-validation-issues>",
+        _safe_json(list(response.issues or [])),
+        "</sql-validation-issues>",
+        "",
+        "上一版 SQL 未通过留存协议校验。请根据 sql-plan.result_contract 和上述具体错误完整重写 SQL。",
+        "不得删除日期、权限、事件、筛选、关联属性或同时展示约束，不得通过改列名掩盖错误。",
+    ])
+
+
+async def _async_node_repair_retention_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
+    response = await _async_invoke_llm_json(llm, [
+        SystemMessage(content=(
+            _dashboard_sql_system_prompt("retention")
+            + "\n你正在修复一条未通过留存 SQL 协议校验的查询。必须完整重写 SQL，并逐项消除校验错误；不能放宽或绕过校验。"
+        )),
+        HumanMessage(content=_dashboard_sql_repair_user_prompt(state)),
+    ], node="repair_retention_sql")
+    response.analysis_model = "retention"
+    return {
+        "response": response,
+        "sql_repair_attempts": int(state.get("sql_repair_attempts") or 0) + 1,
+        "graph_trace": _append_trace(state, "repair_retention_sql"),
+        "last_node": "repair_retention_sql",
     }
 
 
@@ -2402,6 +2503,21 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     }
 
 
+def _route_after_sql_validate(state: DashboardManualChartGraphState) -> str:
+    response = state.get("response")
+    analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
+    if (
+        analysis_model == "retention"
+        and response is not None
+        and response.success is False
+        and bool(str(response.sql or "").strip())
+        and bool(response.issues)
+        and int(state.get("sql_repair_attempts") or 0) < 1
+    ):
+        return "repair_retention_sql"
+    return "explain_advice"
+
+
 def _node_explain_advice(state: DashboardManualChartGraphState) -> dict[str, Any]:
     response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
     validation = state.get("validation_result")
@@ -2466,6 +2582,10 @@ def _build_manual_chart_graph():
     graph.add_node("build_sql_plan", _timed_node("build_sql_plan", _node_build_sql_plan))
     graph.add_node("generate_sql", _timed_node("generate_sql", _async_node_generate_sql))
     graph.add_node("validate_sql", _timed_node("validate_sql", _node_validate_sql))
+    graph.add_node(
+        "repair_retention_sql",
+        _timed_node("repair_retention_sql", _async_node_repair_retention_sql),
+    )
     graph.add_node("explain_advice", _timed_node("explain_advice", _node_explain_advice))
     graph.add_node("finalize_response", _timed_node("finalize_response", _node_finalize_response))
     graph.set_entry_point("collect_context")
@@ -2475,7 +2595,8 @@ def _build_manual_chart_graph():
     graph.add_conditional_edges("deterministic_validate", _route_after_deterministic_validate)
     graph.add_edge("build_sql_plan", "generate_sql")
     graph.add_edge("generate_sql", "validate_sql")
-    graph.add_edge("validate_sql", "explain_advice")
+    graph.add_conditional_edges("validate_sql", _route_after_sql_validate)
+    graph.add_edge("repair_retention_sql", "validate_sql")
     graph.add_edge("explain_advice", "finalize_response")
     graph.add_edge("finalize_response", END)
     return graph.compile()

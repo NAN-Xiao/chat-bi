@@ -1372,6 +1372,18 @@ def test_retention_config_rejects_missing_subject_and_events() -> None:
 
 def test_retention_prompt_and_sql_validation_require_fixed_cohort_columns() -> None:
     request = _retention_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    validation = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+    )
+    sql_plan = ai_sql_generator._build_sql_plan(
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+    )
     prompt = ai_sql_generator._dashboard_config_prompt(
         request,
         SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
@@ -1385,14 +1397,99 @@ def test_retention_prompt_and_sql_validation_require_fixed_cohort_columns() -> N
     response = ai_sql_generator.DashboardAiSqlGenerateResponse(success=True, sql=invalid_sql, chart_type="table")
     validated = ai_sql_generator._node_validate_sql({
         "response": response,
-        "normalized_config": ai_sql_generator._normalize_manual_config(request),
+        "normalized_config": normalized,
         "graph_trace": [],
     })["response"]
 
+    assert validation.analysis_model == "retention"
+    assert sql_plan["analysis_model"] == "retention"
+    assert sql_plan["result_contract"] == {
+        "type": "cohort_table",
+        "window_days": 7,
+        "required_columns": ["cohort_date", "cohort_size", *[f"day_{day}" for day in range(8)]],
+        "day_value": "retention_rate",
+        "final_grain": ["cohort_date"],
+    }
     assert "固定 Cohort 宽表" in prompt
     assert "day_0 到 day_7" in prompt
     assert validated.success is False
     assert "day_7" in validated.issues[0]
+
+
+def test_retention_system_prompt_uses_wide_result_without_changing_event_prompt() -> None:
+    retention_prompt = ai_sql_generator._dashboard_sql_system_prompt("retention")
+    event_prompt = ai_sql_generator._dashboard_sql_system_prompt("event")
+
+    assert "禁止把最终结果生成为按 period_offset 展开的长表" in retention_prompt
+    assert "sql-plan.result_contract.required_columns" in retention_prompt
+    assert "AS day_0" in retention_prompt
+    assert "day_1 到 day_7" in retention_prompt
+    assert "base_count,\n    matched_count,\n    matched_rate" not in retention_prompt
+    assert "推荐 SQL 结构范式" in event_prompt
+    assert "matched_rate" in event_prompt
+    assert "留存专用 Cohort 宽表结构" not in event_prompt
+
+
+def test_sql_validation_routes_only_retention_failures_to_one_repair() -> None:
+    failed_response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=False,
+        sql="SELECT cohort_date FROM matched",
+        issues=["留存 SQL 缺少固定结果列：cohort_size、day_0。"],
+    )
+
+    assert ai_sql_generator._route_after_sql_validate({
+        "normalized_config": {"analysis_model": "retention"},
+        "response": failed_response,
+        "sql_repair_attempts": 0,
+    }) == "repair_retention_sql"
+    assert ai_sql_generator._route_after_sql_validate({
+        "normalized_config": {"analysis_model": "retention"},
+        "response": failed_response,
+        "sql_repair_attempts": 1,
+    }) == "explain_advice"
+    assert ai_sql_generator._route_after_sql_validate({
+        "normalized_config": {"analysis_model": "event"},
+        "response": failed_response,
+        "sql_repair_attempts": 0,
+    }) == "explain_advice"
+    assert ai_sql_generator._route_after_sql_validate({
+        "normalized_config": {"analysis_model": "funnel"},
+        "response": failed_response,
+        "sql_repair_attempts": 0,
+    }) == "explain_advice"
+
+
+def test_retention_repair_prompt_carries_contract_original_sql_and_issues() -> None:
+    request = _retention_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    failed_sql = "SELECT cohort_dt, period_offset, matched_rate FROM matched"
+    issue = "留存 SQL 缺少固定结果列：cohort_date、cohort_size、day_0。"
+    prompt = ai_sql_generator._dashboard_sql_repair_user_prompt({
+        "request": request,
+        "datasource": SimpleNamespace(name="测试", type="mysql", type_name="MySQL"),
+        "validation_result": ai_sql_generator.DashboardAiSqlGenerateResponse(
+            success=True,
+            analysis_model="retention",
+        ),
+        "formula_ir": formula_ir,
+        "sql_plan": ai_sql_generator._build_sql_plan(normalized, formula_ir),
+        "normalized_config": normalized,
+        "response": ai_sql_generator.DashboardAiSqlGenerateResponse(
+            success=False,
+            sql=failed_sql,
+            issues=[issue],
+        ),
+        "data_skill": "",
+        "tracking_config": "",
+        "allowed_tables": ["event"],
+    })
+
+    assert "<failed-sql>" in prompt
+    assert failed_sql in prompt
+    assert issue in prompt
+    assert '"type": "cohort_table"' in prompt
+    assert "完整重写 SQL" in prompt
 
 
 def test_retention_prompt_requires_typed_yyyymmdd_date_operations() -> None:
