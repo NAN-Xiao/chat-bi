@@ -16,6 +16,7 @@ import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
 import icon_tree_list from '@/assets/svg/icon_tree_list.svg'
+import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import { onMounted, reactive, ref, watch, nextTick, computed } from 'vue'
 import { ElIcon, ElMessage, ElMessageBox, ElScrollbar } from 'element-plus-secondary'
 import { Icon } from '@/components/icon-custom'
@@ -26,6 +27,7 @@ import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import ResourceGroupOpt from '@/views/dashboard/common/ResourceGroupOpt.vue'
 import { dashboardApi } from '@/api/dashboard.ts'
 import HandleMore from '@/views/dashboard/common/HandleMore.vue'
+import ReportTypePicker from '@/views/dashboard/common/ReportTypePicker.vue'
 import { useI18n } from 'vue-i18n'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useUserStore } from '@/stores/user'
@@ -44,6 +46,8 @@ const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
 const resourceGroupOptRef = ref(null)
+const reportTypePickerRef = ref(null)
+const pendingReportCreateParams = ref<any>(null)
 let treeRequestSeq = 0
 const workspaceContextSwitching = ref(false)
 
@@ -903,7 +907,7 @@ const canEditDashboardTree = computed<boolean>(
 
 function createNewObject() {
   if (!canOpenCreateDashboard.value) return
-  addOperation({ opt: 'newLeaf' })
+  addOperation({ opt: 'newLeaf', type: 'dashboard', nodeType: 'leaf', pid: 'root' })
 }
 
 function onClickSideBarBtn() {
@@ -959,18 +963,43 @@ const getDefaultExpandedKeys = () => {
   }
 }
 
-const openCreateDashboardDialog = (params: any = {}) => {
+const openCreateDashboardDialog = (params: any = {}, reportMeta?: Record<string, any>) => {
   dashboardStore.canvasDataInit()
+  if (reportMeta) {
+    dashboardStore.setCanvasStyleData({ reportMeta })
+  }
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   resourceGroupOptRef.value?.optInit({
     opt: 'newLeaf',
     type: 'dashboard',
     nodeType: 'leaf',
-    name: '',
+    name: params.name || '',
     placeholder: t('dashboard.add_dashboard_name_tips'),
     pid: params?.id || 'root',
     datasource: datasourceContext.datasourceId,
   })
+}
+
+const openReportTypePicker = (params: any = {}) => {
+  if (!canOpenCreateDashboard.value) return
+  if (props.defaultMode) {
+    openCreateDashboardDialog(params)
+    return
+  }
+  pendingReportCreateParams.value = params
+  // @ts-expect-error component expose is intentionally local to this flow
+  reportTypePickerRef.value?.open()
+}
+
+const handleReportTypeConfirm = (payload: { name: string; reportMeta: Record<string, any> }) => {
+  const params = pendingReportCreateParams.value || {
+    opt: 'newLeaf',
+    type: 'dashboard',
+    nodeType: 'leaf',
+    pid: 'root',
+  }
+  pendingReportCreateParams.value = null
+  openCreateDashboardDialog({ ...params, name: payload.name }, payload.reportMeta)
 }
 
 watch(filterText, (val) => {
@@ -1054,7 +1083,11 @@ const addOperation = (params: any) => {
     if (!folder || !canManageNode(folder)) return
   }
   if (params.opt === 'newLeaf') {
-    openCreateDashboardDialog(params)
+    if (props.defaultMode || !canCreateDashboard.value) {
+      openCreateDashboardDialog(params)
+    } else {
+      openReportTypePicker(params)
+    }
   } else {
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     resourceGroupOptRef.value?.optInit(params)
@@ -1393,6 +1426,16 @@ defineExpose({
             </span>
           </el-tooltip>
         </el-button>
+        <el-button
+          v-if="canCreateDashboard"
+          link
+          type="primary"
+          class="filter-icon-span compact-icon-btn create-compact-btn"
+          title="新建报表"
+          @click="createNewObject"
+        >
+          <el-icon><icon_add_outlined /></el-icon>
+        </el-button>
       </div>
     </div>
     <el-scrollbar v-loading="treeBusy" class="custom-tree">
@@ -1514,6 +1557,7 @@ defineExpose({
       </el-tree>
     </el-scrollbar>
     <ResourceGroupOpt ref="resourceGroupOptRef" @finish="baseInfoChangeFinish"></ResourceGroupOpt>
+    <ReportTypePicker ref="reportTypePickerRef" @confirm="handleReportTypeConfirm" />
   </div>
 </template>
 <style lang="less" scoped>

@@ -1141,6 +1141,7 @@ const baseParams = computed(() => {
     datasource: state.datasource,
     dashboardMode: state.dashboardMode,
     canUseChatHistory: !state.platformTemplateId,
+    reportMeta: (canvasStyleData.value as any)?.reportMeta || null,
   }
 })
 const findPositionX = (width: number) => {
@@ -1162,6 +1163,7 @@ const findPositionX = (width: number) => {
           ref="dashboardEditorInnerRef"
           :dashboard-info="dashboardInfo"
           :canvas-component-data="componentData"
+          :canvas-style-data="canvasStyleData"
           :canvas-view-info="canvasViewInfo"
           :can-edit-sql="dashboardInfo.canEdit !== false"
           :platform-template="Boolean(state.platformTemplateId)"
