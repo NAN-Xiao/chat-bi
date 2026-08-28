@@ -14,9 +14,12 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 import orjson
+import sqlglot
 from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
+from sqlglot import exp
+
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
 from apps.dashboard.crud.dashboard_date_filter import (
@@ -32,7 +35,7 @@ from apps.datasource.crud.sql_engine import (
     BusinessSqlContextService,
 )
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import check_sql_read
+from apps.db.db import check_sql_read, get_sqlglot_dialect
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.tracking_config import get_tracking_config
 from apps.system.crud.tracking_expression import compile_tracking_json_expression
@@ -1444,6 +1447,36 @@ def _dashboard_sql_dialect_rules(sql_dialect: str | None, datasource: CoreDataso
     return []
 
 
+def _retention_date_generation_rules(
+        parameter_type: str,
+        sql_dialect: str | None,
+        datasource: CoreDatasource | None,
+) -> list[str]:
+    """为留存查询提供与日期编码和 SQL 方言匹配的强制生成规则。"""
+    if parameter_type not in {"yyyymmdd_number", "yyyymmdd_text"}:
+        return []
+    rules = [
+        "留存日期运算规则（强制）：当前时间字段和看板日期参数是 YYYYMMDD 编码键，不是 DATE，也不是自某个纪元起的天数。",
+        "原始时间字段的范围过滤必须直接使用 YYYYMMDD 看板参数，避免在过滤列上套日期函数；进入 cohort、behavior、日期窗口或日差计算前，必须另行解析为真实 DATE。",
+        "禁止使用 FROM_DAYS 解析 YYYYMMDD，禁止让 YYYYMMDD 数值或文本直接参与 INTERVAL 运算。",
+    ]
+    dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
+    if any(name in dialect_text for name in ("mysql", "mariadb", "starrocks", "doris")):
+        rules.extend([
+            "MySQL/MariaDB/StarRocks/Doris：YYYYMMDD 转 DATE 必须使用 STR_TO_DATE(CAST(<yyyymmdd_expr> AS CHAR), '%Y%m%d')。",
+            "cohort 和 behavior 层必须输出转换后的 DATE；窗口上界使用 DATE_ADD(<cohort_date>, INTERVAL <window_days> DAY)。",
+            "日差必须使用 DATEDIFF(<behavior_date>, <cohort_date>)，参数顺序表示回访日期减去初始日期，不得反向。",
+        ])
+    elif any(name in dialect_text for name in ("postgres", "redshift", "kingbase")):
+        rules.extend([
+            "PostgreSQL/Redshift/Kingbase：YYYYMMDD 转 DATE 必须使用 TO_DATE(CAST(<yyyymmdd_expr> AS TEXT), 'YYYYMMDD')。",
+            "cohort 和 behavior 层必须输出转换后的 DATE，再使用当前方言的日期区间和日期相减语法计算窗口与日差。",
+        ])
+    else:
+        rules.append("必须使用当前 SQL 方言明确支持的 YYYYMMDD 解析函数得到 DATE 后再计算留存窗口和日差，不得猜测日期函数。")
+    return rules
+
+
 def _dashboard_config_prompt(
         request: DashboardAiSqlGenerateRequest,
         datasource: CoreDatasource,
@@ -1501,6 +1534,11 @@ def _dashboard_config_prompt(
             f"当前关联属性配置：{_safe_json(related_property)}。",
             "最终返回 chart_type 必须为 table。",
         ]
+        retention_rules.extend(_retention_date_generation_rules(
+            parameter_type,
+            sql_dialect,
+            datasource,
+        ))
     return "\n".join([
         "请处理下面的手动图表配置。",
         "",
@@ -1557,7 +1595,76 @@ def _dashboard_date_sql_issues(sql: str, time_config: dict[str, Any]) -> list[st
     return _unique_text_items(issues)
 
 
-def _retention_sql_result_issues(sql: str, normalized_config: dict[str, Any]) -> list[str]:
+def _sqlglot_statements_for_generation_validation(sql: str, sql_dialect: str | None) -> list[exp.Expression]:
+    source_sql = re.sub(r"\{\{dashboard_[a-z0-9_]+\}\}", "20260101", str(sql or ""), flags=re.IGNORECASE)
+    try:
+        dialect = get_sqlglot_dialect(str(sql_dialect or ""))
+        return [statement for statement in sqlglot.parse(source_sql, read=dialect) if statement is not None]
+    except sqlglot.errors.ParseError:
+        return []
+
+
+def _expression_mentions_column(expression: exp.Expression | None, fragment: str) -> bool:
+    if expression is None:
+        return False
+    return any(
+        isinstance(node, exp.Column) and fragment in str(node.name or "").lower()
+        for node in expression.walk()
+    )
+
+
+def _retention_date_operation_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+        *,
+        sql_dialect: str | None = None,
+        datasource: CoreDatasource | None = None,
+) -> list[str]:
+    time_config = normalized_config.get("time") if isinstance(normalized_config.get("time"), dict) else {}
+    parameter_type = str(time_config.get("date_parameter_type") or "").strip()
+    if parameter_type not in {"yyyymmdd_number", "yyyymmdd_text"}:
+        return []
+
+    issues: list[str] = []
+    if re.search(r"\bfrom_days\s*\(", str(sql or ""), flags=re.IGNORECASE):
+        issues.append("留存 SQL 不能使用 FROM_DAYS 解析 YYYYMMDD；必须先按当前方言转换为 DATE。")
+
+    dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
+    if not any(name in dialect_text for name in ("mysql", "mariadb", "starrocks", "doris")):
+        return _unique_text_items(issues)
+
+    statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+    nodes = [node for statement in statements for node in statement.walk()]
+    if not any(isinstance(node, exp.StrToDate) for node in nodes):
+        issues.append("留存 SQL 未将 YYYYMMDD 通过 STR_TO_DATE 转换为 DATE。")
+    if not any(isinstance(node, exp.DateAdd) for node in nodes):
+        issues.append("留存 SQL 未使用 DATE_ADD 计算回访窗口上界。")
+    if any(
+        isinstance(node, (exp.Add, exp.Sub))
+        and isinstance(node.args.get("expression"), exp.Interval)
+        for node in nodes
+    ):
+        issues.append("留存 SQL 不能让字段直接加减 INTERVAL；必须对转换后的 DATE 使用 DATE_ADD。")
+
+    date_diffs = [node for node in nodes if isinstance(node, exp.DateDiff)]
+    if not date_diffs:
+        issues.append("留存 SQL 未使用 DATEDIFF 计算回访日期与初始日期的日差。")
+    elif any(
+        _expression_mentions_column(node.args.get("this"), "cohort")
+        and _expression_mentions_column(node.args.get("expression"), "behavior")
+        for node in date_diffs
+    ):
+        issues.append("留存 SQL 的 DATEDIFF 参数顺序错误；必须使用回访日期减去初始日期。")
+    return _unique_text_items(issues)
+
+
+def _retention_sql_result_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+        *,
+        sql_dialect: str | None = None,
+        datasource: CoreDatasource | None = None,
+) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "retention":
         return []
     retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
@@ -1571,9 +1678,15 @@ def _retention_sql_result_issues(sql: str, normalized_config: dict[str, Any]) ->
         required_aliases.append("related_property")
     normalized_sql = str(sql or "").lower()
     missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
-    if not missing:
-        return []
-    return [f"留存 SQL 缺少固定结果列：{'、'.join(missing)}。"]
+    issues = _retention_date_operation_issues(
+        sql,
+        normalized_config,
+        sql_dialect=sql_dialect,
+        datasource=datasource,
+    )
+    if missing:
+        issues.append(f"留存 SQL 缺少固定结果列：{'、'.join(missing)}。")
+    return _unique_text_items(issues)
 
 
 def _dashboard_sql_system_prompt() -> str:
@@ -2039,10 +2152,12 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     elif retention_issues := _retention_sql_result_issues(
         sql,
         state.get("normalized_config") or {},
+        sql_dialect=state.get("sql_dialect"),
+        datasource=state.get("datasource"),
     ):
         response.success = False
-        response.message = "生成 SQL 未满足留存表结果格式。"
-        response.advice = "请按当前留存周期生成固定 Cohort 宽表列。"
+        response.message = "生成 SQL 未满足留存分析生成要求。"
+        response.advice = "请按当前日期类型、SQL 方言和留存周期重新生成 Cohort 查询。"
         response.issues = _unique_text_items(list(response.issues or []) + retention_issues)
     elif json_issues := _json_subfield_sql_issues(
         sql,

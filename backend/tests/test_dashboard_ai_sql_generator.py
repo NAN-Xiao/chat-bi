@@ -1275,6 +1275,112 @@ def test_retention_prompt_and_sql_validation_require_fixed_cohort_columns() -> N
     assert "day_7" in validated.issues[0]
 
 
+def test_retention_prompt_requires_typed_yyyymmdd_date_operations() -> None:
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        _retention_request(),
+        SimpleNamespace(name="测试", type="starrocks", type_name="StarRocks"),
+        "",
+        "",
+        sql_dialect="mysql",
+    )
+
+    assert "YYYYMMDD 编码键，不是 DATE" in prompt
+    assert "STR_TO_DATE(CAST(<yyyymmdd_expr> AS CHAR), '%Y%m%d')" in prompt
+    assert "DATE_ADD(<cohort_date>, INTERVAL <window_days> DAY)" in prompt
+    assert "DATEDIFF(<behavior_date>, <cohort_date>)" in prompt
+    assert "禁止使用 FROM_DAYS" in prompt
+
+
+def test_retention_sql_validation_rejects_untyped_yyyymmdd_date_operations() -> None:
+    invalid_sql = """
+WITH cohort AS (
+    SELECT uid AS entity_id, dt AS cohort_dt
+    FROM event
+    WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+), behavior AS (
+    SELECT uid AS entity_id, dt AS behavior_dt FROM event
+), matched AS (
+    SELECT
+        c.entity_id,
+        FROM_DAYS(c.cohort_dt) AS cohort_date,
+        DATEDIFF(FROM_DAYS(c.cohort_dt), FROM_DAYS(b.behavior_dt)) AS days_diff
+    FROM cohort c
+    LEFT JOIN behavior b
+      ON c.entity_id = b.entity_id
+     AND b.behavior_dt <= c.cohort_dt + INTERVAL 7 DAY
+)
+SELECT cohort_date, 1 AS cohort_size,
+       1 AS day_0, 1 AS day_1, 1 AS day_2, 1 AS day_3,
+       1 AS day_4, 1 AS day_5, 1 AS day_6, 1 AS day_7
+FROM matched
+"""
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql=invalid_sql,
+        chart_type="table",
+    )
+
+    validated = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": ai_sql_generator._normalize_manual_config(_retention_request()),
+        "sql_dialect": "starrocks",
+        "graph_trace": [],
+    })["response"]
+
+    assert validated.success is False
+    assert any("FROM_DAYS" in issue for issue in validated.issues)
+    assert any("直接加减 INTERVAL" in issue for issue in validated.issues)
+    assert any("DATEDIFF 参数顺序错误" in issue for issue in validated.issues)
+
+
+def test_retention_sql_validation_allows_typed_yyyymmdd_date_operations() -> None:
+    valid_sql = """
+WITH event_dates AS (
+    SELECT
+        uid AS entity_id,
+        STR_TO_DATE(CAST(dt AS CHAR), '%Y%m%d') AS event_date
+    FROM event
+    WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+), matched AS (
+    SELECT
+        c.entity_id,
+        c.event_date AS cohort_date,
+        b.event_date AS behavior_date,
+        DATEDIFF(b.event_date, c.event_date) AS days_diff
+    FROM event_dates c
+    LEFT JOIN event_dates b
+      ON c.entity_id = b.entity_id
+     AND b.event_date <= DATE_ADD(c.event_date, INTERVAL 7 DAY)
+)
+SELECT cohort_date, COUNT(DISTINCT entity_id) AS cohort_size,
+       COUNT(DISTINCT CASE WHEN days_diff = 0 THEN entity_id END) AS day_0,
+       COUNT(DISTINCT CASE WHEN days_diff = 1 THEN entity_id END) AS day_1,
+       COUNT(DISTINCT CASE WHEN days_diff = 2 THEN entity_id END) AS day_2,
+       COUNT(DISTINCT CASE WHEN days_diff = 3 THEN entity_id END) AS day_3,
+       COUNT(DISTINCT CASE WHEN days_diff = 4 THEN entity_id END) AS day_4,
+       COUNT(DISTINCT CASE WHEN days_diff = 5 THEN entity_id END) AS day_5,
+       COUNT(DISTINCT CASE WHEN days_diff = 6 THEN entity_id END) AS day_6,
+       COUNT(DISTINCT CASE WHEN days_diff = 7 THEN entity_id END) AS day_7
+FROM matched
+GROUP BY cohort_date
+"""
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql=valid_sql,
+        chart_type="table",
+    )
+
+    validated = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": ai_sql_generator._normalize_manual_config(_retention_request()),
+        "sql_dialect": "starrocks",
+        "graph_trace": [],
+    })["response"]
+
+    assert validated.success is True
+    assert not validated.issues
+
+
 def test_retention_simultaneous_and_related_property_are_validated() -> None:
     request = _retention_request(
         simultaneous={
