@@ -6990,32 +6990,40 @@ function closeDrawer() {
 
 .retention-heading-row {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
+  gap: 20px;
   margin-bottom: 24px;
 }
 
 .retention-heading-row .builder-section-head {
+  flex: 0 0 96px;
   margin-bottom: 0;
 }
 
 .retention-subject-line {
-  width: 100%;
+  width: auto;
+  flex: 1 1 auto;
   box-sizing: border-box;
-  padding: 0 24px;
+  padding: 0;
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr) auto;
+  grid-template-columns: auto minmax(160px, 280px) auto;
   align-items: center;
+  justify-content: start;
   gap: 10px;
   color: #505968;
   font-size: 13px;
 }
 
 @media (max-width: 720px) {
-  .analysis-model-row {
+  .analysis-model-row,
+  .retention-heading-row {
     flex-wrap: wrap;
     gap: 10px;
+  }
+
+  .retention-heading-row .retention-subject-line {
+    flex-basis: 100%;
+    grid-template-columns: auto minmax(160px, 1fr) auto;
   }
 }
 
@@ -7050,7 +7058,7 @@ function closeDrawer() {
 .retention-event-editor {
   width: 100%;
   min-width: 0;
-  padding: 5px 24px 7px;
+  padding: 5px 24px 7px 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -7165,7 +7173,7 @@ function closeDrawer() {
 }
 
 .retention-config-label {
-  padding: 0 24px;
+  padding: 0;
   color: #6b7280;
   font-size: 12px;
   line-height: 20px;

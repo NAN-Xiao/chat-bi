@@ -20,13 +20,23 @@ test('renders the analysis model selector before event metrics', () => {
   assert.match(source, /class="retention-heading-row"/)
   assert.match(
     source,
-    /\.retention-heading-row\s*\{[\s\S]*?flex-direction:\s*column;[\s\S]*?align-items:\s*flex-start;/,
-    '留存分析主体必须在标题下方左对齐展示'
+    /\.retention-heading-row\s*\{[\s\S]*?display:\s*flex;[\s\S]*?align-items:\s*center;[\s\S]*?gap:\s*20px;/,
+    '留存分析标题和分析主体必须在同一行展示'
   )
   assert.match(
     source,
-    /\.retention-subject-line\s*\{[\s\S]*?width:\s*100%;[\s\S]*?padding:\s*0 24px;/,
-    '分析主体必须与事件配置使用相同的左侧内边距'
+    /\.retention-subject-line\s*\{[\s\S]*?width:\s*auto;[\s\S]*?grid-template-columns:\s*auto minmax\(160px, 280px\) auto;/,
+    '分析主体选择器必须使用紧凑宽度'
+  )
+  assert.match(
+    source,
+    /\.retention-event-editor\s*\{[\s\S]*?padding:\s*5px 24px 7px 0;/,
+    '事件选择器必须与留存开关左对齐'
+  )
+  assert.match(
+    source,
+    /\.retention-config-label\s*\{[\s\S]*?padding:\s*0;/,
+    '事件标签必须与留存开关左对齐'
   )
 })
 
