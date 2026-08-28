@@ -520,6 +520,19 @@ def _aggregation_value(metric: dict[str, Any]) -> str:
     return str(metric.get("aggregation") or "count").strip().lower()
 
 
+def _retention_simultaneous_metric(retention: dict[str, Any]) -> dict[str, Any]:
+    simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
+    return {
+        "field": simultaneous.get("event"),
+        "metricField": (
+            simultaneous.get("metricField")
+            or simultaneous.get("metric_field")
+            or simultaneous.get("metric")
+        ),
+        "aggregation": simultaneous.get("aggregation") or "count",
+    }
+
+
 def _field_is_known_non_numeric(field: Any) -> bool:
     if not isinstance(field, dict):
         return False
@@ -1193,12 +1206,14 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
             tables.add(table_name)
     retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
     simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
+    simultaneous_metric = _retention_simultaneous_metric(retention)
     related_property = retention.get("relatedProperty") if isinstance(retention.get("relatedProperty"), dict) else {}
     retention_fields = [
         retention.get("entityField") or retention.get("entity_field"),
         retention.get("initialEvent") or retention.get("initial_event"),
         retention.get("returnEvent") or retention.get("return_event"),
         simultaneous.get("event"),
+        _metric_measure_field(simultaneous_metric),
         related_property.get("initialProperty") or related_property.get("initial_property"),
         related_property.get("returnProperty") or related_property.get("return_property"),
         related_property.get("simultaneousProperty") or related_property.get("simultaneous_property"),
@@ -1276,11 +1291,21 @@ def _deterministic_validate_manual_config(
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
         simultaneous_enabled = simultaneous.get("enabled") is True
         simultaneous_event = simultaneous.get("event")
-        simultaneous_aggregation = str(simultaneous.get("aggregation") or "count")
         if simultaneous_enabled and not _field_has_resolvable_reference(simultaneous_event):
             issues.append("使用同时展示时请选择参与事件。")
-        if simultaneous_enabled and simultaneous_aggregation not in {"count", "count_distinct"}:
-            issues.append("同时展示只支持总次数或去重数。")
+        if simultaneous_enabled and _field_has_resolvable_reference(simultaneous_event):
+            simultaneous_metric = _retention_simultaneous_metric(retention)
+            issues.extend(_validate_metric_item(
+                simultaneous_metric,
+                "同时展示指标",
+                require_aggregation=True,
+            ))
+            issues.extend(_metric_permission_issues(
+                simultaneous_metric,
+                "同时展示指标",
+                allowed_tables,
+                allowed_fields_by_table,
+            ))
 
         related_property = retention.get("relatedProperty") if isinstance(retention.get("relatedProperty"), dict) else {}
         related_enabled = related_property.get("enabled") is True
@@ -1527,7 +1552,8 @@ def _dashboard_config_prompt(
             "initialEventAlias 和 returnEventAlias 只表示用户设置的展示名称，不得替换 SQL 事件条件中的 eventName。",
             "initialEventFilters 和 returnEventFilters 与指标内筛选使用相同的 logic/rules 结构；必须分别应用于初始事件明细和回访事件明细，不得互换或合并到全局筛选。",
             f"基础结果使用固定 Cohort 宽表，范围为第 0 日到第 {RETENTION_COHORT_DAYS} 日的留存比例：第一列 cohort_date，第二列 cohort_size，后续列为 day_0 到 day_{RETENTION_COHORT_DAYS}。",
-            "retention.simultaneous.enabled=true 时，额外按 simultaneous.event 和 simultaneous.aggregation 计算回访用户参与该事件的统计值，并以 simultaneous_value 输出。",
+            "retention.simultaneous.enabled=true 时，额外按 simultaneous.event、simultaneous.aggregation 和 simultaneous.metricField 计算回访用户参与该事件的统计值，并以 simultaneous_value 输出。",
+            "同时展示聚合规则与事件分析指标一致：count=事件明细总次数；count_distinct=COUNT(DISTINCT metricField)；sum/avg/max/min 分别对 metricField 使用 SUM/AVG/MAX/MIN。禁止改用其他字段或默认字段。",
             "retention.relatedProperty.enabled=true 时，初始事件、回访事件以及已启用的同时展示事件必须按各自配置的关联属性值相等进行关联，不得改用同名字段猜测。",
             "retention.relatedProperty.asGroup=true 时，结果必须额外输出 related_property 分组列。",
             f"当前同时展示配置：{_safe_json(simultaneous)}。",
@@ -1658,6 +1684,66 @@ def _retention_date_operation_issues(
     return _unique_text_items(issues)
 
 
+def _retention_simultaneous_aggregation_issues(
+        sql: str,
+        retention: dict[str, Any],
+        *,
+        sql_dialect: str | None = None,
+) -> list[str]:
+    simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
+    if simultaneous.get("enabled") is not True:
+        return []
+    aggregation = _aggregation_value(_retention_simultaneous_metric(retention))
+    if aggregation not in _SUPPORTED_METRIC_AGGREGATIONS:
+        return []
+    statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+    aliases = [
+        node
+        for statement in statements
+        for node in statement.find_all(exp.Alias)
+        if _normalized_identifier(node.alias) == "simultaneous_value"
+    ]
+    if not aliases:
+        return []
+
+    aggregate_type_by_name: dict[str, type[exp.Expression]] = {
+        "sum": exp.Sum,
+        "avg": exp.Avg,
+        "max": exp.Max,
+        "min": exp.Min,
+    }
+
+    def matches(alias: exp.Alias) -> bool:
+        aggregate_nodes = list(alias.this.walk())
+        if aggregation == "count_distinct":
+            return any(
+                isinstance(node, exp.Count) and isinstance(node.this, exp.Distinct)
+                for node in aggregate_nodes
+            )
+        if aggregation == "count":
+            return any(
+                isinstance(node, exp.Count) and not isinstance(node.this, exp.Distinct)
+                for node in aggregate_nodes
+            )
+        expected_type = aggregate_type_by_name.get(aggregation)
+        return expected_type is not None and any(isinstance(node, expected_type) for node in aggregate_nodes)
+
+    if any(matches(alias) for alias in aliases):
+        return []
+    aggregation_labels = {
+        "count": "COUNT",
+        "count_distinct": "COUNT(DISTINCT ...)",
+        "sum": "SUM",
+        "avg": "AVG",
+        "max": "MAX",
+        "min": "MIN",
+    }
+    return [
+        "留存 SQL 的 simultaneous_value 未按同时展示配置使用 "
+        f"{aggregation_labels[aggregation]} 聚合。"
+    ]
+
+
 def _retention_sql_result_issues(
         sql: str,
         normalized_config: dict[str, Any],
@@ -1684,6 +1770,11 @@ def _retention_sql_result_issues(
         sql_dialect=sql_dialect,
         datasource=datasource,
     )
+    issues.extend(_retention_simultaneous_aggregation_issues(
+        sql,
+        retention,
+        sql_dialect=sql_dialect,
+    ))
     if missing:
         issues.append(f"留存 SQL 缺少固定结果列：{'、'.join(missing)}。")
     return _unique_text_items(issues)

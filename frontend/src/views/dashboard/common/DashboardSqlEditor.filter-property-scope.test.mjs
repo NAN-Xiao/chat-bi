@@ -11,15 +11,20 @@ assert.match(editor, /source_field|sourceField/, '字段合并需要保留 JSON 
 assert.match(editor, /json_path|jsonPath/, '字段合并需要保留 JSON 路径')
 
 assert.match(editor, /const eventUserPropertyOptions = computed\(\(\) =>/, '编辑器需要独立的 event.userinfo 候选')
-assert.match(editor, /isEventUserPropertyOption\(option, 'event'\)/, '用户属性必须严格限定 event 表')
+assert.match(
+  editor,
+  /isEventUserPropertyOption\(option, eventFieldScope\.value\.defaultEventTable\)/,
+  '用户属性必须严格限定当前工作空间的默认事件表'
+)
 
 const eventOptions = editor.match(/function eventFilterFieldOptions[\s\S]*?\n\}/)?.[0] || ''
 const metricOptions = editor.match(/function metricFilterFieldOptions[\s\S]*?\n\}/)?.[0] || ''
+assert.match(eventOptions, /eventScopedPropertyOptions/, '事件筛选需要复用统一事件属性合并逻辑')
 assert.match(eventOptions, /trackingEventPropertyOptionsByEvent/, '事件筛选需要当前事件参数')
-assert.match(eventOptions, /eventUserPropertyOptions\.value/, '事件筛选需要 event.userinfo 用户属性')
+assert.match(eventOptions, /eventUserPropertyOptions\.value/, '事件筛选需要默认事件表的用户属性')
 assert.match(
   eventOptions,
-  /eventTable !== eventFieldScope\.value\.defaultEventTable/,
+  /activeEventTable:[\s\S]*?eventFieldScope\.value\.defaultEventTable/,
   '事件筛选必须严格限定当前工作空间配置的默认事件表'
 )
 assert.doesNotMatch(eventOptions, /eventDetailFieldOptions/, '事件筛选不得混入事件公共物理字段')

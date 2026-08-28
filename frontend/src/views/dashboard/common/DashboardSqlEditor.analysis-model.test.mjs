@@ -70,6 +70,8 @@ test('persists and restores retention configuration in the SQL builder', () => {
   assert.match(restoreBody, /restoreBuilderFilters\(retention\.initialEventFilters\?\.rules\)/)
   assert.match(restoreBody, /restoreBuilderFilters\(retention\.returnEventFilters\?\.rules\)/)
   assert.match(saveBody, /simultaneous:\s*\{[\s\S]*?enabled:\s*sqlBuilder\.retention\.simultaneous\.enabled/)
+  assert.match(saveBody, /metricField:\s*sqlBuilder\.retention\.simultaneous\.enabled[\s\S]*?sqlBuilder\.retention\.simultaneous\.metricField/)
+  assert.match(restoreBody, /simultaneous\.metricField/)
   assert.match(saveBody, /relatedProperty:\s*\{[\s\S]*?enabled:\s*sqlBuilder\.retention\.relatedProperty\.enabled/)
   assert.match(saveBody, /simultaneous\.enabled \? sqlBuilder\.retention\.simultaneous\.event : ''/)
   assert.match(saveBody, /relatedProperty\.enabled && sqlBuilder\.retention\.relatedProperty\.asGroup/)
@@ -90,6 +92,7 @@ test('includes retention in AI context and preview signature', () => {
   assert.match(contextBody, /initialEventFilters:\s*\{[\s\S]*?filterContext\(sqlBuilder\.retention\.initialEventFilters\)/)
   assert.match(contextBody, /returnEventAlias:\s*sqlBuilder\.retention\.returnEventAlias\.trim\(\)/)
   assert.match(contextBody, /returnEventFilters:\s*\{[\s\S]*?filterContext\(sqlBuilder\.retention\.returnEventFilters\)/)
+  assert.match(contextBody, /metricField:\s*sqlBuilder\.retention\.simultaneous\.enabled[\s\S]*?fieldOptionPayload\(sqlBuilder\.retention\.simultaneous\.metricField\)/)
   assert.match(signatureBody, /analysisModel:\s*sqlBuilder\.analysisModel/)
   assert.match(signatureBody, /retention:\s*sqlBuilder\.analysisModel === 'retention'/)
 })
@@ -122,6 +125,23 @@ test('keeps simultaneous and related-property controls while removing the red-bo
   assert.doesNotMatch(source, />留存周期</)
   assert.doesNotMatch(source, />隐藏未完成周期</)
   assert.doesNotMatch(source, /sqlBuilder\.retention\.(?:windowDays|resultMode|displayMode|hideIncomplete)/)
+})
+
+test('reuses event metric aggregation behavior for simultaneous retention metrics', () => {
+  const simultaneousTemplate = source.match(
+    /<div\s+class="retention-option-flow"[\s\S]*?<\/div>\s*<\/template>/
+  )?.[0] || ''
+  const aggregationOptions = source.match(
+    /const builderAggregationOptions[\s\S]*?\n\]/
+  )?.[0] || ''
+
+  assert.match(aggregationOptions, /总次数[\s\S]*?求和[\s\S]*?平均值[\s\S]*?最大值[\s\S]*?最小值[\s\S]*?去重数/)
+  assert.match(simultaneousTemplate, /v-for="option in builderAggregationOptions"/)
+  assert.match(simultaneousTemplate, /v-if="sqlBuilder\.retention\.simultaneous\.aggregation !== 'count'"/)
+  assert.match(simultaneousTemplate, /v-model="sqlBuilder\.retention\.simultaneous\.metricField"/)
+  assert.match(simultaneousTemplate, /:options="retentionSimultaneousMetricFieldOptions\(\)"/)
+  assert.match(source, /function retentionSimultaneousMetricFieldOptions\(\)[\s\S]*?return metricMeasureFieldOptions\(/)
+  assert.doesNotMatch(source, /retentionSimultaneousAggregationOptions/)
 })
 
 test('adds rename and reused event-filter controls to both retention events', () => {
