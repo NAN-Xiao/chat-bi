@@ -2670,9 +2670,6 @@ function retentionBlockingIssues() {
   if (!sqlBuilder.retention.initialEvent) issues.push('留存分析请先选择初始事件。')
   if (!sqlBuilder.retention.returnEvent) issues.push('留存分析请先选择回访事件。')
   if (!sqlBuilder.timeField) issues.push('留存分析请先选择时间字段。')
-  if (sqlBuilder.retention.initialEvent && sqlBuilder.retention.returnEvent && sqlBuilder.retention.initialEvent === sqlBuilder.retention.returnEvent) {
-    issues.push('初始事件和回访事件不能相同。')
-  }
   if (sqlBuilder.retention.simultaneous.enabled && !sqlBuilder.retention.simultaneous.event) {
     issues.push('使用同时展示时请选择参与事件。')
   }

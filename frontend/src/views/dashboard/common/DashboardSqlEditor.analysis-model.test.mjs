@@ -103,6 +103,13 @@ test('model switching clears incompatible state and fixes retention to table', (
   assert.match(switchBody, /resetRetentionConfig\(\)/)
 })
 
+test('allows the same event for initial and return retention roles', () => {
+  const validationBody = source.match(/function retentionBlockingIssues\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+
+  assert.doesNotMatch(validationBody, /initialEvent\s*===\s*sqlBuilder\.retention\.returnEvent/)
+  assert.doesNotMatch(validationBody, /初始事件和回访事件不能相同/)
+})
+
 test('keeps simultaneous and related-property controls while removing the red-box options', () => {
   assert.match(source, />使用同时展示</)
   assert.match(source, />同时展示回访的用户参与</)

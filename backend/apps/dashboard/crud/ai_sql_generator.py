@@ -1268,10 +1268,6 @@ def _deterministic_validate_manual_config(
             issues.append("留存分析请先选择回访事件。")
         if not _field_has_resolvable_reference(time_config.get("field")):
             issues.append("留存分析请先选择时间字段。")
-        initial_event_name = _tracking_event_name_from_field(initial_event)
-        return_event_name = _tracking_event_name_from_field(return_event)
-        if initial_event_name and initial_event_name == return_event_name:
-            issues.append("初始事件和回访事件不能相同。")
         if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "table":
             issues.append("留存分析只能使用留存表结果。")
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}

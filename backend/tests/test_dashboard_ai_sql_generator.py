@@ -1210,6 +1210,29 @@ def test_retention_config_uses_independent_deterministic_validation() -> None:
     assert "至少需要配置一个分析指标" not in result.issues
 
 
+def test_retention_config_allows_same_initial_and_return_event() -> None:
+    same_event = {
+        "kind": "tracking-event",
+        "eventTable": "event",
+        "eventNameField": "event_name",
+        "eventName": "register",
+        "field": "event_name",
+    }
+    request = _retention_request(initialEvent=same_event, returnEvent=same_event)
+    normalized = ai_sql_generator._normalize_manual_config(request)
+
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+    )
+
+    assert result.success is True
+    assert "初始事件和回访事件不能相同。" not in result.issues
+
+
 def test_retention_config_rejects_missing_subject_and_events() -> None:
     request = _retention_request(entityField=None, initialEvent=None, returnEvent=None)
     normalized = ai_sql_generator._normalize_manual_config(request)
