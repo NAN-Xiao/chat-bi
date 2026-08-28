@@ -620,12 +620,14 @@ def _normalize_manual_config(
     ).strip()
     time_config["date_expression"] = time_config.get("dateExpression") or time_config.get("date_expression")
     analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
-    if analysis_model not in {"event", "retention"}:
+    if analysis_model not in {"event", "retention", "funnel"}:
         analysis_model = "event"
     retention = dict(context.get("retention") or {}) if isinstance(context.get("retention"), dict) else {}
+    funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
     return {
         "analysis_model": analysis_model,
         "retention": retention,
+        "funnel": funnel,
         "chart": context.get("chart") if isinstance(context.get("chart"), dict) else {
             "title": request.title,
             "type": request.chart_type,
@@ -1215,6 +1217,19 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
             table_name = _field_table_name(field)
             if table_name:
                 tables.add(table_name)
+    funnel = normalized_config.get("funnel") if isinstance(normalized_config.get("funnel"), dict) else {}
+    funnel_fields = [funnel.get("entityField") or funnel.get("entity_field")]
+    for step in _list_dict_items(funnel.get("steps")):
+        funnel_fields.extend([
+            step.get("event"),
+            step.get("relatedProperty") or step.get("related_property"),
+        ])
+        for field in _iter_filter_rule_fields(step.get("filters")):
+            funnel_fields.append(field)
+    for field in funnel_fields:
+        table_name = _field_table_name(field)
+        if table_name:
+            tables.add(table_name)
     return tables
 
 
@@ -1339,6 +1354,67 @@ def _deterministic_validate_manual_config(
                 if filter_event_name and expected_event_name and filter_event_name != expected_event_name:
                     issues.append(f"{filter_label}不属于当前选择的事件。")
 
+    if analysis_model == "funnel":
+        funnel = normalized_config.get("funnel") if isinstance(normalized_config.get("funnel"), dict) else {}
+        entity_field = funnel.get("entityField") or funnel.get("entity_field")
+        steps = _list_dict_items(funnel.get("steps"))
+        related_enabled = funnel.get("relatedPropertyEnabled") is True or funnel.get("related_property_enabled") is True
+        window_days = funnel.get("windowDays")
+        if window_days is None:
+            window_days = funnel.get("window_days")
+        if window_days is None:
+            window_days = 1
+        if not _field_has_resolvable_reference(entity_field):
+            issues.append("漏斗分析请先选择分析主体。")
+        else:
+            issues.extend(_json_subfield_mapping_issues(entity_field, "漏斗分析主体"))
+            issues.extend(_field_table_permission_issues(entity_field, "漏斗分析主体", allowed_tables))
+            issues.extend(_field_schema_permission_issues(entity_field, "漏斗分析主体", allowed_fields_by_table))
+        if not _field_has_resolvable_reference(time_config.get("field")):
+            issues.append("漏斗分析请先选择时间字段。")
+        if len(steps) < 2:
+            issues.append("漏斗分析至少需要配置两个步骤。")
+        if len(steps) > 10:
+            issues.append("漏斗分析最多支持十个步骤。")
+        if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "funnel":
+            issues.append("漏斗分析只能使用漏斗图结果。")
+        try:
+            normalized_window_days = int(window_days)
+        except (TypeError, ValueError):
+            normalized_window_days = 0
+        if normalized_window_days < 1 or normalized_window_days > 365:
+            issues.append("漏斗分析窗口期必须是 1 到 365 天。")
+        for index, step in enumerate(steps):
+            label = f"漏斗步骤{index + 1}"
+            event = step.get("event")
+            related_property = step.get("relatedProperty") or step.get("related_property")
+            if not _field_has_resolvable_reference(event):
+                issues.append(f"{label}请先选择事件。")
+            if related_enabled and not _field_has_resolvable_reference(related_property):
+                issues.append(f"使用关联属性时请选择{label}关联属性。")
+            for field, field_label in (
+                (event, f"{label}事件"),
+                (related_property if related_enabled else None, f"{label}关联属性"),
+            ):
+                if not field:
+                    continue
+                issues.extend(_tracking_event_metadata_issues(field, field_label))
+                issues.extend(_json_subfield_mapping_issues(field, field_label))
+                issues.extend(_field_table_permission_issues(field, field_label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(field, field_label, allowed_fields_by_table))
+            event_name = _tracking_event_name_from_field(event)
+            property_event_name = _tracking_event_name_from_field(related_property)
+            if related_enabled and event_name and property_event_name and event_name != property_event_name:
+                issues.append(f"{label}关联属性不属于当前选择的事件。")
+            for filter_index, filter_field in enumerate(_iter_filter_rule_fields(step.get("filters"))):
+                filter_label = f"{label}筛选{filter_index + 1}"
+                issues.extend(_json_subfield_mapping_issues(filter_field, filter_label))
+                issues.extend(_field_table_permission_issues(filter_field, filter_label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(filter_field, filter_label, allowed_fields_by_table))
+                filter_event_name = _tracking_event_name_from_field(filter_field)
+                if filter_event_name and event_name and filter_event_name != event_name:
+                    issues.append(f"{filter_label}不属于当前选择的事件。")
+
     for index, metric in enumerate(metrics):
         label = str(metric.get("alias") or metric.get("label") or f"分析指标{index + 1}").strip()
         issues.extend(_validate_metric_item(metric, label))
@@ -1390,6 +1466,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
     return {
         "analysis_model": normalized_config.get("analysis_model") or "event",
         "retention": normalized_config.get("retention") or {},
+        "funnel": normalized_config.get("funnel") or {},
         "time": time_config,
         "date_parameters": {
             "enabled": uses_date_parameters,
@@ -1539,6 +1616,21 @@ def _dashboard_config_prompt(
             sql_dialect,
             datasource,
         ))
+    funnel = context.get("funnel") if isinstance(context.get("funnel"), dict) else {}
+    funnel_rules: list[str] = []
+    if analysis_model == "funnel":
+        steps = _list_dict_items(funnel.get("steps"))
+        funnel_rules = [
+            "当前 analysisModel=funnel，必须严格按 funnel.entityField、funnel.steps 的顺序生成用户漏斗查询。",
+            "每个 steps[i].event 都必须使用字段对象中的 eventTable、eventNameField 和 eventName 定位事件，不得猜测事件名或用步骤序号替代事件条件。",
+            "漏斗按同一分析主体去重计数：步骤 1 是样本基数，后续步骤必须在前一步完成后发生，并且整个步骤链的时间差不超过 funnel.windowDays 天。",
+            "每个步骤的 filters.rules 只应用于该步骤事件明细；全局 filters 仍按全局配置应用，不得把步骤筛选互换或合并。",
+            "funnel.relatedPropertyEnabled=true 时，必须使用每个步骤 relatedProperty 指定的属性值与前一步相等进行关联，不得根据字段名猜测关联属性。",
+            "最终结果必须是一行一个漏斗步骤，并固定输出 step_order、step_name、step_count、step_rate、step_conversion_rate、step_dropoff_rate 六列；step_rate 以第一步为分母，step_conversion_rate 以相邻上一步为分母。",
+            "step_order 必须按 steps 配置顺序为 1、2、3...，不能按用户数据量重新排序；step_name 使用步骤 alias（没有 alias 时使用事件展示名称）。",
+            f"当前配置的漏斗步骤数量：{len(steps)}，窗口期：{funnel.get('windowDays') or funnel.get('window_days') or 1} 天。",
+            "最终返回 chart_type 必须为 funnel。",
+        ]
     return "\n".join([
         "请处理下面的手动图表配置。",
         "",
@@ -1577,8 +1669,9 @@ def _dashboard_config_prompt(
         "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段；必须使用字段对象的 expression，不得把用户属性改为 user 表或其他表的同名字段。",
         "字段对象包含 sourceField、jsonPath 和 expression 时，JSON 子字段必须使用 expression；不得自行改写 JSON 宿主列或路径。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
-        "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention 字段信息生成 SQL；不要编造未提供字段。",
+        "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention/funnel 字段信息生成 SQL；不要编造未提供字段。",
         *retention_rules,
+        *funnel_rules,
         *date_parameter_rules,
         *_dashboard_sql_dialect_rules(sql_dialect, datasource),
     ])
@@ -1687,6 +1780,25 @@ def _retention_sql_result_issues(
     if missing:
         issues.append(f"留存 SQL 缺少固定结果列：{'、'.join(missing)}。")
     return _unique_text_items(issues)
+
+
+def _funnel_sql_result_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+) -> list[str]:
+    if str(normalized_config.get("analysis_model") or "event") != "funnel":
+        return []
+    required_aliases = [
+        "step_order",
+        "step_name",
+        "step_count",
+        "step_rate",
+        "step_conversion_rate",
+        "step_dropoff_rate",
+    ]
+    normalized_sql = str(sql or "").lower()
+    missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
+    return [f"漏斗 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
 
 
 def _dashboard_sql_system_prompt() -> str:
@@ -2159,6 +2271,14 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 未满足留存分析生成要求。"
         response.advice = "请按当前日期类型、SQL 方言和留存周期重新生成 Cohort 查询。"
         response.issues = _unique_text_items(list(response.issues or []) + retention_issues)
+    elif funnel_issues := _funnel_sql_result_issues(
+        sql,
+        state.get("normalized_config") or {},
+    ):
+        response.success = False
+        response.message = "生成 SQL 未满足漏斗分析生成要求。"
+        response.advice = "请按当前漏斗步骤顺序和固定结果列重新生成漏斗查询。"
+        response.issues = _unique_text_items(list(response.issues or []) + funnel_issues)
     elif json_issues := _json_subfield_sql_issues(
         sql,
         state.get("json_subfield_requirements") or [],
@@ -2216,7 +2336,7 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
     )
     normalized_config = state.get("normalized_config") or {}
     analysis_model = str(normalized_config.get("analysis_model") or "event")
-    response.analysis_model = "retention" if analysis_model == "retention" else "event"
+    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel"} else "event"
     if response.analysis_model == "retention":
         retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
@@ -2229,6 +2349,15 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "simultaneous_enabled": simultaneous.get("enabled") is True,
             "related_property_enabled": related_property.get("enabled") is True,
             "related_property_as_group": related_property.get("asGroup") is True,
+        }
+    elif response.analysis_model == "funnel":
+        response.chart_type = "funnel"
+        response.result_config = {
+            "type": "funnel",
+            "step_field": "step_name",
+            "value_field": "step_count",
+            "order_field": "step_order",
+            "rate_fields": ["step_rate", "step_conversion_rate", "step_dropoff_rate"],
         }
     return {
         "response": response,

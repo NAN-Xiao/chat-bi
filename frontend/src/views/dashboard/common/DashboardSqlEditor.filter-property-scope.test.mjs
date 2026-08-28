@@ -42,7 +42,7 @@ assert.match(tree, /filterPropertyTabs\?: Array<'all' \| 'event' \| 'user'>/, '�
 assert.match(tree, /:filter-property-tabs="filterPropertyTabs"/, '递归筛选树必须保留允许标签')
 
 const metricFilterTabBindings = editor.match(/:filter-property-tabs="\['all', 'event', 'user'\]"/g) || []
-assert.equal(metricFilterTabBindings.length, 4, '指标、公式、初始事件和回访事件筛选都需要全部、事件、用户三个标签')
+assert.equal(metricFilterTabBindings.length, 5, '指标、公式、留存事件和漏斗步骤筛选都需要全部、事件、用户三个标签')
 assert.match(editor, /:filter-property-tabs="\['user'\]"/, '全局筛选只能显示用户属性')
 assert.match(editor, /:field-options="eventUserPropertyOptions"/, '全局筛选候选只能使用 event.userinfo')
 assert.match(editor, /function builderFilterScopeIssues\(\)/, '旧配置需要独立筛选范围校验')

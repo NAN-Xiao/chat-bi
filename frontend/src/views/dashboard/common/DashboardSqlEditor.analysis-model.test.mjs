@@ -15,7 +15,7 @@ test('renders the analysis model selector before event metrics', () => {
   assert.ok(modelIndex >= 0, '图表配置卡必须提供分析模型下拉列表')
   assert.ok(metricIndex >= 0, '事件分析必须继续提供分析指标')
   assert.ok(modelIndex < metricIndex, '分析模型必须位于分析指标上方')
-  assert.match(source, /事件分析[\s\S]*?留存分析/, '本期只需提供事件分析和留存分析')
+  assert.match(source, /事件分析[\s\S]*?留存分析[\s\S]*?漏斗分析/, '分析模型需要提供事件、留存和漏斗分析')
   assert.match(source, /class="analysis-model-row"/)
   assert.match(source, /class="retention-heading-row"/)
   assert.match(
@@ -59,7 +59,7 @@ test('persists and restores retention configuration in the SQL builder', () => {
 
   assert.match(saveBody, /analysisModel:\s*sqlBuilder\.analysisModel/)
   assert.match(saveBody, /retention:\s*sqlBuilder\.analysisModel === 'retention'/)
-  assert.match(restoreBody, /value\.analysisModel === 'retention' \? 'retention' : 'event'/)
+  assert.match(restoreBody, /value\.analysisModel === 'retention' \|\| value\.analysisModel === 'funnel'/)
   assert.match(restoreBody, /retention\.entityField/)
   assert.match(restoreBody, /retention\.initialEvent/)
   assert.match(restoreBody, /retention\.returnEvent/)
@@ -73,6 +73,9 @@ test('persists and restores retention configuration in the SQL builder', () => {
   assert.match(saveBody, /relatedProperty:\s*\{[\s\S]*?enabled:\s*sqlBuilder\.retention\.relatedProperty\.enabled/)
   assert.match(saveBody, /simultaneous\.enabled \? sqlBuilder\.retention\.simultaneous\.event : ''/)
   assert.match(saveBody, /relatedProperty\.enabled && sqlBuilder\.retention\.relatedProperty\.asGroup/)
+  assert.match(saveBody, /funnel:\s*sqlBuilder\.analysisModel === 'funnel'/)
+  assert.match(saveBody, /sqlBuilder\.funnel\.steps\.map/)
+  assert.match(restoreBody, /sqlBuilder\.funnel\.windowDays/)
 })
 
 test('includes retention in AI context and preview signature', () => {
@@ -92,6 +95,8 @@ test('includes retention in AI context and preview signature', () => {
   assert.match(contextBody, /returnEventFilters:\s*\{[\s\S]*?filterContext\(sqlBuilder\.retention\.returnEventFilters\)/)
   assert.match(signatureBody, /analysisModel:\s*sqlBuilder\.analysisModel/)
   assert.match(signatureBody, /retention:\s*sqlBuilder\.analysisModel === 'retention'/)
+  assert.match(contextBody, /funnel:\s*sqlBuilder\.analysisModel === 'funnel'/)
+  assert.match(signatureBody, /funnel:\s*sqlBuilder\.analysisModel === 'funnel'/)
 })
 
 test('model switching clears incompatible state and fixes retention to table', () => {
@@ -101,6 +106,8 @@ test('model switching clears incompatible state and fixes retention to table', (
   assert.match(switchBody, /sqlBuilder\.calculatedMetrics = \[\]/)
   assert.match(switchBody, /form\.chartType = 'table'/)
   assert.match(switchBody, /resetRetentionConfig\(\)/)
+  assert.match(switchBody, /form\.chartType = 'funnel'/)
+  assert.match(switchBody, /resetFunnelConfig\(\)/)
 })
 
 test('allows the same event for initial and return retention roles', () => {
@@ -132,7 +139,8 @@ test('adds rename and reused event-filter controls to both retention events', ()
   assert.match(source, /class="retention-event-alias-row"[\s\S]*?class="retention-event-alias-input"/)
   assert.match(source, /v-model="retentionAliasDraft\.initial"[\s\S]*?:model-value="sqlBuilder\.retention\.initialEvent"/)
   assert.match(source, /v-model="retentionAliasDraft\.return"[\s\S]*?:model-value="sqlBuilder\.retention\.returnEvent"/)
-  assert.equal((source.match(/<EditPen\s*\/>/g) || []).length, 2, '初始事件和回访事件都需要铅笔重命名入口')
+  assert.equal((source.match(/title="重命名初始事件"/g) || []).length, 1, '初始事件需要铅笔重命名入口')
+  assert.equal((source.match(/title="重命名回访事件"/g) || []).length, 1, '回访事件需要铅笔重命名入口')
   assert.match(source, /function beginRetentionEventRename\(target: RetentionEventTarget\)/)
   assert.match(source, /function finishRetentionEventRename\(target: RetentionEventTarget\)/)
   assert.match(source, /@keydown\.esc\.prevent="cancelRetentionEventRename\('initial'\)"/)
@@ -145,4 +153,16 @@ test('adds rename and reused event-filter controls to both retention events', ()
   assert.match(source, /function eventFilterFieldOptions\(eventValue: string\)/)
   assert.match(source, /return eventFilterFieldOptions\(item\.field\)/, '事件指标和留存事件必须复用同一筛选字段逻辑')
   assert.doesNotMatch(source, /eventTable !== 'event'/, '筛选范围不能写死业务事件表名')
+})
+
+test('provides ordered funnel steps with window and related-property controls', () => {
+  assert.match(source, /class="funnel-heading-row"/)
+  assert.match(source, /class="funnel-step-list"/)
+  assert.match(source, /v-for="\(step, index\) in sqlBuilder\.funnel\.steps"/)
+  assert.match(source, /sqlBuilder\.funnel\.windowDays/)
+  assert.match(source, /sqlBuilder\.funnel\.relatedPropertyEnabled/)
+  assert.match(source, /function addFunnelStep\(\)/)
+  assert.match(source, /function removeFunnelStep\(index: number\)/)
+  assert.match(source, /function funnelBlockingIssues\(\)/)
+  assert.match(source, /step_field\s*\|\| resultConfig\.stepField \|\| 'step_name'/)
 })

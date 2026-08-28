@@ -141,8 +141,16 @@ type SqlBuilderMetricItem = {
   filterLogic: SqlBuilderFilterLogic
   filters: SqlBuilderFilter[]
 }
-type AnalysisModel = 'event' | 'retention'
+type AnalysisModel = 'event' | 'retention' | 'funnel'
 type RetentionEventTarget = 'initial' | 'return'
+type SqlBuilderFunnelStep = {
+  id: string
+  event: string
+  alias: string
+  filterLogic: SqlBuilderFilterLogic
+  filters: SqlBuilderFilter[]
+  relatedProperty: string
+}
 const RETENTION_ANALYSIS_CONTEXT_CONTENT = '以某段时间做过初始事件的用户为样本，查看在指定日期后用户进行回访事件的留存情况'
 type SqlBuilderRetentionConfig = {
   entityField: string
@@ -166,6 +174,12 @@ type SqlBuilderRetentionConfig = {
     simultaneousProperty: string
     asGroup: boolean
   }
+}
+type SqlBuilderFunnelConfig = {
+  entityField: string
+  steps: SqlBuilderFunnelStep[]
+  windowDays: number
+  relatedPropertyEnabled: boolean
 }
 type SqlBuilderCalculatedMetricItem = {
   id: string
@@ -332,6 +346,12 @@ const sqlBuilder = reactive({
       asGroup: false,
     },
   } as SqlBuilderRetentionConfig,
+  funnel: {
+    entityField: '',
+    steps: [],
+    windowDays: 1,
+    relatedPropertyEnabled: false,
+  } as SqlBuilderFunnelConfig,
 })
 const retentionFilterExpanded = reactive<Record<RetentionEventTarget, boolean>>({
   initial: false,
@@ -345,6 +365,9 @@ const retentionAliasDraft = reactive<Record<RetentionEventTarget, string>>({
   initial: '',
   return: '',
 })
+const funnelFilterExpanded = reactive<Record<string, boolean>>({})
+const funnelAliasEditing = reactive<Record<string, boolean>>({})
+const funnelAliasDraft = reactive<Record<string, string>>({})
 const builderAgentAdvice = reactive({
   visible: false,
   severity: '',
@@ -781,10 +804,14 @@ const formulaFieldPickerPlaceholder = computed(() => usesTrackingEventPicker.val
 const analysisModelOptions = [
   { label: '事件分析', value: 'event' as AnalysisModel },
   { label: '留存分析', value: 'retention' as AnalysisModel },
+  { label: '漏斗分析', value: 'funnel' as AnalysisModel },
 ]
 const isRetentionAnalysis = computed(() => sqlBuilder.analysisModel === 'retention')
+const isFunnelAnalysis = computed(() => sqlBuilder.analysisModel === 'funnel')
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
+const funnelEntityFieldOptions = computed(() => builderFieldOptions.value)
+const funnelEventOptions = computed(() => trackingEventCatalogOptions.value)
 const retentionSimultaneousAggregationOptions = builderAggregationOptions.filter((option) => (
   option.value === 'count' || option.value === 'count_distinct'
 ))
@@ -1510,6 +1537,7 @@ function resetSqlBuilderState() {
   sqlBuilder.globalFilterLogic = 'and'
   sqlBuilder.approximate = false
   resetRetentionConfig()
+  resetFunnelConfig()
   clearBuilderAgentAdvice()
 }
 
@@ -1894,6 +1922,21 @@ function builderConfigForSave() {
         asGroup: sqlBuilder.retention.relatedProperty.enabled && sqlBuilder.retention.relatedProperty.asGroup,
       },
     } : undefined,
+    funnel: sqlBuilder.analysisModel === 'funnel' ? {
+      entityField: sqlBuilder.funnel.entityField,
+      windowDays: sqlBuilder.funnel.windowDays,
+      relatedPropertyEnabled: sqlBuilder.funnel.relatedPropertyEnabled,
+      steps: sqlBuilder.funnel.steps.map((step) => ({
+        id: step.id,
+        event: step.event,
+        alias: step.alias.trim(),
+        filters: {
+          logic: builderLogic(step.filterLogic),
+          rules: compactBuilderFilters(step.filters),
+        },
+        relatedProperty: sqlBuilder.funnel.relatedPropertyEnabled ? step.relatedProperty : '',
+      })),
+    } : undefined,
     timeField: SQL_EDITOR_TIME_FIELD,
     timeGrain: SQL_EDITOR_TIME_GRAIN,
     timeRange: 'expression',
@@ -1920,7 +1963,9 @@ function restoreSqlBuilderState(value: any) {
   if (!value || typeof value !== 'object') {
     return
   }
-  sqlBuilder.analysisModel = value.analysisModel === 'retention' ? 'retention' : 'event'
+  sqlBuilder.analysisModel = value.analysisModel === 'retention' || value.analysisModel === 'funnel'
+    ? value.analysisModel
+    : 'event'
   const retention = value.retention && typeof value.retention === 'object' ? value.retention : {}
   sqlBuilder.retention.entityField = typeof retention.entityField === 'string' ? retention.entityField : ''
   sqlBuilder.retention.initialEvent = typeof retention.initialEvent === 'string' ? retention.initialEvent : ''
@@ -1953,6 +1998,32 @@ function restoreSqlBuilderState(value: any) {
     ? relatedProperty.simultaneousProperty
     : ''
   sqlBuilder.retention.relatedProperty.asGroup = sqlBuilder.retention.relatedProperty.enabled && relatedProperty.asGroup === true
+  const funnel = value.funnel && typeof value.funnel === 'object' ? value.funnel : {}
+  sqlBuilder.funnel.entityField = typeof funnel.entityField === 'string' ? funnel.entityField : ''
+  sqlBuilder.funnel.windowDays = Number.isFinite(Number(funnel.windowDays))
+    ? Math.min(365, Math.max(1, Number(funnel.windowDays)))
+    : 1
+  sqlBuilder.funnel.relatedPropertyEnabled = funnel.relatedPropertyEnabled === true
+  const restoredFunnelSteps = Array.isArray(funnel.steps)
+    ? funnel.steps.map((step: any) => {
+        const restored = createFunnelStep()
+        restored.id = typeof step?.id === 'string' && step.id ? step.id : restored.id
+        restored.event = typeof step?.event === 'string' ? step.event : ''
+        restored.alias = typeof step?.alias === 'string' ? step.alias : ''
+        restored.filterLogic = builderLogic(step?.filterLogic || step?.filters?.logic)
+        restored.filters = restoreBuilderFilters(step?.filters?.rules || step?.filters)
+        restored.relatedProperty = typeof step?.relatedProperty === 'string' ? step.relatedProperty : ''
+        return restored
+      })
+    : []
+  sqlBuilder.funnel.steps = restoredFunnelSteps.length >= 2
+    ? restoredFunnelSteps
+    : [createFunnelStep(), createFunnelStep(), createFunnelStep()]
+  sqlBuilder.funnel.steps.forEach((step) => {
+    funnelFilterExpanded[step.id] = false
+    funnelAliasEditing[step.id] = false
+    funnelAliasDraft[step.id] = ''
+  })
   sqlBuilder.dateExpressionPickerEnabled = true
   sqlBuilder.metricDateExpressionEnabled = value.metricDateExpressionEnabled === true
   const timeExpression = normalizeDashboardDateExpression(value.timeExpression)
@@ -2583,16 +2654,51 @@ function resetRetentionConfig() {
   sqlBuilder.retention.relatedProperty.asGroup = false
 }
 
+function createFunnelStep(): SqlBuilderFunnelStep {
+  return {
+    id: nodeId('funnel-step'),
+    event: '',
+    alias: '',
+    filterLogic: 'and',
+    filters: [],
+    relatedProperty: '',
+  }
+}
+
+function resetFunnelConfig() {
+  sqlBuilder.funnel.entityField = ''
+  sqlBuilder.funnel.steps = [createFunnelStep(), createFunnelStep(), createFunnelStep()]
+  sqlBuilder.funnel.windowDays = 1
+  sqlBuilder.funnel.relatedPropertyEnabled = false
+  Object.keys(funnelFilterExpanded).forEach((key) => { delete funnelFilterExpanded[key] })
+  Object.keys(funnelAliasEditing).forEach((key) => { delete funnelAliasEditing[key] })
+  Object.keys(funnelAliasDraft).forEach((key) => { delete funnelAliasDraft[key] })
+  sqlBuilder.funnel.steps.forEach((step) => {
+    funnelFilterExpanded[step.id] = false
+    funnelAliasEditing[step.id] = false
+    funnelAliasDraft[step.id] = ''
+  })
+}
+
 function handleAnalysisModelChange(model: AnalysisModel) {
-  sqlBuilder.analysisModel = model === 'retention' ? 'retention' : 'event'
+  sqlBuilder.analysisModel = model === 'retention' || model === 'funnel' ? model : 'event'
   if (sqlBuilder.analysisModel === 'retention') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
     activeFormulaMetricId.value = ''
     form.chartType = 'table'
     resetRetentionConfig()
+    resetFunnelConfig()
+  } else if (sqlBuilder.analysisModel === 'funnel') {
+    sqlBuilder.metricItems = []
+    sqlBuilder.calculatedMetrics = []
+    activeFormulaMetricId.value = ''
+    form.chartType = 'funnel'
+    resetRetentionConfig()
+    resetFunnelConfig()
   } else {
     resetRetentionConfig()
+    resetFunnelConfig()
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
     addMetricItem()
@@ -2680,6 +2786,132 @@ function retentionBlockingIssues() {
       issues.push('使用关联属性和同时展示时请选择同时展示事件属性。')
     }
   }
+  return issues
+}
+
+function funnelPropertyOptions(eventValue: string) {
+  return retentionPropertyOptions(eventValue)
+}
+
+function handleFunnelStepEventChange(step: SqlBuilderFunnelStep, eventValue: string) {
+  const changed = step.event !== eventValue
+  step.event = eventValue
+  if (!changed) return
+  const hadScopedConfig = Boolean(step.alias.trim() || step.filters.length || step.relatedProperty)
+  step.alias = ''
+  step.filters = []
+  step.filterLogic = 'and'
+  step.relatedProperty = ''
+  funnelFilterExpanded[step.id] = false
+  funnelAliasEditing[step.id] = false
+  funnelAliasDraft[step.id] = ''
+  if (hadScopedConfig) {
+    ElMessage.warning('漏斗步骤事件已切换，原重命名、筛选和关联属性已清除。')
+  }
+}
+
+function handleFunnelRelatedPropertyToggle(enabled: boolean) {
+  if (enabled) return
+  sqlBuilder.funnel.steps.forEach((step) => {
+    step.relatedProperty = ''
+  })
+}
+
+function beginFunnelStepRename(step: SqlBuilderFunnelStep) {
+  if (!step.event) return
+  funnelAliasDraft[step.id] = step.alias
+  funnelAliasEditing[step.id] = true
+}
+
+function finishFunnelStepRename(step: SqlBuilderFunnelStep) {
+  if (!funnelAliasEditing[step.id]) return
+  step.alias = (funnelAliasDraft[step.id] || '').trim()
+  funnelAliasEditing[step.id] = false
+}
+
+function cancelFunnelStepRename(step: SqlBuilderFunnelStep) {
+  funnelAliasEditing[step.id] = false
+  funnelAliasDraft[step.id] = ''
+}
+
+function toggleFunnelStepFilter(step: SqlBuilderFunnelStep) {
+  if (!step.event) return
+  if (!funnelFilterExpanded[step.id] && !step.filters.length) {
+    step.filters.push(emptyBuilderFilter())
+  }
+  funnelFilterExpanded[step.id] = !funnelFilterExpanded[step.id]
+}
+
+function addFunnelStep() {
+  if (sqlBuilder.funnel.steps.length >= 10) {
+    ElMessage.warning('漏斗最多支持 10 个步骤。')
+    return
+  }
+  const step = createFunnelStep()
+  funnelFilterExpanded[step.id] = false
+  funnelAliasEditing[step.id] = false
+  funnelAliasDraft[step.id] = ''
+  sqlBuilder.funnel.steps.push(step)
+}
+
+function removeFunnelStep(index: number) {
+  if (sqlBuilder.funnel.steps.length <= 2) {
+    ElMessage.warning('漏斗至少需要 2 个步骤。')
+    return
+  }
+  const [removed] = sqlBuilder.funnel.steps.splice(index, 1)
+  if (removed) {
+    delete funnelFilterExpanded[removed.id]
+    delete funnelAliasEditing[removed.id]
+    delete funnelAliasDraft[removed.id]
+  }
+}
+
+function sanitizeFunnelConfig() {
+  if (!isFunnelAnalysis.value) return
+  const cleared: string[] = []
+  if (sqlBuilder.funnel.entityField && !optionExists(sqlBuilder.funnel.entityField, funnelEntityFieldOptions.value)) {
+    sqlBuilder.funnel.entityField = ''
+    cleared.push('分析主体')
+  }
+  sqlBuilder.funnel.steps.forEach((step, index) => {
+    if (step.event && !optionExists(step.event, funnelEventOptions.value)) {
+      step.event = ''
+      step.alias = ''
+      step.filters = []
+      step.relatedProperty = ''
+      funnelFilterExpanded[step.id] = false
+      cleared.push(`步骤${index + 1}事件`)
+    }
+    const invalidFilter = filterFieldValues(step.filters).some((field) => !optionExists(field, eventFilterFieldOptions(step.event)))
+    if (invalidFilter) {
+      step.filters = []
+      step.filterLogic = 'and'
+      funnelFilterExpanded[step.id] = false
+      cleared.push(`步骤${index + 1}筛选条件`)
+    }
+    if (step.relatedProperty && !optionExists(step.relatedProperty, funnelPropertyOptions(step.event))) {
+      step.relatedProperty = ''
+      cleared.push(`步骤${index + 1}关联属性`)
+    }
+  })
+  if (cleared.length) {
+    ElMessage.warning(`${cleared.join('、')}在当前数据源中无效，已清除，请重新选择。`)
+  }
+}
+
+function funnelBlockingIssues() {
+  if (!isFunnelAnalysis.value) return []
+  const issues: string[] = []
+  if (!sqlBuilder.funnel.entityField) issues.push('漏斗分析请先选择分析主体。')
+  if (!sqlBuilder.timeField) issues.push('漏斗分析请先选择时间字段。')
+  if (sqlBuilder.funnel.steps.length < 2) issues.push('漏斗分析至少需要配置两个步骤。')
+  sqlBuilder.funnel.steps.forEach((step, index) => {
+    if (!step.event) issues.push(`漏斗分析请先选择步骤${index + 1}事件。`)
+    if (sqlBuilder.funnel.relatedPropertyEnabled && !step.relatedProperty) {
+      issues.push(`使用关联属性时请选择步骤${index + 1}关联属性。`)
+    }
+  })
   return issues
 }
 
@@ -2790,6 +3022,14 @@ function selectedBuilderFieldValues() {
       ...filterFieldValues(sqlBuilder.retention.initialEventFilters),
       ...filterFieldValues(sqlBuilder.retention.returnEventFilters),
     ] : []),
+    ...(sqlBuilder.analysisModel === 'funnel' ? [
+      sqlBuilder.funnel.entityField,
+      ...sqlBuilder.funnel.steps.flatMap((step) => [
+        step.event,
+        step.relatedProperty,
+        ...filterFieldValues(step.filters),
+      ]),
+    ] : []),
     ...sqlBuilder.metricItems.flatMap((item) => [item.field, item.metric]),
     ...sqlBuilder.calculatedMetrics.flatMap((item) => [item.pendingEventField, item.pendingMetricField]),
     ...formulaFields,
@@ -2844,6 +3084,24 @@ function collectBuilderAiContext() {
           : null,
         asGroup: sqlBuilder.retention.relatedProperty.enabled && sqlBuilder.retention.relatedProperty.asGroup,
       },
+    } : null,
+    funnel: sqlBuilder.analysisModel === 'funnel' ? {
+      content: '以同一分析主体按顺序完成多个事件步骤，查看各步骤用户数、转化率和流失情况',
+      entityField: fieldOptionPayload(sqlBuilder.funnel.entityField),
+      windowDays: sqlBuilder.funnel.windowDays,
+      relatedPropertyEnabled: sqlBuilder.funnel.relatedPropertyEnabled,
+      steps: sqlBuilder.funnel.steps.map((step, index) => ({
+        order: index + 1,
+        event: fieldOptionPayload(step.event),
+        alias: step.alias.trim(),
+        filters: {
+          logic: step.filterLogic,
+          rules: filterContext(step.filters),
+        },
+        relatedProperty: sqlBuilder.funnel.relatedPropertyEnabled
+          ? fieldOptionPayload(step.relatedProperty)
+          : null,
+      })),
     } : null,
     chart: {
       title: form.title,
@@ -2933,7 +3191,8 @@ function generatedSqlMatchesBuilderMetrics(sql: string) {
 function collectLocalBuilderConfigIssues() {
   const eventScopeIssues = builderBlockingScopeIssues()
   const retentionIssues = retentionBlockingIssues()
-  const issues: string[] = [...eventScopeIssues, ...retentionIssues]
+  const funnelIssues = funnelBlockingIssues()
+  const issues: string[] = [...eventScopeIssues, ...retentionIssues, ...funnelIssues]
   const suggestions: string[] = []
   if (eventScopeIssues.length && eventFieldScope.value.defaultEventTable) {
     suggestions.push(`请重新选择 ${eventFieldScope.value.defaultEventTable} 表中的字段后再生成 SQL。`)
@@ -3116,18 +3375,21 @@ async function generateBuilderAiSql() {
   }
   const eventScopeIssues = builderBlockingScopeIssues()
   const retentionIssues = retentionBlockingIssues()
-  if (retentionIssues.length) {
+  const funnelIssues = funnelBlockingIssues()
+  if (retentionIssues.length || funnelIssues.length) {
     const localAdvice = collectLocalBuilderConfigIssues()
+    const analysisIssues = retentionIssues.length ? retentionIssues : funnelIssues
+    const analysisLabel = retentionIssues.length ? '留存' : '漏斗'
     setBuilderAgentAdvice({
       severity: 'warning',
       intent: inferBuilderIntentText(),
-      message: retentionIssues[0],
-      advice: '请先补全留存分析必填配置，再生成 SQL。',
+      message: analysisIssues[0],
+      advice: `请先补全${analysisLabel}分析必填配置，再生成 SQL。`,
       issues: localAdvice.issues,
       suggestions: localAdvice.suggestions,
       raw: '',
     })
-    ElMessage.warning(retentionIssues[0])
+    ElMessage.warning(analysisIssues[0])
     return false
   }
   if (eventScopeIssues.length) {
@@ -3227,6 +3489,13 @@ async function generateBuilderAiSql() {
   const nextChartType = result.chart_type || result.chartType
   if (nextChartType && chartTypes.some((item) => item.value === nextChartType)) {
     form.chartType = nextChartType
+  }
+  if (sqlBuilder.analysisModel === 'funnel' || result.analysis_model === 'funnel') {
+    const resultConfig = result.result_config || result.resultConfig || {}
+    form.chartType = 'funnel'
+    form.x = String(resultConfig.step_field || resultConfig.stepField || 'step_name')
+    const valueField = String(resultConfig.value_field || resultConfig.valueField || 'step_count')
+    form.y = [valueField]
   }
   syncDashboardDateParameterUsage()
   if (result.success) {
@@ -3340,6 +3609,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
     trackingEventCatalog.value = metadata.trackingEventCatalog
     schemaTables.value = metadata.schemaTables.length ? metadata.schemaTables : previewSchemaTables()
     sanitizeRetentionConfig()
+    sanitizeFunnelConfig()
     if (sqlBuilder.analysisModel === 'event') {
       if (!sqlBuilder.metricItems.length && !sqlBuilder.calculatedMetrics.length) {
         addMetricItem()
@@ -3758,6 +4028,7 @@ function currentPreviewSignature() {
   return JSON.stringify({
     analysisModel: sqlBuilder.analysisModel,
     retention: sqlBuilder.analysisModel === 'retention' ? sqlBuilder.retention : null,
+    funnel: sqlBuilder.analysisModel === 'funnel' ? sqlBuilder.funnel : null,
     sources: [...form.sourceTypes],
     sql: hasSqlSource.value
       ? {
@@ -4552,7 +4823,11 @@ function initEditor() {
   form.primarySource = sourceTypes.includes('external_mcp') && !sourceTypes.includes('sql') ? 'external_mcp' : 'sql'
   form.sql = viewInfo.sql || ''
   form.title = chart.title || ''
-  form.chartType = isRetentionAnalysis.value ? 'table' : (chart.sourceType || chart.type || 'table')
+  form.chartType = isRetentionAnalysis.value
+    ? 'table'
+    : isFunnelAnalysis.value
+      ? 'funnel'
+      : (chart.sourceType || chart.type || 'table')
   form.columns = axisValues(chart.columns)
   form.x = axisValues(chart.xAxis)[0] || ''
   form.y = axisValues(chart.yAxis)
@@ -5505,7 +5780,7 @@ function closeDrawer() {
               </div>
             </section>
 
-            <section v-if="!isRetentionAnalysis" class="builder-section">
+            <section v-if="!isRetentionAnalysis && !isFunnelAnalysis" class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
                   <BuilderSectionIcon class="builder-section-icon" />
@@ -5837,6 +6112,151 @@ function closeDrawer() {
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            </section>
+
+            <section v-else-if="isFunnelAnalysis" class="builder-section funnel-builder-section">
+              <div class="funnel-heading-row">
+                <div class="builder-section-head">
+                  <div class="builder-section-title">
+                    <BuilderSectionIcon class="builder-section-icon" />
+                    <span>漏斗分析</span>
+                  </div>
+                </div>
+                <div class="funnel-subject-line">
+                  <span>对</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.funnel.entityField"
+                    :options="funnelEntityFieldOptions"
+                    :loading="schemaLoading"
+                    mode="property"
+                    placeholder="选择分析主体"
+                  />
+                  <span>进行分析</span>
+                </div>
+              </div>
+              <div class="funnel-step-list">
+                <div v-for="(step, index) in sqlBuilder.funnel.steps" :key="step.id" class="funnel-step-block">
+                  <span class="funnel-step-index">{{ index + 1 }}</span>
+                  <div class="funnel-step-content">
+                    <div
+                      class="funnel-step-editor"
+                      :class="{
+                        'is-active': funnelAliasEditing[step.id] || funnelFilterExpanded[step.id],
+                        'has-alias': Boolean(step.alias.trim()),
+                      }"
+                    >
+                      <div v-if="funnelAliasEditing[step.id] || step.alias.trim()" class="funnel-step-alias-row">
+                        <el-input
+                          v-if="funnelAliasEditing[step.id]"
+                          v-model="funnelAliasDraft[step.id]"
+                          class="funnel-step-alias-input"
+                          clearable
+                          maxlength="80"
+                          :placeholder="retentionEventDefaultDisplayName(step.event)"
+                          :aria-label="`重命名步骤${index + 1}`"
+                          autofocus
+                          @keydown.stop
+                          @keyup.stop
+                          @keydown.enter.prevent="finishFunnelStepRename(step)"
+                          @keydown.esc.prevent="cancelFunnelStepRename(step)"
+                          @blur="finishFunnelStepRename(step)"
+                        />
+                        <span v-else class="funnel-step-alias-text">{{ step.alias.trim() }}</span>
+                      </div>
+                      <div class="funnel-step-main-row">
+                        <BuilderFieldPicker
+                          :model-value="step.event"
+                          :options="funnelEventOptions"
+                          :loading="schemaLoading"
+                          mode="tracking-event"
+                          :placeholder="`选择步骤${index + 1}事件`"
+                          @update:modelValue="handleFunnelStepEventChange(step, $event)"
+                        />
+                        <div class="funnel-step-actions">
+                          <button
+                            type="button"
+                            class="retention-event-action"
+                            :title="`重命名步骤${index + 1}`"
+                            :aria-label="`重命名步骤${index + 1}`"
+                            :disabled="!step.event"
+                            @click="beginFunnelStepRename(step)"
+                          >
+                            <el-icon><EditPen /></el-icon>
+                          </button>
+                          <button
+                            type="button"
+                            class="retention-event-action"
+                            :class="{ 'is-active': funnelFilterExpanded[step.id] || hasEffectiveBuilderFilters(step.filters) }"
+                            :title="`筛选步骤${index + 1}`"
+                            :aria-label="`筛选步骤${index + 1}`"
+                            :disabled="!step.event"
+                            @click="toggleFunnelStepFilter(step)"
+                          >
+                            <el-icon><Filter /></el-icon>
+                          </button>
+                          <button
+                            type="button"
+                            class="retention-event-action"
+                            :title="`删除步骤${index + 1}`"
+                            :aria-label="`删除步骤${index + 1}`"
+                            @click="removeFunnelStep(index)"
+                          >
+                            <el-icon><Delete /></el-icon>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div v-if="funnelFilterExpanded[step.id]" class="retention-event-filter-panel">
+                      <BuilderFilterTree
+                        :nodes="step.filters"
+                        :logic="step.filterLogic"
+                        :field-options="eventFilterFieldOptions(step.event)"
+                        :operator-options="builderFilterOperatorOptions"
+                        :schema-loading="schemaLoading"
+                        picker-mode="filter-property"
+                        :filter-property-tabs="['all', 'event', 'user']"
+                        :show-toolbar="true"
+                        :empty-text="`暂无步骤${index + 1}筛选`"
+                        @update:logic="step.filterLogic = $event"
+                        @empty="funnelFilterExpanded[step.id] = false"
+                      />
+                    </div>
+                    <div v-if="sqlBuilder.funnel.relatedPropertyEnabled" class="funnel-step-property-row">
+                      <span>关联属性</span>
+                      <BuilderFieldPicker
+                        v-model="step.relatedProperty"
+                        :options="funnelPropertyOptions(step.event)"
+                        :loading="schemaLoading"
+                        mode="property"
+                        placeholder="选择步骤属性"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button type="button" class="builder-add-link funnel-add-step" @click="addFunnelStep">
+                <el-icon><Plus /></el-icon>
+                <span>添加步骤</span>
+              </button>
+              <div class="funnel-advanced-options">
+                <div class="funnel-option-row">
+                  <span>使用关联属性</span>
+                  <el-switch
+                    v-model="sqlBuilder.funnel.relatedPropertyEnabled"
+                    @change="handleFunnelRelatedPropertyToggle"
+                  />
+                </div>
+                <div class="funnel-option-row">
+                  <span>分析窗口期</span>
+                  <el-input-number
+                    v-model="sqlBuilder.funnel.windowDays"
+                    :min="1"
+                    :max="365"
+                    controls-position="right"
+                  />
+                  <span>天</span>
                 </div>
               </div>
             </section>
@@ -6177,7 +6597,7 @@ function closeDrawer() {
           </div>
           <div class="builder-bottom-bar">
             <div class="builder-bottom-options">
-              <el-checkbox v-if="sqlBuilder.activeTab === 'builder' && !isRetentionAnalysis" v-model="sqlBuilder.approximate">
+              <el-checkbox v-if="sqlBuilder.activeTab === 'builder' && !isRetentionAnalysis && !isFunnelAnalysis" v-model="sqlBuilder.approximate">
                 近似计算
               </el-checkbox>
             </div>
@@ -6423,7 +6843,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-if="!isRetentionAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
+            <el-select v-if="!isRetentionAnalysis && !isFunnelAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -6431,7 +6851,7 @@ function closeDrawer() {
                 :value="item.value"
               />
             </el-select>
-            <el-input v-else model-value="留存表" disabled />
+            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : '留存表'" disabled />
           </el-form-item>
         </div>
         <el-form-item v-if="form.chartType === 'table' && !isRetentionAnalysis" :label="t('dashboard.sql_editor_columns')">
@@ -6992,6 +7412,184 @@ function closeDrawer() {
   margin-bottom: 24px;
 }
 
+.funnel-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.funnel-heading-row .builder-section-head {
+  flex: 0 0 96px;
+  margin-bottom: 0;
+}
+
+.funnel-subject-line {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: auto minmax(160px, 280px) auto;
+  align-items: center;
+  justify-content: start;
+  gap: 10px;
+  color: #505968;
+  font-size: 13px;
+}
+
+.funnel-subject-line :deep(.builder-field-picker-trigger) {
+  width: 100%;
+}
+
+.funnel-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.funnel-step-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+.funnel-step-index {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 5px;
+  border-radius: 7px;
+  color: #fff;
+  background: #252b56;
+  font-size: 12px;
+}
+
+.funnel-step-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.funnel-step-editor {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 0 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: background-color 0.16s ease;
+}
+
+.funnel-step-editor:hover,
+.funnel-step-editor:focus-within,
+.funnel-step-editor.is-active {
+  background: #f7f8fa;
+}
+
+.funnel-step-alias-row,
+.funnel-step-main-row {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.funnel-step-main-row {
+  min-height: 28px;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.funnel-step-main-row :deep(.builder-field-picker) {
+  min-width: 0;
+}
+
+.funnel-step-alias-input {
+  width: min(260px, 100%);
+}
+
+.funnel-step-alias-input :deep(.ed-input__wrapper),
+.funnel-step-alias-input :deep(.el-input__wrapper) {
+  min-height: 28px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.funnel-step-alias-input :deep(.ed-input__wrapper:hover),
+.funnel-step-alias-input :deep(.ed-input__wrapper.is-focus),
+.funnel-step-alias-input :deep(.el-input__wrapper:hover),
+.funnel-step-alias-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: inset 0 -1px 0 #2f6bff;
+}
+
+.funnel-step-alias-text {
+  min-width: 0;
+  color: #303643;
+  font-size: 14px;
+  line-height: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.funnel-step-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.16s ease;
+}
+
+.funnel-step-editor:hover .funnel-step-actions,
+.funnel-step-editor:focus-within .funnel-step-actions,
+.funnel-step-editor.is-active .funnel-step-actions {
+  opacity: 1;
+  visibility: visible;
+}
+
+.funnel-step-property-row {
+  display: grid;
+  grid-template-columns: auto minmax(140px, 280px);
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.funnel-step-property-row :deep(.builder-field-picker-trigger) {
+  width: 100%;
+}
+
+.funnel-add-step {
+  margin: 12px 0 0 34px;
+}
+
+.funnel-advanced-options {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 24px;
+  color: #505968;
+  font-size: 12px;
+}
+
+.funnel-option-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.funnel-option-row .el-input-number {
+  width: 104px;
+}
+
 .retention-heading-row .builder-section-head {
   flex: 0 0 96px;
   margin-bottom: 0;
@@ -7013,12 +7611,18 @@ function closeDrawer() {
 
 @media (max-width: 720px) {
   .analysis-model-row,
-  .retention-heading-row {
+  .retention-heading-row,
+  .funnel-heading-row {
     flex-wrap: wrap;
     gap: 10px;
   }
 
   .retention-heading-row .retention-subject-line {
+    flex-basis: 100%;
+    grid-template-columns: auto minmax(160px, 1fr) auto;
+  }
+
+  .funnel-heading-row .funnel-subject-line {
     flex-basis: 100%;
     grid-template-columns: auto minmax(160px, 1fr) auto;
   }

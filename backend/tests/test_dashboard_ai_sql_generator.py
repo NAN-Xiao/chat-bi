@@ -1193,6 +1193,126 @@ def _retention_request(**overrides):
     )
 
 
+def _funnel_request(**overrides):
+    steps = [
+        {
+            "event": {
+                "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+                "eventName": event_name, "field": "event_name",
+            },
+            "alias": alias,
+            "filters": {"logic": "and", "rules": []},
+            "relatedProperty": None,
+        }
+        for event_name, alias in (("register", "注册"), ("login", "登录"), ("purchase", "购买"))
+    ]
+    funnel = {
+        "entityField": {"table": "event", "field": "user_id", "value": "event.user_id"},
+        "steps": steps,
+        "windowDays": 1,
+        "relatedPropertyEnabled": False,
+    }
+    funnel.update(overrides)
+    return DashboardAiSqlGenerateRequest(
+        datasource=1,
+        chart_type="funnel",
+        context={
+            "analysisModel": "funnel",
+            "chart": {"type": "funnel"},
+            "time": {
+                "field": {"table": "event", "field": "dt"},
+                "dateParameterType": "yyyymmdd_number",
+                "dateExpression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+            },
+            "funnel": funnel,
+            "groups": [],
+            "filters": {},
+            "selectedFields": [],
+        },
+    )
+
+
+def test_funnel_config_uses_ordered_steps_and_deterministic_validation() -> None:
+    request = _funnel_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+    )
+
+    assert normalized["analysis_model"] == "funnel"
+    assert len(normalized["funnel"]["steps"]) == 3
+    assert result.success is True
+    assert ai_sql_generator._config_reference_table_names(normalized, {}) == {"event"}
+
+
+def test_funnel_config_rejects_missing_step_and_invalid_chart() -> None:
+    request = _funnel_request(
+        steps=[{"event": None, "relatedProperty": None}],
+        windowDays=0,
+        relatedPropertyEnabled=True,
+    )
+    request.context["chart"] = {"type": "table"}
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+    )
+
+    assert result.success is False
+    assert "漏斗分析至少需要配置两个步骤。" in result.issues
+    assert "漏斗步骤1请先选择事件。" in result.issues
+    assert "使用关联属性时请选择漏斗步骤1关联属性。" in result.issues
+    assert "漏斗分析窗口期必须是 1 到 365 天。" in result.issues
+    assert "漏斗分析只能使用漏斗图结果。" in result.issues
+
+
+def test_funnel_prompt_and_result_validation_require_fixed_columns() -> None:
+    request = _funnel_request()
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
+        "",
+        "",
+    )
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    invalid = ai_sql_generator._funnel_sql_result_issues(
+        "SELECT step_name, step_count FROM funnel_result",
+        normalized,
+    )
+    valid = ai_sql_generator._funnel_sql_result_issues(
+        "SELECT step_order, step_name, step_count, step_rate, step_conversion_rate, step_dropoff_rate FROM funnel_result",
+        normalized,
+    )
+
+    assert "按同一分析主体去重计数" in prompt
+    assert "step_conversion_rate" in prompt
+    assert invalid and "step_order" in invalid[0]
+    assert valid == []
+
+
+def test_funnel_subject_and_step_fields_enforce_datasource_permissions() -> None:
+    request = _funnel_request(
+        entityField={"table": "private_event", "field": "user_id"},
+    )
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+    )
+
+    assert result.success is False
+    assert any("漏斗分析主体" in issue and "权限" in issue for issue in result.issues)
+
+
 def test_retention_config_uses_independent_deterministic_validation() -> None:
     request = _retention_request()
     normalized = ai_sql_generator._normalize_manual_config(request)
