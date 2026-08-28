@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "vue-tsc -b && vite --host 0.0.0.0",
+    "test:builder-field-options": "node --test tests/builderFieldPickerOptions.test.ts",
     "test:format-arg": "node --test tests/formatArg.test.ts",
     "test:permission-json-fields": "node scripts/check-permission-json-subfields.mjs",
     "build": "vue-tsc -b && vite build",

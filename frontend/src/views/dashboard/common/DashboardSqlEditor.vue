@@ -20,6 +20,7 @@ import {
   type DashboardDateExpression,
 } from '@/views/dashboard/common/dashboardDateExpression.ts'
 import {
+  eventScopedPropertyOptions,
   isEventUserPropertyOption,
   isNumericFieldOption,
   isSelectableFieldOption,
@@ -151,6 +152,7 @@ type SqlBuilderFunnelStep = {
   filters: SqlBuilderFilter[]
   relatedProperty: string
 }
+type SqlBuilderAggregation = 'count' | 'sum' | 'avg' | 'max' | 'min' | 'count_distinct'
 const RETENTION_ANALYSIS_CONTEXT_CONTENT = '以某段时间做过初始事件的用户为样本，查看在指定日期后用户进行回访事件的留存情况'
 type SqlBuilderRetentionConfig = {
   entityField: string
@@ -165,7 +167,8 @@ type SqlBuilderRetentionConfig = {
   simultaneous: {
     enabled: boolean
     event: string
-    aggregation: 'count' | 'count_distinct'
+    aggregation: SqlBuilderAggregation
+    metricField: string
   }
   relatedProperty: {
     enabled: boolean
@@ -337,6 +340,7 @@ const sqlBuilder = reactive({
       enabled: false,
       event: '',
       aggregation: 'count',
+      metricField: '',
     },
     relatedProperty: {
       enabled: false,
@@ -529,7 +533,7 @@ const builderTimeGrainOptions = [
   { label: '不按时间', value: 'none' },
 ]
 
-const builderAggregationOptions = [
+const builderAggregationOptions: Array<{ label: string; value: SqlBuilderAggregation }> = [
   { label: '总次数', value: 'count' },
   { label: '求和', value: 'sum' },
   { label: '平均值', value: 'avg' },
@@ -676,9 +680,14 @@ const eventScopedSchemaFieldOptions = computed(() =>
   getEventScopedFields(schemaFieldOptions.value, eventFieldScope.value)
 )
 const builderFieldOptions = computed(() => eventScopedSchemaFieldOptions.value.filter(isSelectableFieldOption))
-const eventUserPropertyOptions = computed(() =>
-  builderFieldOptions.value.filter((option) => isEventUserPropertyOption(option, 'event'))
-)
+const eventUserPropertyOptions = computed(() => {
+  if (eventFieldScope.value.status !== 'active') {
+    return []
+  }
+  return builderFieldOptions.value.filter((option) =>
+    isEventUserPropertyOption(option, eventFieldScope.value.defaultEventTable)
+  )
+})
 const trackingEventCatalogOptions = computed<SchemaFieldOption[]>(() => {
   const groups = Array.isArray(trackingEventCatalog.value?.groups) ? trackingEventCatalog.value.groups : []
   return groups.flatMap((group: any) => {
@@ -812,9 +821,6 @@ const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
 const funnelEntityFieldOptions = computed(() => builderFieldOptions.value)
 const funnelEventOptions = computed(() => trackingEventCatalogOptions.value)
-const retentionSimultaneousAggregationOptions = builderAggregationOptions.filter((option) => (
-  option.value === 'count' || option.value === 'count_distinct'
-))
 const builderMetricOptions = computed(() =>
   sqlBuilder.metricItems.map((item, index) => ({
     label: metricOutputAlias(item, index),
@@ -1911,6 +1917,10 @@ function builderConfigForSave() {
         enabled: sqlBuilder.retention.simultaneous.enabled,
         event: sqlBuilder.retention.simultaneous.enabled ? sqlBuilder.retention.simultaneous.event : '',
         aggregation: sqlBuilder.retention.simultaneous.aggregation,
+        metricField: sqlBuilder.retention.simultaneous.enabled
+          && sqlBuilder.retention.simultaneous.aggregation !== 'count'
+          ? sqlBuilder.retention.simultaneous.metricField
+          : '',
       },
       relatedProperty: {
         enabled: sqlBuilder.retention.relatedProperty.enabled,
@@ -1981,7 +1991,14 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.retention.simultaneous.event = sqlBuilder.retention.simultaneous.enabled && typeof simultaneous.event === 'string'
     ? simultaneous.event
     : ''
-  sqlBuilder.retention.simultaneous.aggregation = simultaneous.aggregation === 'count_distinct' ? 'count_distinct' : 'count'
+  sqlBuilder.retention.simultaneous.aggregation = builderAggregationOptions.some(
+    (option) => option.value === simultaneous.aggregation
+  ) ? simultaneous.aggregation as SqlBuilderAggregation : 'count'
+  sqlBuilder.retention.simultaneous.metricField = sqlBuilder.retention.simultaneous.enabled
+    && sqlBuilder.retention.simultaneous.aggregation !== 'count'
+    && typeof simultaneous.metricField === 'string'
+    ? simultaneous.metricField
+    : ''
   const relatedProperty = retention.relatedProperty && typeof retention.relatedProperty === 'object'
     ? retention.relatedProperty
     : {}
@@ -2079,11 +2096,7 @@ function fieldOptionByValue(value: string) {
 }
 
 function retentionPropertyOptions(eventValue: string) {
-  const eventOption = fieldOptionByValue(eventValue)
-  if (eventOption?.kind !== 'tracking-event' || !eventOption.eventName) {
-    return []
-  }
-  return trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
+  return eventFilterFieldOptions(eventValue)
 }
 
 function handleRetentionEventPropertyChange(type: 'initial' | 'return' | 'simultaneous', eventValue: string) {
@@ -2125,6 +2138,7 @@ function handleRetentionEventPropertyChange(type: 'initial' | 'return' | 'simult
     }
   } else {
     sqlBuilder.retention.simultaneous.event = eventValue
+    syncRetentionSimultaneousMetricField()
   }
   const propertyKey = type === 'initial'
     ? 'initialProperty'
@@ -2141,7 +2155,26 @@ function handleRetentionSimultaneousToggle(enabled: boolean) {
   if (enabled) return
   sqlBuilder.retention.simultaneous.event = ''
   sqlBuilder.retention.simultaneous.aggregation = 'count'
+  sqlBuilder.retention.simultaneous.metricField = ''
   sqlBuilder.retention.relatedProperty.simultaneousProperty = ''
+}
+
+function retentionSimultaneousMetricFieldOptions() {
+  return metricMeasureFieldOptions({
+    field: sqlBuilder.retention.simultaneous.event,
+    aggregation: sqlBuilder.retention.simultaneous.aggregation,
+  })
+}
+
+function syncRetentionSimultaneousMetricField() {
+  const simultaneous = sqlBuilder.retention.simultaneous
+  if (simultaneous.aggregation === 'count') {
+    simultaneous.metricField = ''
+    return
+  }
+  if (!optionExists(simultaneous.metricField, retentionSimultaneousMetricFieldOptions())) {
+    simultaneous.metricField = ''
+  }
 }
 
 function handleRetentionRelatedPropertyToggle(enabled: boolean) {
@@ -2188,20 +2221,16 @@ function recommendedMetricField(item: SqlBuilderMetricItem, preferredTable = '')
 
 function eventFilterFieldOptions(eventValue: string) {
   const eventOption = fieldOptionByValue(eventValue)
-  const eventTable = eventOption?.eventTable || eventOption?.table
-  if (
-    eventOption?.kind !== 'tracking-event' ||
-    !eventOption.eventName ||
-    eventFieldScope.value.status !== 'active' ||
-    eventTable !== eventFieldScope.value.defaultEventTable
-  ) {
-    return []
-  }
-  const options = [
-    ...(trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []),
-    ...eventUserPropertyOptions.value,
-  ]
-  return Array.from(new Map(options.map((option) => [option.value, option])).values())
+  return eventScopedPropertyOptions({
+    eventOption,
+    eventProperties: eventOption?.eventName
+      ? trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
+      : [],
+    userProperties: eventUserPropertyOptions.value,
+    activeEventTable: eventFieldScope.value.status === 'active'
+      ? eventFieldScope.value.defaultEventTable
+      : '',
+  })
 }
 
 function metricFilterFieldOptions(item: SqlBuilderMetricItem) {
@@ -2541,6 +2570,13 @@ function builderEventScopeIssues() {
     })
   })
   if (isRetentionAnalysis.value) {
+    if (sqlBuilder.retention.simultaneous.enabled && sqlBuilder.retention.simultaneous.aggregation !== 'count') {
+      appendEventScopeFieldIssue(
+        sqlBuilder.retention.simultaneous.metricField,
+        'retention.simultaneous.metricField',
+        issues
+      )
+    }
     appendEventScopeFilterIssues(sqlBuilder.retention.initialEventFilters, 'retention.initial_event_filter', issues)
     appendEventScopeFilterIssues(sqlBuilder.retention.returnEventFilters, 'retention.return_event_filter', issues)
   }
@@ -2647,6 +2683,7 @@ function resetRetentionConfig() {
   sqlBuilder.retention.simultaneous.enabled = false
   sqlBuilder.retention.simultaneous.event = ''
   sqlBuilder.retention.simultaneous.aggregation = 'count'
+  sqlBuilder.retention.simultaneous.metricField = ''
   sqlBuilder.retention.relatedProperty.enabled = false
   sqlBuilder.retention.relatedProperty.initialProperty = ''
   sqlBuilder.retention.relatedProperty.returnProperty = ''
@@ -2751,7 +2788,18 @@ function sanitizeRetentionConfig() {
   })
   if (sqlBuilder.retention.simultaneous.event && !optionExists(sqlBuilder.retention.simultaneous.event, retentionEventOptions.value)) {
     sqlBuilder.retention.simultaneous.event = ''
+    sqlBuilder.retention.simultaneous.metricField = ''
     cleared.push('同时展示事件')
+  }
+  if (
+    sqlBuilder.retention.simultaneous.metricField
+    && !optionExists(
+      sqlBuilder.retention.simultaneous.metricField,
+      retentionSimultaneousMetricFieldOptions()
+    )
+  ) {
+    sqlBuilder.retention.simultaneous.metricField = ''
+    cleared.push('同时展示计算字段')
   }
   const relatedProperty = sqlBuilder.retention.relatedProperty
   ;([
@@ -2778,6 +2826,23 @@ function retentionBlockingIssues() {
   if (!sqlBuilder.timeField) issues.push('留存分析请先选择时间字段。')
   if (sqlBuilder.retention.simultaneous.enabled && !sqlBuilder.retention.simultaneous.event) {
     issues.push('使用同时展示时请选择参与事件。')
+  }
+  if (
+    sqlBuilder.retention.simultaneous.enabled
+    && sqlBuilder.retention.simultaneous.aggregation !== 'count'
+    && !sqlBuilder.retention.simultaneous.metricField
+  ) {
+    issues.push(`同时展示使用“${builderAggregationLabel(sqlBuilder.retention.simultaneous.aggregation)}”时请选择计算字段。`)
+  }
+  if (
+    sqlBuilder.retention.simultaneous.enabled
+    && ['sum', 'avg'].includes(sqlBuilder.retention.simultaneous.aggregation)
+    && sqlBuilder.retention.simultaneous.metricField
+  ) {
+    const metricField = fieldOptionByValue(sqlBuilder.retention.simultaneous.metricField)
+    if (metricField && !isNumericFieldOption(metricField)) {
+      issues.push('同时展示使用“求和/平均值”时，计算字段必须是数值字段。')
+    }
   }
   if (sqlBuilder.retention.relatedProperty.enabled) {
     if (!sqlBuilder.retention.relatedProperty.initialProperty) issues.push('使用关联属性时请选择初始事件属性。')
@@ -3016,6 +3081,7 @@ function selectedBuilderFieldValues() {
       sqlBuilder.retention.initialEvent,
       sqlBuilder.retention.returnEvent,
       sqlBuilder.retention.simultaneous.event,
+      sqlBuilder.retention.simultaneous.metricField,
       sqlBuilder.retention.relatedProperty.initialProperty,
       sqlBuilder.retention.relatedProperty.returnProperty,
       sqlBuilder.retention.relatedProperty.simultaneousProperty,
@@ -3070,6 +3136,10 @@ function collectBuilderAiContext() {
           ? fieldOptionPayload(sqlBuilder.retention.simultaneous.event)
           : null,
         aggregation: sqlBuilder.retention.simultaneous.aggregation,
+        metricField: sqlBuilder.retention.simultaneous.enabled
+          && sqlBuilder.retention.simultaneous.aggregation !== 'count'
+          ? fieldOptionPayload(sqlBuilder.retention.simultaneous.metricField)
+          : null,
       },
       relatedProperty: {
         enabled: sqlBuilder.retention.relatedProperty.enabled,
@@ -6456,7 +6526,10 @@ function closeDrawer() {
                   />
                   <template v-if="sqlBuilder.retention.simultaneous.enabled">
                     <span class="retention-option-description">同时展示回访的用户参与</span>
-                    <div class="retention-option-flow">
+                    <div
+                      class="retention-option-flow"
+                      :class="{ 'has-metric-field': sqlBuilder.retention.simultaneous.aggregation !== 'count' }"
+                    >
                       <BuilderFieldPicker
                         v-model="sqlBuilder.retention.simultaneous.event"
                         :options="retentionEventOptions"
@@ -6466,14 +6539,26 @@ function closeDrawer() {
                         @update:modelValue="handleRetentionEventPropertyChange('simultaneous', $event)"
                       />
                       <span>的</span>
-                      <el-select v-model="sqlBuilder.retention.simultaneous.aggregation" size="small">
+                      <el-select
+                        v-model="sqlBuilder.retention.simultaneous.aggregation"
+                        size="small"
+                        @change="syncRetentionSimultaneousMetricField"
+                      >
                         <el-option
-                          v-for="option in retentionSimultaneousAggregationOptions"
+                          v-for="option in builderAggregationOptions"
                           :key="option.value"
                           :label="option.label"
                           :value="option.value"
                         />
                       </el-select>
+                      <BuilderFieldPicker
+                        v-if="sqlBuilder.retention.simultaneous.aggregation !== 'count'"
+                        v-model="sqlBuilder.retention.simultaneous.metricField"
+                        :options="retentionSimultaneousMetricFieldOptions()"
+                        :loading="schemaLoading"
+                        mode="metric"
+                        placeholder="计算字段"
+                      />
                     </div>
                   </template>
                 </div>
@@ -7816,6 +7901,10 @@ function closeDrawer() {
   grid-template-columns: minmax(120px, 1fr) auto 104px;
   align-items: center;
   gap: 8px;
+}
+
+.retention-option-flow.has-metric-field {
+  grid-template-columns: minmax(100px, 1fr) auto 104px minmax(100px, 1fr);
 }
 
 .retention-property-flow {

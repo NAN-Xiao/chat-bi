@@ -1541,6 +1541,82 @@ def test_retention_simultaneous_and_related_property_are_validated() -> None:
     assert ai_sql_generator._retention_sql_result_issues(required_sql, normalized) == []
 
 
+def test_retention_simultaneous_reuses_event_metric_aggregation_validation() -> None:
+    event = {
+        "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+        "eventName": "purchase", "field": "event_name",
+    }
+    amount = {"table": "event", "field": "amount", "category": "number"}
+    request = _retention_request(simultaneous={
+        "enabled": True,
+        "event": event,
+        "aggregation": "sum",
+        "metricField": amount,
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "amount", "dt"}},
+    )
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
+        "",
+        "",
+    )
+
+    assert result.success is True
+    assert "simultaneous.metricField" in prompt
+    assert "sum/avg/max/min" in prompt
+    assert "禁止改用其他字段或默认字段" in prompt
+
+
+def test_retention_simultaneous_non_count_aggregation_requires_metric_field() -> None:
+    request = _retention_request(simultaneous={
+        "enabled": True,
+        "event": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "purchase", "field": "event_name",
+        },
+        "aggregation": "max",
+        "metricField": None,
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+    )
+
+    assert result.success is False
+    assert "同时展示指标 缺少计算字段。" in result.issues
+
+
+def test_retention_sql_validates_simultaneous_aggregation_function() -> None:
+    request = _retention_request(simultaneous={
+        "enabled": True,
+        "event": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "purchase", "field": "event_name",
+        },
+        "aggregation": "sum",
+        "metricField": {"table": "event", "field": "amount", "category": "number"},
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    fixed_columns = ", ".join(["cohort_date", "cohort_size"] + [f"day_{day}" for day in range(8)])
+    valid_sql = f"SELECT {fixed_columns}, SUM(amount) AS simultaneous_value FROM retention_result"
+    invalid_sql = f"SELECT {fixed_columns}, AVG(amount) AS simultaneous_value FROM retention_result"
+
+    assert ai_sql_generator._retention_sql_result_issues(valid_sql, normalized) == []
+    invalid_issues = ai_sql_generator._retention_sql_result_issues(invalid_sql, normalized)
+    assert any("simultaneous_value" in issue and "SUM" in issue for issue in invalid_issues)
+
+
 def test_retention_event_aliases_and_filters_keep_event_identity_and_validate_scope() -> None:
     request = _retention_request(
         initialEventAlias="新增用户",

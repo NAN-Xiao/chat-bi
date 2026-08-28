@@ -201,3 +201,31 @@ export function isEventUserPropertyOption(option: FieldOption, eventTable = 'eve
     isSelectableFieldOption(option)
   )
 }
+
+export function eventScopedPropertyOptions(input: {
+  eventOption?: FieldOption
+  eventProperties?: FieldOption[]
+  userProperties?: FieldOption[]
+  activeEventTable?: string
+}) {
+  const eventTable = input.eventOption?.eventTable || input.eventOption?.table || ''
+  if (
+    input.eventOption?.kind !== 'tracking-event' ||
+    !input.eventOption.eventName ||
+    !input.activeEventTable ||
+    eventTable !== input.activeEventTable
+  ) {
+    return []
+  }
+  const options = [
+    ...(input.eventProperties || []),
+    ...(input.userProperties || []),
+  ]
+  const uniqueOptions = new Map<string, FieldOption>()
+  options.forEach((option) => {
+    if (!uniqueOptions.has(option.value)) {
+      uniqueOptions.set(option.value, option)
+    }
+  })
+  return Array.from(uniqueOptions.values())
+}
