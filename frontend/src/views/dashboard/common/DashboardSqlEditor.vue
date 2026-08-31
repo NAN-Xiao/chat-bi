@@ -17,6 +17,7 @@ import FunnelWindowPicker from '@/views/dashboard/common/FunnelWindowPicker.vue'
 import IntervalLimitPicker from '@/views/dashboard/common/IntervalLimitPicker.vue'
 import PathEventList from '@/views/dashboard/common/PathEventList.vue'
 import PathSessionGapPicker from '@/views/dashboard/common/PathSessionGapPicker.vue'
+import RevenueMetricPicker from '@/views/dashboard/common/RevenueMetricPicker.vue'
 import type {
   DistributionIntervalConfig,
   DistributionMetricConfig,
@@ -41,6 +42,14 @@ import {
   clampPathSessionGapSeconds,
   type PathAnalysisEvent,
 } from '@/views/dashboard/common/pathAnalysis.ts'
+import {
+  DEFAULT_REVENUE_OBSERVATION_DAYS,
+  REVENUE_OBSERVATION_MAX_DAYS,
+  REVENUE_OBSERVATION_MIN_DAYS,
+  clampRevenueObservationDays,
+  revenueMetricUsesProperty,
+  type RevenueMetricConfig,
+} from '@/views/dashboard/common/revenueAnalysis.ts'
 import DashboardDateExpressionPicker from '@/views/dashboard/common/DashboardDateExpressionPicker.vue'
 import {
   cloneDashboardDateExpression,
@@ -172,7 +181,7 @@ type SqlBuilderMetricItem = {
   filterLogic: SqlBuilderFilterLogic
   filters: SqlBuilderFilter[]
 }
-type AnalysisModel = 'event' | 'retention' | 'funnel' | 'distribution' | 'interval' | 'path'
+type AnalysisModel = 'event' | 'retention' | 'funnel' | 'distribution' | 'interval' | 'path' | 'revenue'
 type RetentionEventTarget = 'initial' | 'return'
 type IntervalEventTarget = 'start' | 'end'
 type SqlBuilderFunnelStep = {
@@ -248,6 +257,15 @@ type SqlBuilderPathConfig = {
   events: PathAnalysisEvent[]
   initialEvent: string
   sessionGapSeconds: number
+}
+type SqlBuilderRevenueConfig = {
+  entityField: string
+  initialEvent: string
+  paymentEvent: string
+  metric: RevenueMetricConfig
+  costEnabled: boolean
+  costField: string
+  observationDays: number
 }
 type SqlBuilderCalculatedMetricItem = {
   id: string
@@ -462,6 +480,15 @@ const sqlBuilder = reactive({
     initialEvent: '',
     sessionGapSeconds: DEFAULT_PATH_SESSION_GAP_SECONDS,
   } as SqlBuilderPathConfig,
+  revenue: {
+    entityField: '',
+    initialEvent: '',
+    paymentEvent: '',
+    metric: { method: 'count', field: '' },
+    costEnabled: false,
+    costField: '',
+    observationDays: DEFAULT_REVENUE_OBSERVATION_DAYS,
+  } as SqlBuilderRevenueConfig,
 })
 const retentionFilterExpanded = reactive<Record<RetentionEventTarget, boolean>>({
   initial: false,
@@ -928,12 +955,14 @@ const analysisModelOptions = [
   { label: '分布分析', value: 'distribution' as AnalysisModel },
   { label: '间隔分析', value: 'interval' as AnalysisModel },
   { label: '路径分析', value: 'path' as AnalysisModel },
+  { label: '收入分析', value: 'revenue' as AnalysisModel },
 ]
 const isRetentionAnalysis = computed(() => sqlBuilder.analysisModel === 'retention')
 const isFunnelAnalysis = computed(() => sqlBuilder.analysisModel === 'funnel')
 const isDistributionAnalysis = computed(() => sqlBuilder.analysisModel === 'distribution')
 const isIntervalAnalysis = computed(() => sqlBuilder.analysisModel === 'interval')
 const isPathAnalysis = computed(() => sqlBuilder.analysisModel === 'path')
+const isRevenueAnalysis = computed(() => sqlBuilder.analysisModel === 'revenue')
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
 const funnelEntityFieldOptions = computed(() => builderFieldOptions.value)
@@ -958,6 +987,10 @@ const intervalEndPropertyOptions = computed(() => {
 })
 const pathEventOptions = computed(() => trackingEventCatalogOptions.value)
 const pathEventPropertyOptions = (eventValue: string) => eventFilterFieldOptions(eventValue)
+const revenueEntityFieldOptions = computed(() => builderFieldOptions.value)
+const revenueEventOptions = computed(() => trackingEventCatalogOptions.value)
+const revenuePaymentPropertyOptions = computed(() => eventFilterFieldOptions(sqlBuilder.revenue.paymentEvent))
+const revenueNumericPropertyOptions = computed(() => revenuePaymentPropertyOptions.value.filter(isNumericFieldOption))
 const pathInitialEventOptions = computed(() => sqlBuilder.path.events
   .filter((item) => item.event)
   .map((item) => {
@@ -2158,6 +2191,18 @@ function builderConfigForSave() {
       initialEvent: sqlBuilder.path.initialEvent,
       sessionGapSeconds: clampPathSessionGapSeconds(sqlBuilder.path.sessionGapSeconds),
     } : undefined,
+    revenue: sqlBuilder.analysisModel === 'revenue' ? {
+      entityField: sqlBuilder.revenue.entityField,
+      initialEvent: sqlBuilder.revenue.initialEvent,
+      paymentEvent: sqlBuilder.revenue.paymentEvent,
+      metric: {
+        method: sqlBuilder.revenue.metric.method,
+        field: revenueMetricUsesProperty(sqlBuilder.revenue.metric.method) ? sqlBuilder.revenue.metric.field : '',
+      },
+      costEnabled: sqlBuilder.revenue.costEnabled,
+      costField: sqlBuilder.revenue.costEnabled ? sqlBuilder.revenue.costField : '',
+      observationDays: clampRevenueObservationDays(sqlBuilder.revenue.observationDays),
+    } : undefined,
     timeField: SQL_EDITOR_TIME_FIELD,
     timeGrain: SQL_EDITOR_TIME_GRAIN,
     timeRange: 'expression',
@@ -2184,7 +2229,7 @@ function restoreSqlBuilderState(value: any) {
   if (!value || typeof value !== 'object') {
     return
   }
-  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path'].includes(value.analysisModel)
+  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue'].includes(value.analysisModel)
     ? value.analysisModel
     : 'event'
   const retention = value.retention && typeof value.retention === 'object' ? value.retention : {}
@@ -2328,6 +2373,34 @@ function restoreSqlBuilderState(value: any) {
     : [{ id: 'path-event-initial', event: '', splitProperties: [] }]
   sqlBuilder.path.initialEvent = typeof path.initialEvent === 'string' ? path.initialEvent : ''
   sqlBuilder.path.sessionGapSeconds = clampPathSessionGapSeconds(path.sessionGapSeconds)
+  const revenue = value.revenue && typeof value.revenue === 'object' ? value.revenue : {}
+  const revenueMetric = revenue.metric && typeof revenue.metric === 'object' ? revenue.metric : {}
+  const revenueMetricMethods = [
+    'count',
+    'entity_count',
+    'per_entity_count',
+    'period_cumulative_count',
+    'period_average_count',
+    'period_cumulative_entity_count',
+    'period_average_entity_count',
+    'property_sum',
+    'property_avg',
+  ]
+  sqlBuilder.revenue.entityField = typeof revenue.entityField === 'string' ? revenue.entityField : ''
+  sqlBuilder.revenue.initialEvent = typeof revenue.initialEvent === 'string' ? revenue.initialEvent : ''
+  sqlBuilder.revenue.paymentEvent = typeof revenue.paymentEvent === 'string' ? revenue.paymentEvent : ''
+  sqlBuilder.revenue.metric.method = revenueMetricMethods.includes(revenueMetric.method)
+    ? revenueMetric.method
+    : 'count'
+  sqlBuilder.revenue.metric.field = revenueMetricUsesProperty(sqlBuilder.revenue.metric.method)
+    && typeof revenueMetric.field === 'string'
+    ? revenueMetric.field
+    : ''
+  sqlBuilder.revenue.costEnabled = revenue.costEnabled === true
+  sqlBuilder.revenue.costField = sqlBuilder.revenue.costEnabled && typeof revenue.costField === 'string'
+    ? revenue.costField
+    : ''
+  sqlBuilder.revenue.observationDays = clampRevenueObservationDays(revenue.observationDays)
   sqlBuilder.dateExpressionPickerEnabled = true
   sqlBuilder.metricDateExpressionEnabled = value.metricDateExpressionEnabled === true
   const timeExpression = normalizeDashboardDateExpression(value.timeExpression)
@@ -2626,6 +2699,9 @@ function describeBuilderMetricConfig(item: SqlBuilderMetricItem, index: number, 
 }
 
 function inferBuilderIntentText() {
+  if (isRevenueAnalysis.value) {
+    return `按同期初始事件分析 ${clampRevenueObservationDays(sqlBuilder.revenue.observationDays)} 天收入。`
+  }
   const metrics = sqlBuilder.metricItems
     .map((item, index) => metricOutputAlias(item, index))
     .filter(Boolean)
@@ -3089,8 +3165,18 @@ function resetPathConfig() {
   sqlBuilder.path.sessionGapSeconds = DEFAULT_PATH_SESSION_GAP_SECONDS
 }
 
+function resetRevenueConfig() {
+  sqlBuilder.revenue.entityField = ''
+  sqlBuilder.revenue.initialEvent = ''
+  sqlBuilder.revenue.paymentEvent = ''
+  sqlBuilder.revenue.metric = { method: 'count', field: '' }
+  sqlBuilder.revenue.costEnabled = false
+  sqlBuilder.revenue.costField = ''
+  sqlBuilder.revenue.observationDays = DEFAULT_REVENUE_OBSERVATION_DAYS
+}
+
 function handleAnalysisModelChange(model: AnalysisModel) {
-  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path'].includes(model) ? model : 'event'
+  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue'].includes(model) ? model : 'event'
   if (sqlBuilder.analysisModel === 'retention') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3101,6 +3187,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetDistributionConfig()
     resetIntervalConfig()
     resetPathConfig()
+    resetRevenueConfig()
   } else if (sqlBuilder.analysisModel === 'funnel') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3111,6 +3198,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetDistributionConfig()
     resetIntervalConfig()
     resetPathConfig()
+    resetRevenueConfig()
   } else if (sqlBuilder.analysisModel === 'distribution') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3121,6 +3209,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetDistributionConfig()
     resetIntervalConfig()
     resetPathConfig()
+    resetRevenueConfig()
   } else if (sqlBuilder.analysisModel === 'interval') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3131,6 +3220,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetDistributionConfig()
     resetIntervalConfig()
     resetPathConfig()
+    resetRevenueConfig()
   } else if (sqlBuilder.analysisModel === 'path') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3141,18 +3231,98 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetDistributionConfig()
     resetIntervalConfig()
     resetPathConfig()
+    resetRevenueConfig()
+  } else if (sqlBuilder.analysisModel === 'revenue') {
+    sqlBuilder.metricItems = []
+    sqlBuilder.calculatedMetrics = []
+    activeFormulaMetricId.value = ''
+    form.chartType = 'table'
+    resetRetentionConfig()
+    resetFunnelConfig()
+    resetDistributionConfig()
+    resetIntervalConfig()
+    resetPathConfig()
+    resetRevenueConfig()
   } else {
     resetRetentionConfig()
     resetFunnelConfig()
     resetDistributionConfig()
     resetIntervalConfig()
     resetPathConfig()
+    resetRevenueConfig()
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
     addMetricItem()
   }
   sqlBuilder.groups = sqlBuilder.groups.filter((field) => optionExists(field, builderFieldOptions.value))
   lastPreviewSignature.value = ''
+}
+
+function handleRevenuePaymentEventChange(eventValue: string) {
+  const changed = sqlBuilder.revenue.paymentEvent !== eventValue
+  sqlBuilder.revenue.paymentEvent = eventValue
+  if (!changed) return
+  sqlBuilder.revenue.metric.field = ''
+  sqlBuilder.revenue.costField = ''
+}
+
+function updateRevenueMetric(metric: RevenueMetricConfig) {
+  sqlBuilder.revenue.metric = { ...metric }
+  if (!revenueMetricUsesProperty(metric.method)) {
+    sqlBuilder.revenue.metric.field = ''
+  }
+}
+
+function handleRevenueCostToggle(enabled: boolean) {
+  if (!enabled) sqlBuilder.revenue.costField = ''
+}
+
+function revenueBlockingIssues() {
+  if (!isRevenueAnalysis.value) return []
+  const issues: string[] = []
+  const revenue = sqlBuilder.revenue
+  if (!revenue.entityField) issues.push('收入分析请先选择分析主体。')
+  if (!revenue.initialEvent) issues.push('收入分析请先选择同期初始事件。')
+  if (!revenue.paymentEvent) issues.push('收入分析请先选择付费事件。')
+  if (revenueMetricUsesProperty(revenue.metric.method) && !revenue.metric.field) {
+    issues.push('收入分析使用事件属性口径时，请先选择数值属性。')
+  }
+  if (revenue.costEnabled && !revenue.costField) issues.push('收入分析启用成本数据时，请先选择成本字段。')
+  if (revenue.observationDays < REVENUE_OBSERVATION_MIN_DAYS
+    || revenue.observationDays > REVENUE_OBSERVATION_MAX_DAYS) {
+    issues.push('收入分析观察时长必须在 1 到 365 天之间。')
+  }
+  return issues
+}
+
+function sanitizeRevenueConfig() {
+  if (!isRevenueAnalysis.value) return
+  const cleared: string[] = []
+  const revenue = sqlBuilder.revenue
+  if (revenue.entityField && !optionExists(revenue.entityField, revenueEntityFieldOptions.value)) {
+    revenue.entityField = ''
+    cleared.push('分析主体')
+  }
+  if (revenue.initialEvent && !optionExists(revenue.initialEvent, revenueEventOptions.value)) {
+    revenue.initialEvent = ''
+    cleared.push('同期初始事件')
+  }
+  if (revenue.paymentEvent && !optionExists(revenue.paymentEvent, revenueEventOptions.value)) {
+    revenue.paymentEvent = ''
+    revenue.metric.field = ''
+    revenue.costField = ''
+    cleared.push('付费事件')
+  }
+  if (revenue.metric.field && !optionExists(revenue.metric.field, revenueNumericPropertyOptions.value)) {
+    revenue.metric.field = ''
+    cleared.push('收入口径属性')
+  }
+  if (revenue.costField && !optionExists(revenue.costField, revenueNumericPropertyOptions.value)) {
+    revenue.costField = ''
+    cleared.push('成本字段')
+  }
+  revenue.observationDays = clampRevenueObservationDays(revenue.observationDays)
+  if (cleared.length) ElMessage.warning(`${cleared.join('、')}在当前数据源中无效，已清除，请重新选择。`)
 }
 
 function handleDistributionEventChange(eventValue: string) {
@@ -3813,6 +3983,13 @@ function selectedBuilderFieldValues() {
       ...sqlBuilder.path.events.flatMap((item) => [item.event, ...item.splitProperties]),
       sqlBuilder.path.initialEvent,
     ] : []),
+    ...(sqlBuilder.analysisModel === 'revenue' ? [
+      sqlBuilder.revenue.entityField,
+      sqlBuilder.revenue.initialEvent,
+      sqlBuilder.revenue.paymentEvent,
+      sqlBuilder.revenue.metric.field,
+      sqlBuilder.revenue.costField,
+    ] : []),
     ...sqlBuilder.metricItems.flatMap((item) => [item.field, item.metric]),
     ...sqlBuilder.calculatedMetrics.flatMap((item) => [item.pendingEventField, item.pendingMetricField]),
     ...formulaFields,
@@ -3956,6 +4133,23 @@ function collectBuilderAiContext() {
       initialEvent: fieldOptionPayload(sqlBuilder.path.initialEvent),
       sessionGapSeconds: clampPathSessionGapSeconds(sqlBuilder.path.sessionGapSeconds),
     } : null,
+    revenue: sqlBuilder.analysisModel === 'revenue' ? {
+      content: '以同期初始事件形成主体 Cohort，统计其在观察期内参与付费事件产生的每日及累计收入指标',
+      entityField: fieldOptionPayload(sqlBuilder.revenue.entityField),
+      initialEvent: fieldOptionPayload(sqlBuilder.revenue.initialEvent),
+      paymentEvent: fieldOptionPayload(sqlBuilder.revenue.paymentEvent),
+      metric: {
+        method: sqlBuilder.revenue.metric.method,
+        field: revenueMetricUsesProperty(sqlBuilder.revenue.metric.method)
+          ? fieldOptionPayload(sqlBuilder.revenue.metric.field)
+          : null,
+      },
+      cost: {
+        enabled: sqlBuilder.revenue.costEnabled,
+        field: sqlBuilder.revenue.costEnabled ? fieldOptionPayload(sqlBuilder.revenue.costField) : null,
+      },
+      observationDays: clampRevenueObservationDays(sqlBuilder.revenue.observationDays),
+    } : null,
     chart: {
       title: form.title,
       type: form.chartType,
@@ -4048,6 +4242,7 @@ function collectLocalBuilderConfigIssues() {
   const distributionIssues = distributionBlockingIssues()
   const intervalIssues = intervalBlockingIssues()
   const pathIssues = pathBlockingIssues()
+  const revenueIssues = revenueBlockingIssues()
   const issues: string[] = [
     ...eventScopeIssues,
     ...retentionIssues,
@@ -4055,6 +4250,7 @@ function collectLocalBuilderConfigIssues() {
     ...distributionIssues,
     ...intervalIssues,
     ...pathIssues,
+    ...revenueIssues,
   ]
   const suggestions: string[] = []
   if (eventScopeIssues.length && eventFieldScope.value.defaultEventTable) {
@@ -4424,6 +4620,24 @@ async function generateBuilderAiSql() {
       form.y[0],
     ]
   }
+  if (sqlBuilder.analysisModel === 'revenue' || result.analysis_model === 'revenue') {
+    const resultConfig = result.result_config || result.resultConfig || {}
+    const observationDays = clampRevenueObservationDays(
+      resultConfig.observation_days || resultConfig.observationDays || sqlBuilder.revenue.observationDays
+    )
+    form.chartType = 'table'
+    form.columns = [
+      String(resultConfig.cohort_date_field || resultConfig.cohortDateField || 'cohort_date'),
+      String(resultConfig.cohort_size_field || resultConfig.cohortSizeField || 'cohort_size'),
+      ...Array.from({ length: observationDays + 1 }, (_, day) => `day_${day}`),
+      ...(resultConfig.cost_value_field || resultConfig.costValueField
+        ? [String(resultConfig.cost_value_field || resultConfig.costValueField)]
+        : []),
+      ...(resultConfig.roi_field || resultConfig.roiField
+        ? [String(resultConfig.roi_field || resultConfig.roiField)]
+        : []),
+    ]
+  }
   syncDashboardDateParameterUsage()
   if (result.success) {
     ElMessage.success('已生成 SQL')
@@ -4540,6 +4754,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
     sanitizeDistributionConfig()
     sanitizeIntervalConfig()
     sanitizePathConfig()
+    sanitizeRevenueConfig()
     if (sqlBuilder.analysisModel === 'event') {
       if (!sqlBuilder.metricItems.length && !sqlBuilder.calculatedMetrics.length) {
         addMetricItem()
@@ -4962,6 +5177,7 @@ function currentPreviewSignature() {
     distribution: sqlBuilder.analysisModel === 'distribution' ? sqlBuilder.distribution : null,
     interval: sqlBuilder.analysisModel === 'interval' ? sqlBuilder.interval : null,
     path: sqlBuilder.analysisModel === 'path' ? sqlBuilder.path : null,
+    revenue: sqlBuilder.analysisModel === 'revenue' ? sqlBuilder.revenue : null,
     sources: [...form.sourceTypes],
     sql: hasSqlSource.value
       ? {
@@ -6719,7 +6935,7 @@ function closeDrawer() {
               </div>
             </section>
 
-            <section v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis" class="builder-section">
+            <section v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis" class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
                   <BuilderSectionIcon class="builder-section-icon" />
@@ -7365,6 +7581,119 @@ function closeDrawer() {
                   <div class="path-session-row">
                     <PathSessionGapPicker v-model="sqlBuilder.path.sessionGapSeconds" />
                   </div>
+              </div>
+            </section>
+
+            <section v-else-if="isRevenueAnalysis" class="builder-section revenue-builder-section">
+              <div class="revenue-heading-row">
+                <div class="builder-section-head">
+                  <div class="builder-section-title">
+                    <BuilderSectionIcon class="builder-section-icon" />
+                    <span>收入分析</span>
+                  </div>
+                </div>
+                <div class="revenue-subject-line">
+                  <span>对</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.revenue.entityField"
+                    :options="revenueEntityFieldOptions"
+                    :loading="schemaLoading"
+                    mode="property"
+                    placeholder="选择分析主体"
+                  />
+                  <span>进行分析</span>
+                </div>
+              </div>
+
+              <div class="revenue-config-stack">
+                <div class="revenue-config-block">
+                  <span class="revenue-config-label">同期群</span>
+                  <div class="revenue-event-flow">
+                    <span>按初始事件</span>
+                    <BuilderFieldPicker
+                      v-model="sqlBuilder.revenue.initialEvent"
+                      :options="revenueEventOptions"
+                      :loading="schemaLoading"
+                      mode="tracking-event"
+                      placeholder="选择初始事件"
+                    />
+                  </div>
+                </div>
+
+                <div class="revenue-config-block">
+                  <span class="revenue-config-label">付费事件</span>
+                  <BuilderFieldPicker
+                    :model-value="sqlBuilder.revenue.paymentEvent"
+                    :options="revenueEventOptions"
+                    :loading="schemaLoading"
+                    mode="tracking-event"
+                    placeholder="选择付费事件"
+                    @update:modelValue="handleRevenuePaymentEventChange"
+                  />
+                </div>
+
+                <div class="revenue-config-block">
+                  <span class="revenue-config-label">收入口径</span>
+                  <div class="revenue-metric-flow">
+                    <BuilderFieldPicker
+                      :model-value="sqlBuilder.revenue.paymentEvent"
+                      :options="revenueEventOptions"
+                      :loading="schemaLoading"
+                      mode="tracking-event"
+                      placeholder="选择付费事件"
+                      @update:modelValue="handleRevenuePaymentEventChange"
+                    />
+                    <span>的</span>
+                    <RevenueMetricPicker
+                      :model-value="sqlBuilder.revenue.metric"
+                      :disabled="!sqlBuilder.revenue.paymentEvent"
+                      @update:modelValue="updateRevenueMetric"
+                    />
+                    <BuilderFieldPicker
+                      v-if="revenueMetricUsesProperty(sqlBuilder.revenue.metric.method)"
+                      v-model="sqlBuilder.revenue.metric.field"
+                      :options="revenueNumericPropertyOptions"
+                      :loading="schemaLoading"
+                      mode="metric"
+                      placeholder="选择数值属性"
+                    />
+                  </div>
+                </div>
+
+                <div class="revenue-cost-block">
+                  <div class="revenue-switch-row">
+                    <span>成本数据</span>
+                    <el-switch
+                      v-model="sqlBuilder.revenue.costEnabled"
+                      @change="handleRevenueCostToggle"
+                    />
+                  </div>
+                  <div v-if="sqlBuilder.revenue.costEnabled" class="revenue-cost-field-row">
+                    <span>成本字段</span>
+                    <BuilderFieldPicker
+                      v-model="sqlBuilder.revenue.costField"
+                      :options="revenueNumericPropertyOptions"
+                      :loading="schemaLoading"
+                      mode="metric"
+                      placeholder="选择成本字段"
+                    />
+                  </div>
+                </div>
+
+                <div class="revenue-observation-row">
+                  <span class="revenue-config-label">观察时长</span>
+                  <div>
+                    <el-input-number
+                      v-model="sqlBuilder.revenue.observationDays"
+                      :min="REVENUE_OBSERVATION_MIN_DAYS"
+                      :max="REVENUE_OBSERVATION_MAX_DAYS"
+                      :precision="0"
+                      :controls="false"
+                      aria-label="收入分析观察天数"
+                    />
+                    <span>天</span>
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -8104,7 +8433,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
+            <el-select v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -8112,10 +8441,10 @@ function closeDrawer() {
                 :value="item.value"
               />
             </el-select>
-            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : isDistributionAnalysis ? '分布表' : isIntervalAnalysis ? '间隔表' : isPathAnalysis ? '桑基图' : '留存表'" disabled />
+            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : isDistributionAnalysis ? '分布表' : isIntervalAnalysis ? '间隔表' : isPathAnalysis ? '桑基图' : isRevenueAnalysis ? '收入表' : '留存表'" disabled />
           </el-form-item>
         </div>
-        <el-form-item v-if="form.chartType === 'table' && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis" :label="t('dashboard.sql_editor_columns')">
+        <el-form-item v-if="form.chartType === 'table' && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis" :label="t('dashboard.sql_editor_columns')">
           <el-select v-model="form.columns" multiple filterable>
             <el-option
               v-for="field in fieldOptions"
@@ -8875,6 +9204,99 @@ function closeDrawer() {
   font-size: 12px;
 }
 
+.revenue-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.revenue-heading-row .builder-section-head {
+  flex: 0 0 96px;
+  margin-bottom: 0;
+}
+
+.revenue-subject-line {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: auto minmax(160px, 280px) auto;
+  align-items: center;
+  justify-content: start;
+  gap: 10px;
+  min-width: 0;
+  color: #505968;
+  font-size: 13px;
+}
+
+.revenue-subject-line :deep(.builder-field-picker-trigger) {
+  width: 100%;
+}
+
+.revenue-config-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.revenue-config-block {
+  display: grid;
+  justify-items: start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.revenue-config-label {
+  color: #8a93a3;
+  font-size: 12px;
+}
+
+.revenue-event-flow,
+.revenue-metric-flow,
+.revenue-cost-field-row,
+.revenue-observation-row > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #505968;
+  font-size: 13px;
+}
+
+.revenue-config-block > :deep(.builder-field-picker),
+.revenue-event-flow :deep(.builder-field-picker),
+.revenue-metric-flow :deep(.builder-field-picker),
+.revenue-cost-field-row :deep(.builder-field-picker) {
+  min-width: 170px;
+  max-width: 300px;
+}
+
+.revenue-cost-block {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.revenue-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #505968;
+  font-size: 13px;
+}
+
+.revenue-cost-field-row {
+  padding-left: 18px;
+}
+
+.revenue-observation-row {
+  display: grid;
+  justify-items: start;
+  gap: 7px;
+}
+
+.revenue-observation-row :deep(.el-input-number) {
+  width: 80px;
+}
+
 .distribution-heading-row .builder-section-head {
   flex: 0 0 96px;
   margin-bottom: 0;
@@ -9154,7 +9576,8 @@ function closeDrawer() {
   .retention-heading-row,
   .funnel-heading-row,
   .distribution-heading-row,
-  .interval-heading-row {
+  .interval-heading-row,
+  .revenue-heading-row {
     flex-wrap: wrap;
     gap: 10px;
   }
@@ -9181,6 +9604,17 @@ function closeDrawer() {
   .interval-heading-row .interval-subject-line {
     width: 100%;
     grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .revenue-heading-row .revenue-subject-line {
+    flex-basis: 100%;
+    grid-template-columns: auto minmax(160px, 1fr) auto;
+  }
+
+  .revenue-event-flow,
+  .revenue-metric-flow,
+  .revenue-cost-field-row {
+    flex-wrap: wrap;
   }
 
   .distribution-event-row {

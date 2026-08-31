@@ -59,6 +59,8 @@ _DATABASE_CURRENT_DATE_PATTERN = re.compile(
 RETENTION_COHORT_DAYS = 7
 INTERVAL_LIMIT_MIN_SECONDS = 60
 INTERVAL_LIMIT_MAX_SECONDS = 180 * 24 * 60 * 60
+REVENUE_OBSERVATION_MIN_DAYS = 1
+REVENUE_OBSERVATION_MAX_DAYS = 365
 
 
 class DashboardManualChartGraphState(TypedDict, total=False):
@@ -261,6 +263,17 @@ _SUPPORTED_DISTRIBUTION_PROPERTY_AGGREGATIONS = {
     "percentile_99", "percentile_95", "percentile_90", "percentile_80", "percentile_75",
     "percentile_70", "percentile_60", "percentile_40", "percentile_30", "percentile_25",
     "percentile_20", "percentile_10", "percentile_05",
+}
+_SUPPORTED_REVENUE_METRIC_METHODS = {
+    "count",
+    "entity_count",
+    "per_entity_count",
+    "period_cumulative_count",
+    "period_average_count",
+    "period_cumulative_entity_count",
+    "period_average_entity_count",
+    "property_sum",
+    "property_avg",
 }
 _FUNNEL_WINDOW_MAX_SECONDS = 365 * 24 * 60 * 60
 _FUNNEL_WINDOW_UNITS = {
@@ -725,7 +738,7 @@ def _normalize_manual_config(
     ).strip()
     time_config["date_expression"] = time_config.get("dateExpression") or time_config.get("date_expression")
     analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
-    if analysis_model not in {"event", "retention", "funnel", "distribution", "interval", "path"}:
+    if analysis_model not in {"event", "retention", "funnel", "distribution", "interval", "path", "revenue"}:
         analysis_model = "event"
     retention = dict(context.get("retention") or {}) if isinstance(context.get("retention"), dict) else {}
     funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
@@ -736,6 +749,7 @@ def _normalize_manual_config(
     distribution = dict(context.get("distribution") or {}) if isinstance(context.get("distribution"), dict) else {}
     interval = dict(context.get("interval") or {}) if isinstance(context.get("interval"), dict) else {}
     path = dict(context.get("path") or {}) if isinstance(context.get("path"), dict) else {}
+    revenue = dict(context.get("revenue") or {}) if isinstance(context.get("revenue"), dict) else {}
     return {
         "analysis_model": analysis_model,
         "retention": retention,
@@ -743,6 +757,7 @@ def _normalize_manual_config(
         "distribution": distribution,
         "interval": interval,
         "path": path,
+        "revenue": revenue,
         "chart": context.get("chart") if isinstance(context.get("chart"), dict) else {
             "title": request.title,
             "type": request.chart_type,
@@ -1393,6 +1408,20 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
         table_name = _field_table_name(field)
         if table_name:
             tables.add(table_name)
+    revenue = normalized_config.get("revenue") if isinstance(normalized_config.get("revenue"), dict) else {}
+    revenue_metric = revenue.get("metric") if isinstance(revenue.get("metric"), dict) else {}
+    revenue_cost = revenue.get("cost") if isinstance(revenue.get("cost"), dict) else {}
+    revenue_fields = [
+        revenue.get("entityField") or revenue.get("entity_field"),
+        revenue.get("initialEvent") or revenue.get("initial_event"),
+        revenue.get("paymentEvent") or revenue.get("payment_event"),
+        revenue_metric.get("field"),
+        revenue_cost.get("field") or revenue.get("costField") or revenue.get("cost_field"),
+    ]
+    for field in revenue_fields:
+        table_name = _field_table_name(field)
+        if table_name:
+            tables.add(table_name)
     return tables
 
 
@@ -1811,6 +1840,73 @@ def _deterministic_validate_manual_config(
             if list(_iter_filter_rule_fields(event_item.get("filters") or event_item.get("eventFilters") or event_item.get("event_filters"))):
                 issues.append(f"{label}不支持事件筛选条件。")
 
+    if analysis_model == "revenue":
+        revenue = normalized_config.get("revenue") if isinstance(normalized_config.get("revenue"), dict) else {}
+        entity_field = revenue.get("entityField") or revenue.get("entity_field")
+        initial_event = revenue.get("initialEvent") or revenue.get("initial_event")
+        payment_event = revenue.get("paymentEvent") or revenue.get("payment_event")
+        metric = revenue.get("metric") if isinstance(revenue.get("metric"), dict) else {}
+        metric_method = str(metric.get("method") or "count").strip().lower()
+        metric_field = metric.get("field")
+        cost = revenue.get("cost") if isinstance(revenue.get("cost"), dict) else {}
+        cost_enabled = cost.get("enabled") is True or revenue.get("costEnabled") is True
+        cost_field = cost.get("field") or revenue.get("costField") or revenue.get("cost_field")
+        observation_days = revenue.get("observationDays")
+        if observation_days is None:
+            observation_days = revenue.get("observation_days")
+
+        if not _field_has_resolvable_reference(entity_field):
+            issues.append("收入分析请先选择分析主体。")
+        if not _field_has_resolvable_reference(initial_event):
+            issues.append("收入分析请先选择同期初始事件。")
+        if not _field_has_resolvable_reference(payment_event):
+            issues.append("收入分析请先选择付费事件。")
+        if not _field_has_resolvable_reference(time_config.get("field")):
+            issues.append("收入分析请先选择时间字段。")
+        if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "table":
+            issues.append("收入分析只能使用收入表结果。")
+        if metric_method not in _SUPPORTED_REVENUE_METRIC_METHODS:
+            issues.append(f"收入分析使用了不支持的收入口径：{metric_method}。")
+        if metric_method in {"property_sum", "property_avg"}:
+            if not _field_has_resolvable_reference(metric_field):
+                issues.append("收入分析使用事件属性口径时，请先选择数值属性。")
+            elif _field_is_known_non_numeric(metric_field):
+                issues.append("收入分析事件属性口径要求数值字段。")
+        if cost_enabled:
+            if not _field_has_resolvable_reference(cost_field):
+                issues.append("收入分析启用成本数据时，请先选择成本字段。")
+            elif _field_is_known_non_numeric(cost_field):
+                issues.append("收入分析成本字段必须是数值字段。")
+        try:
+            normalized_observation_days = int(observation_days)
+        except (TypeError, ValueError):
+            normalized_observation_days = 0
+        if normalized_observation_days < REVENUE_OBSERVATION_MIN_DAYS or normalized_observation_days > REVENUE_OBSERVATION_MAX_DAYS:
+            issues.append("收入分析观察时长必须是 1 到 365 天。")
+
+        for field, label in (
+            (entity_field, "收入分析主体"),
+            (initial_event, "收入分析同期初始事件"),
+            (payment_event, "收入分析付费事件"),
+            (metric_field if metric_method in {"property_sum", "property_avg"} else None, "收入分析口径属性"),
+            (cost_field if cost_enabled else None, "收入分析成本字段"),
+        ):
+            if not field:
+                continue
+            issues.extend(_tracking_event_metadata_issues(field, label))
+            issues.extend(_json_subfield_mapping_issues(field, label))
+            issues.extend(_field_table_permission_issues(field, label, allowed_tables))
+            issues.extend(_field_schema_permission_issues(field, label, allowed_fields_by_table))
+
+        payment_event_name = _tracking_event_name_from_field(payment_event)
+        for property_field, label in (
+            (metric_field if metric_method in {"property_sum", "property_avg"} else None, "收入分析口径属性"),
+            (cost_field if cost_enabled else None, "收入分析成本字段"),
+        ):
+            property_event_name = _tracking_event_name_from_field(property_field)
+            if property_event_name and payment_event_name and property_event_name != payment_event_name:
+                issues.append(f"{label}不属于当前付费事件。")
+
     for index, metric in enumerate(metrics):
         label = str(metric.get("alias") or metric.get("label") or f"分析指标{index + 1}").strip()
         issues.extend(_validate_metric_item(metric, label))
@@ -1845,7 +1941,7 @@ def _deterministic_validate_manual_config(
         issues=issues,
         warnings=warnings,
         suggestions=_unique_text_items(suggestions),
-        analysis_model=analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path"} else "event",
+        analysis_model=analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue"} else "event",
     )
 
 
@@ -1863,6 +1959,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
     analysis_model = str(normalized_config.get("analysis_model") or "event")
     retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
     interval = normalized_config.get("interval") if isinstance(normalized_config.get("interval"), dict) else {}
+    revenue = normalized_config.get("revenue") if isinstance(normalized_config.get("revenue"), dict) else {}
     result_contract: dict[str, Any] = {}
     if analysis_model == "retention":
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
@@ -1939,6 +2036,29 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "session_count_field": "session_count",
             "final_grain": ["path_step", "path_source", "path_target"],
         }
+    elif analysis_model == "revenue":
+        try:
+            observation_days = int(revenue.get("observationDays") or revenue.get("observation_days") or 30)
+        except (TypeError, ValueError):
+            observation_days = 30
+        observation_days = min(REVENUE_OBSERVATION_MAX_DAYS, max(REVENUE_OBSERVATION_MIN_DAYS, observation_days))
+        cost = revenue.get("cost") if isinstance(revenue.get("cost"), dict) else {}
+        cost_enabled = cost.get("enabled") is True or revenue.get("costEnabled") is True
+        required_columns = ["cohort_date", "cohort_size"]
+        required_columns.extend(f"day_{day}" for day in range(observation_days + 1))
+        if cost_enabled:
+            required_columns.append("cost_value")
+        result_contract = {
+            "type": "revenue_cohort_table",
+            "observation_days": observation_days,
+            "required_columns": required_columns,
+            "final_grain": [
+                "cohort_date",
+                *[f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])],
+            ],
+            "metric_method": str((revenue.get("metric") or {}).get("method") or "count"),
+            "cost_enabled": cost_enabled,
+        }
     return {
         "analysis_model": analysis_model,
         "retention": retention,
@@ -1946,6 +2066,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
         "distribution": normalized_config.get("distribution") or {},
         "interval": interval,
         "path": normalized_config.get("path") or {},
+        "revenue": revenue,
         "result_contract": result_contract,
         "time": time_config,
         "date_parameters": {
@@ -2170,6 +2291,25 @@ def _dashboard_config_prompt(
             f"当前间隔上限：{interval.get('limitSeconds') or interval.get('limit_seconds') or 3600} 秒。",
             "最终返回 chart_type 必须为 table。",
         ]
+    revenue = context.get("revenue") if isinstance(context.get("revenue"), dict) else {}
+    revenue_rules: list[str] = []
+    if analysis_model == "revenue":
+        metric = revenue.get("metric") if isinstance(revenue.get("metric"), dict) else {}
+        cost = revenue.get("cost") if isinstance(revenue.get("cost"), dict) else {}
+        observation_days = revenue.get("observationDays") or revenue.get("observation_days") or 30
+        revenue_rules = [
+            "当前 analysisModel=revenue，只能使用 revenue 配置生成收入查询；不得读取或套用事件、留存、漏斗、分布、间隔、路径模型的配置语义。",
+            "revenue.initialEvent 定义同期 Cohort：按日期和分组对 revenue.entityField 去重，得到 cohort_date 与 cohort_size；revenue.paymentEvent 只统计 Cohort 主体在初始日期后观察期内的行为。",
+            "initialEvent 和 paymentEvent 必须分别使用字段对象中的 eventTable、eventNameField 和 eventName 定位事件，禁止从名称猜测其他事件。",
+            "metric.method=count 表示付费事件总次数；entity_count 表示触发付费事件的主体去重数；per_entity_count 表示总次数除以触发主体数；property_sum/property_avg 必须使用 metric.field。",
+            "period_cumulative_count 和 period_cumulative_entity_count 分别对每日总次数或每日触发主体数做从 day_0 起的周期累计总和；period_average_count 和 period_average_entity_count 分别输出截至当日的周期累计均值。",
+            f"观察时长为 {observation_days} 天，最终结果必须按 Cohort 日期输出 cohort_date、cohort_size 和 day_0 到 day_{observation_days} 的宽表列；不得改成长表 period_offset 结果。",
+            "全局 filters 只筛选配置允许的用户属性，groups 只增加 Cohort 分组粒度；不得把全局筛选改成初始事件或付费事件的隐式字段筛选。",
+            "cost.enabled=true 时使用 cost.field 按 Cohort 统计成本并额外输出 cost_value；不得猜测成本字段、成本口径或跨数据源关联关系。",
+            f"当前收入口径配置：{_safe_json(metric)}。",
+            f"当前成本配置：{_safe_json(cost)}。",
+            "最终返回 chart_type 必须为 table。",
+        ]
     return "\n".join([
         "请处理下面的手动图表配置。",
         "",
@@ -2208,12 +2348,13 @@ def _dashboard_config_prompt(
         "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段；必须使用字段对象的 expression，不得把用户属性改为 user 表或其他表的同名字段。",
         "字段对象包含 sourceField、jsonPath 和 expression 时，JSON 子字段必须使用 expression；不得自行改写 JSON 宿主列或路径。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
-         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention/funnel/distribution/interval/path 字段信息生成 SQL；不要编造未提供字段。",
+         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention/funnel/distribution/interval/path/revenue 字段信息生成 SQL；不要编造未提供字段。",
         *retention_rules,
         *funnel_rules,
         *distribution_rules,
         *interval_rules,
         *path_rules,
+        *revenue_rules,
         *date_parameter_rules,
         *_dashboard_sql_dialect_rules(sql_dialect, datasource),
     ])
@@ -2487,6 +2628,40 @@ def _path_sql_result_issues(
     return _unique_text_items(issues)
 
 
+def _revenue_sql_result_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+) -> list[str]:
+    if str(normalized_config.get("analysis_model") or "event") != "revenue":
+        return []
+    revenue = normalized_config.get("revenue") if isinstance(normalized_config.get("revenue"), dict) else {}
+    try:
+        observation_days = int(revenue.get("observationDays") or revenue.get("observation_days") or 30)
+    except (TypeError, ValueError):
+        observation_days = 30
+    observation_days = min(REVENUE_OBSERVATION_MAX_DAYS, max(REVENUE_OBSERVATION_MIN_DAYS, observation_days))
+    cost = revenue.get("cost") if isinstance(revenue.get("cost"), dict) else {}
+    cost_enabled = cost.get("enabled") is True or revenue.get("costEnabled") is True
+    required_aliases = ["cohort_date", "cohort_size"]
+    required_aliases.extend(f"day_{day}" for day in range(observation_days + 1))
+    if cost_enabled:
+        required_aliases.append("cost_value")
+    normalized_sql = str(sql or "").lower()
+    missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
+    issues = [f"收入 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    if not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
+        issues.append("收入 SQL 必须按分析主体去重计算 cohort_size。")
+    metric = revenue.get("metric") if isinstance(revenue.get("metric"), dict) else {}
+    metric_method = str(metric.get("method") or "count")
+    if metric_method in {"per_entity_count"} and not re.search(r"\bnullif\s*\(", normalized_sql):
+        issues.append("收入 SQL 的人均次数必须使用 NULLIF 保护分母。")
+    if metric_method == "property_sum" and not re.search(r"\bsum\s*\(", normalized_sql):
+        issues.append("收入 SQL 必须按配置属性执行 SUM 聚合。")
+    if metric_method == "property_avg" and not re.search(r"\bavg\s*\(", normalized_sql):
+        issues.append("收入 SQL 必须按配置属性执行 AVG 聚合。")
+    return _unique_text_items(issues)
+
+
 def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
     common_prompt = (
         "你是 BI 手动看板 SQL 生成节点。确定性配置校验已经通过，你只负责根据当前配置、公式 IR 和 SQL plan 生成只读 SELECT SQL。\n"
@@ -2600,6 +2775,23 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "GROUP BY path_step, path_source, path_target\n"
             "ORDER BY path_step, path_value DESC。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；path_value 是边的会话流量，必须应用 sessionGapSeconds。\n"
+        )
+    elif str(analysis_model or "event") == "revenue":
+        structure_prompt = (
+            "当前 SQL plan 的 analysis_model=revenue，必须使用收入分析专用 Cohort 宽表结构；禁止改写为普通事件趋势、留存率或漏斗。\n"
+            "收入 SQL 结构范式：\n"
+            "WITH bounds AS (...仅一行时间边界...),\n"
+            "cohort AS (...按 revenue.initialEvent、entityField、cohort_date 和 groups 形成去重同期群...),\n"
+            "payment_events AS (...只保留 revenue.paymentEvent 及配置口径字段...),\n"
+            "matched AS (...按 entityField 关联 Cohort 与观察期内付费事件，并计算 day_offset...),\n"
+            "daily_values AS (...严格按 revenue.metric.method 计算每天指标...),\n"
+            "SELECT cohort_date, cohort_size,\n"
+            "       <day_0_value> AS day_0, ... <day_N_value> AS day_N\n"
+            "       <启用成本时输出 cost_value>\n"
+            "FROM ... GROUP BY cohort_date, <groups> ORDER BY cohort_date, <groups>。\n"
+            "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。\n"
+            "day_offset 只能作为中间计算字段；day_0 到 day_N 的值必须遵守 metric_method，不得输出回访比例或主体留存率。\n"
+            "只允许使用 sql-plan.revenue，禁止读取 retention、funnel、distribution、interval 或 path 配置。\n"
         )
     else:
         structure_prompt = (
@@ -3006,7 +3198,7 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
         SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ], node="generate_sql")
-    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path"} else "event"
+    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue"} else "event"
     validation = state.get("validation_result")
     if validation:
         response.intent = response.intent or validation.intent
@@ -3132,6 +3324,14 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 未满足路径分析生成要求。"
         response.advice = "请按会话间隔、初始事件和相邻节点边重新生成路径查询。"
         response.issues = _unique_text_items(list(response.issues or []) + path_issues)
+    elif revenue_issues := _revenue_sql_result_issues(
+        sql,
+        state.get("normalized_config") or {},
+    ):
+        response.success = False
+        response.message = "生成 SQL 未满足收入分析生成要求。"
+        response.advice = "请按同期群、收入口径、观察时长和固定结果列重新生成收入查询。"
+        response.issues = _unique_text_items(list(response.issues or []) + revenue_issues)
     elif json_issues := _json_subfield_sql_issues(
         sql,
         state.get("json_subfield_requirements") or [],
@@ -3204,7 +3404,7 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
     )
     normalized_config = state.get("normalized_config") or {}
     analysis_model = str(normalized_config.get("analysis_model") or "event")
-    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path"} else "event"
+    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue"} else "event"
     if response.analysis_model == "retention":
         retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
@@ -3268,6 +3468,24 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "step_field": "path_step",
             "session_count_field": "session_count",
             "max_steps": 10,
+        }
+    elif response.analysis_model == "revenue":
+        revenue = normalized_config.get("revenue") if isinstance(normalized_config.get("revenue"), dict) else {}
+        cost = revenue.get("cost") if isinstance(revenue.get("cost"), dict) else {}
+        cost_enabled = cost.get("enabled") is True or revenue.get("costEnabled") is True
+        try:
+            observation_days = int(revenue.get("observationDays") or revenue.get("observation_days") or 30)
+        except (TypeError, ValueError):
+            observation_days = 30
+        observation_days = min(REVENUE_OBSERVATION_MAX_DAYS, max(REVENUE_OBSERVATION_MIN_DAYS, observation_days))
+        response.chart_type = "table"
+        response.result_config = {
+            "type": "revenue_cohort_table",
+            "cohort_date_field": "cohort_date",
+            "cohort_size_field": "cohort_size",
+            "observation_days": observation_days,
+            "cost_value_field": "cost_value" if cost_enabled else "",
+            "metric_method": str((revenue.get("metric") or {}).get("method") or "count"),
         }
     return {
         "response": response,
