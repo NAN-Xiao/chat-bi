@@ -1232,6 +1232,383 @@ def _funnel_request(**overrides):
     )
 
 
+def _distribution_request(**overrides):
+    distribution = {
+        "entityField": {"table": "event", "field": "user_id", "value": "event.user_id"},
+        "event": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "login", "field": "event_name",
+        },
+        "eventFilters": {"logic": "and", "rules": []},
+        "metric": {
+            "kind": "property",
+            "field": {"table": "event", "field": "amount", "type": "numeric"},
+            "aggregation": "sum",
+        },
+        "interval": {"mode": "custom", "customBounds": [0, 10, 100]},
+        "simultaneous": {"enabled": False, "event": None, "aggregation": "count", "metricField": None},
+    }
+    distribution.update(overrides)
+    return DashboardAiSqlGenerateRequest(
+        datasource=1,
+        chart_type="table",
+        context={
+            "analysisModel": "distribution",
+            "chart": {"type": "table"},
+            "time": {
+                "field": {"table": "event", "field": "dt"},
+                "dateParameterType": "yyyymmdd_number",
+                "dateExpression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+            },
+            "distribution": distribution,
+            "groups": [],
+            "filters": {},
+            "selectedFields": [],
+        },
+    )
+
+
+def _interval_request(**overrides):
+    interval = {
+        "entityField": {"table": "event", "field": "user_id", "value": "event.user_id"},
+        "startEvent": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "login", "field": "event_name",
+        },
+        "startEventFilters": {"logic": "and", "rules": []},
+        "endEvent": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "purchase", "field": "event_name",
+        },
+        "endEventFilters": {"logic": "and", "rules": []},
+        "relatedProperty": {
+            "enabled": True,
+            "startProperty": {
+                "kind": "tracking-property", "table": "event", "field": "session_id",
+                "eventName": "login", "propertyType": "string",
+            },
+            "endProperty": {
+                "kind": "tracking-property", "table": "event", "field": "session_id",
+                "eventName": "purchase", "propertyType": "string",
+            },
+        },
+        "limitSeconds": 3600,
+    }
+    interval.update(overrides)
+    return DashboardAiSqlGenerateRequest(
+        datasource=1,
+        chart_type="table",
+        context={
+            "analysisModel": "interval",
+            "chart": {"type": "table"},
+            "time": {
+                "field": {"table": "event", "field": "dt"},
+                "dateParameterType": "yyyymmdd_number",
+                "dateExpression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+            },
+            "interval": interval,
+            "groups": [],
+            "filters": {},
+            "selectedFields": [],
+        },
+    )
+
+
+def _path_request(**overrides):
+    login = {
+        "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+        "eventName": "login", "field": "event_name",
+    }
+    purchase = {
+        "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+        "eventName": "purchase", "field": "event_name",
+    }
+    path = {
+        "events": [
+            {
+                "id": "path-1",
+                "event": login,
+                "splitProperties": [{
+                    "kind": "tracking-property", "table": "event", "field": "platform",
+                    "eventName": "login", "propertyType": "string",
+                }],
+            },
+            {"id": "path-2", "event": purchase, "splitProperties": []},
+        ],
+        "initialEvent": login,
+        "sessionGapSeconds": 1800,
+    }
+    path.update(overrides)
+    return DashboardAiSqlGenerateRequest(
+        datasource=1,
+        chart_type="sankey",
+        context={
+            "analysisModel": "path",
+            "chart": {"type": "sankey"},
+            "time": {
+                "field": {"table": "event", "field": "dt"},
+                "dateParameterType": "yyyymmdd_number",
+                "dateExpression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+            },
+            "path": path,
+            "groups": [],
+            "filters": {},
+            "selectedFields": [],
+        },
+    )
+
+
+def test_path_config_has_independent_normalization_and_validation() -> None:
+    request = _path_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "platform", "dt"}},
+    )
+
+    assert normalized["analysis_model"] == "path"
+    assert normalized["path"]["sessionGapSeconds"] == 1800
+    assert normalized["retention"] == {}
+    assert normalized["funnel"] == {}
+    assert normalized["distribution"] == {}
+    assert normalized["interval"] == {}
+    assert result.success is True
+    assert result.analysis_model == "path"
+    assert ai_sql_generator._config_reference_table_names(normalized, {}) == {"event"}
+
+
+def test_path_rejects_invalid_initial_event_split_property_and_session_gap() -> None:
+    request = _path_request(
+        initialEvent={
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "logout", "field": "event_name",
+        },
+        sessionGapSeconds=86401,
+    )
+    request.context["path"]["events"][0]["splitProperties"] = [{
+        "kind": "tracking-property", "table": "event", "field": "platform",
+        "eventName": "purchase", "propertyType": "string",
+    }]
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "platform", "dt"}},
+    )
+
+    assert "路径分析初始事件必须来自参与分析的事件。" in result.issues
+    assert "路径分析会话间隔必须是 1 秒到 24 小时。" in result.issues
+    assert "路径参与事件1拆分属性1不属于当前参与事件。" in result.issues
+
+
+def test_path_prompt_sql_plan_and_result_contract_keep_sankey_semantics() -> None:
+    request = _path_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
+        "",
+        "",
+    ) + "\n" + ai_sql_generator._dashboard_sql_system_prompt("path")
+    plan = ai_sql_generator._build_sql_plan(normalized, formula_ir)
+    valid_sql = (
+        "WITH ordered AS (SELECT LAG(event_name) OVER (PARTITION BY session_id ORDER BY dt) AS previous_event, "
+        "session_id, dt FROM event), edges AS (SELECT previous_event AS path_source, event_name AS path_target, "
+        "COUNT(*) AS path_value, 1 AS path_step FROM ordered WHERE session_gap_seconds <= 1800 GROUP BY previous_event, event_name) "
+        "SELECT path_source, path_target, path_value, path_step FROM edges"
+    )
+
+    assert "只能使用 path 配置" in prompt
+    assert "初始事件" in prompt
+    assert "30 个" in prompt
+    assert "sessionGapSeconds" in prompt
+    assert "相邻" in prompt
+    assert plan["analysis_model"] == "path"
+    assert plan["result_contract"]["type"] == "path_sankey"
+    assert plan["result_contract"]["required_columns"] == ["path_source", "path_target", "path_value", "path_step"]
+    assert ai_sql_generator._path_sql_result_issues(valid_sql, normalized) == []
+    invalid = ai_sql_generator._path_sql_result_issues("SELECT path_source, path_target FROM event", normalized)
+    assert invalid
+    assert any("path_value" in issue for issue in invalid)
+
+
+def test_distribution_config_has_independent_normalization_and_validation() -> None:
+    request = _distribution_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "amount", "dt"}},
+    )
+
+    assert normalized["analysis_model"] == "distribution"
+    assert normalized["distribution"]["metric"]["kind"] == "property"
+    assert normalized["retention"] == {}
+    assert normalized["funnel"] == {}
+    assert result.success is True
+    assert result.analysis_model == "distribution"
+    assert ai_sql_generator._config_reference_table_names(normalized, {}) == {"event"}
+
+
+def test_distribution_rejects_invalid_interval_metric_and_simultaneous_config() -> None:
+    request = _distribution_request(
+        metric={"kind": "property", "field": None, "aggregation": "unsupported"},
+        interval={"mode": "custom", "customBounds": [10, 10, 0]},
+        simultaneous={"enabled": True, "event": None, "aggregation": "avg", "metricField": None},
+    )
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+    )
+
+    assert result.success is False
+    assert "分布分析选择事件属性指标时，请先选择事件属性。" in result.issues
+    assert "分布分析使用了不支持的事件属性聚合方式：unsupported。" in result.issues
+    assert "分布分析自定义区间需要 2 到 20 个严格递增的数字边界。" in result.issues
+    assert "分布分析使用同时展示时请选择参与事件。" in result.issues
+
+
+def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analysis() -> None:
+    request = _distribution_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
+        "",
+        "",
+    ) + "\n" + ai_sql_generator._dashboard_sql_system_prompt("distribution")
+    valid_sql = (
+        "SELECT distribution_date, total_entities, interval_order, interval_label, "
+        "COUNT(DISTINCT entity_id) AS entity_count, "
+        "COUNT(DISTINCT entity_id) * 100.0 / NULLIF(total_entities, 0) AS entity_rate "
+        "FROM distribution_result GROUP BY distribution_date, interval_order, interval_label, total_entities"
+    )
+
+    assert "只使用 distribution 配置" in prompt or "只能使用 distribution 配置" in prompt
+    assert "主体必须先聚合再分桶" in prompt
+    assert normalized["analysis_model"] == "distribution"
+    assert normalized["chart"]["type"] == "table"
+    assert ai_sql_generator._distribution_sql_result_issues(valid_sql, normalized) == []
+    invalid = ai_sql_generator._distribution_sql_result_issues(
+        "SELECT interval_label, COUNT(*) AS entity_count FROM distribution_result GROUP BY interval_label",
+        normalized,
+    )
+    assert invalid
+    assert any("distribution_date" in issue for issue in invalid)
+    assert any("total_entities" in issue for issue in invalid)
+
+
+def test_interval_config_has_independent_normalization_and_validation() -> None:
+    request = _interval_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "session_id", "dt"}},
+    )
+
+    assert normalized["analysis_model"] == "interval"
+    assert normalized["interval"]["limitSeconds"] == 3600
+    assert normalized["retention"] == {}
+    assert normalized["funnel"] == {}
+    assert normalized["distribution"] == {}
+    assert result.success is True
+    assert result.analysis_model == "interval"
+    assert ai_sql_generator._config_reference_table_names(normalized, {}) == {"event"}
+
+
+def test_interval_allows_same_event_and_rejects_invalid_limit_or_property_type() -> None:
+    same_event = {
+        "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+        "eventName": "login", "field": "event_name",
+    }
+    valid_request = _interval_request(
+        startEvent=same_event,
+        endEvent=same_event,
+        relatedProperty={"enabled": False, "startProperty": None, "endProperty": None},
+    )
+    valid_normalized = ai_sql_generator._normalize_manual_config(valid_request)
+    valid_result = ai_sql_generator._deterministic_validate_manual_config(
+        valid_request,
+        valid_normalized,
+        ai_sql_generator._build_formula_ir(valid_normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+    )
+    assert valid_result.success is True
+
+    invalid_request = _interval_request(
+        limitSeconds=59,
+        relatedProperty={
+            "enabled": True,
+            "startProperty": {
+                "kind": "tracking-property", "table": "event", "field": "level_id",
+                "eventName": "login", "propertyType": "integer",
+            },
+            "endProperty": {
+                "kind": "tracking-property", "table": "event", "field": "level_name",
+                "eventName": "purchase", "propertyType": "string",
+            },
+        },
+    )
+    invalid_normalized = ai_sql_generator._normalize_manual_config(invalid_request)
+    invalid_result = ai_sql_generator._deterministic_validate_manual_config(
+        invalid_request,
+        invalid_normalized,
+        ai_sql_generator._build_formula_ir(invalid_normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "level_id", "level_name", "dt"}},
+    )
+    assert invalid_result.success is False
+    assert "间隔分析上限必须是 1 分钟到 180 天。" in invalid_result.issues
+    assert "起点事件属性和终点事件属性的类型必须一致。" in invalid_result.issues
+
+
+def test_interval_prompt_and_result_contract_enforce_pairing_semantics() -> None:
+    request = _interval_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
+        "",
+        "",
+    ) + "\n" + ai_sql_generator._dashboard_sql_system_prompt("interval")
+    valid_sql = (
+        "SELECT interval_date, COUNT(DISTINCT entity_id) AS entity_count, COUNT(*) AS interval_count, "
+        "MAX(interval_seconds) AS max_interval_seconds, "
+        "PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY interval_seconds) AS p75_interval_seconds, "
+        "PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY interval_seconds) AS median_interval_seconds, "
+        "PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY interval_seconds) AS p25_interval_seconds, "
+        "MIN(interval_seconds) AS min_interval_seconds, AVG(interval_seconds) AS avg_interval_seconds "
+        "FROM valid_intervals GROUP BY interval_date"
+    )
+
+    assert "只能使用 interval 配置" in prompt
+    assert "连续出现多个起点时只保留最后一个起点" in prompt
+    assert "相同事件" in prompt and "N-1" in prompt
+    assert "所有时长列必须为数值秒" in prompt
+    assert ai_sql_generator._interval_sql_result_issues(valid_sql, normalized) == []
+    invalid_issues = ai_sql_generator._interval_sql_result_issues(
+        "SELECT interval_date, COUNT(*) AS interval_count FROM valid_intervals GROUP BY interval_date",
+        normalized,
+    )
+    assert any("entity_count" in issue for issue in invalid_issues)
+    assert any("分位数" in issue for issue in invalid_issues)
+
+
 def test_funnel_config_uses_ordered_steps_and_deterministic_validation() -> None:
     request = _funnel_request()
     normalized = ai_sql_generator._normalize_manual_config(request)

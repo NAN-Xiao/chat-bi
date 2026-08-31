@@ -11,6 +11,29 @@ import { formatRequestErrorMessage } from '@/utils/request.ts'
 import BuilderSectionIcon from '@/assets/svg/dv-view.svg'
 import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
+import DistributionIntervalSettings from '@/views/dashboard/common/DistributionIntervalSettings.vue'
+import DistributionMetricPicker from '@/views/dashboard/common/DistributionMetricPicker.vue'
+import IntervalLimitPicker from '@/views/dashboard/common/IntervalLimitPicker.vue'
+import PathEventList from '@/views/dashboard/common/PathEventList.vue'
+import PathSessionGapPicker from '@/views/dashboard/common/PathSessionGapPicker.vue'
+import type {
+  DistributionIntervalConfig,
+  DistributionMetricConfig,
+} from '@/views/dashboard/common/distributionAnalysis.ts'
+import {
+  DEFAULT_INTERVAL_LIMIT_SECONDS,
+  INTERVAL_LIMIT_MAX_SECONDS,
+  INTERVAL_LIMIT_MIN_SECONDS,
+  clampIntervalLimitSeconds,
+} from '@/views/dashboard/common/intervalAnalysis.ts'
+import {
+  DEFAULT_PATH_SESSION_GAP_SECONDS,
+  PATH_EVENT_LIMIT,
+  PATH_SESSION_GAP_MAX_SECONDS,
+  PATH_SESSION_GAP_MIN_SECONDS,
+  clampPathSessionGapSeconds,
+  type PathAnalysisEvent,
+} from '@/views/dashboard/common/pathAnalysis.ts'
 import DashboardDateExpressionPicker from '@/views/dashboard/common/DashboardDateExpressionPicker.vue'
 import {
   cloneDashboardDateExpression,
@@ -142,8 +165,9 @@ type SqlBuilderMetricItem = {
   filterLogic: SqlBuilderFilterLogic
   filters: SqlBuilderFilter[]
 }
-type AnalysisModel = 'event' | 'retention' | 'funnel'
+type AnalysisModel = 'event' | 'retention' | 'funnel' | 'distribution' | 'interval' | 'path'
 type RetentionEventTarget = 'initial' | 'return'
+type IntervalEventTarget = 'start' | 'end'
 type SqlBuilderFunnelStep = {
   id: string
   event: string
@@ -183,6 +207,40 @@ type SqlBuilderFunnelConfig = {
   steps: SqlBuilderFunnelStep[]
   windowDays: number
   relatedPropertyEnabled: boolean
+}
+type SqlBuilderDistributionConfig = {
+  entityField: string
+  event: string
+  eventFilterLogic: SqlBuilderFilterLogic
+  eventFilters: SqlBuilderFilter[]
+  metric: DistributionMetricConfig
+  interval: DistributionIntervalConfig
+  simultaneous: {
+    enabled: boolean
+    event: string
+    aggregation: SqlBuilderAggregation
+    metricField: string
+  }
+}
+type SqlBuilderIntervalConfig = {
+  entityField: string
+  startEvent: string
+  startEventFilterLogic: SqlBuilderFilterLogic
+  startEventFilters: SqlBuilderFilter[]
+  endEvent: string
+  endEventFilterLogic: SqlBuilderFilterLogic
+  endEventFilters: SqlBuilderFilter[]
+  relatedProperty: {
+    enabled: boolean
+    startProperty: string
+    endProperty: string
+  }
+  limitSeconds: number
+}
+type SqlBuilderPathConfig = {
+  events: PathAnalysisEvent[]
+  initialEvent: string
+  sessionGapSeconds: number
 }
 type SqlBuilderCalculatedMetricItem = {
   id: string
@@ -356,6 +414,47 @@ const sqlBuilder = reactive({
     windowDays: 1,
     relatedPropertyEnabled: false,
   } as SqlBuilderFunnelConfig,
+  distribution: {
+    entityField: '',
+    event: '',
+    eventFilterLogic: 'and',
+    eventFilters: [],
+    metric: {
+      kind: 'count',
+      field: '',
+      aggregation: 'sum',
+    },
+    interval: {
+      mode: 'auto',
+      customBounds: [],
+    },
+    simultaneous: {
+      enabled: false,
+      event: '',
+      aggregation: 'count',
+      metricField: '',
+    },
+  } as SqlBuilderDistributionConfig,
+  interval: {
+    entityField: '',
+    startEvent: '',
+    startEventFilterLogic: 'and',
+    startEventFilters: [],
+    endEvent: '',
+    endEventFilterLogic: 'and',
+    endEventFilters: [],
+    relatedProperty: {
+      enabled: false,
+      startProperty: '',
+      endProperty: '',
+    },
+    limitSeconds: DEFAULT_INTERVAL_LIMIT_SECONDS,
+  } as SqlBuilderIntervalConfig,
+  path: {
+    events: [{ id: 'path-event-initial', event: '', splitProperties: [] }],
+    initialEvent: '',
+    sessionGapSeconds: DEFAULT_PATH_SESSION_GAP_SECONDS,
+  } as SqlBuilderPathConfig,
 })
 const retentionFilterExpanded = reactive<Record<RetentionEventTarget, boolean>>({
   initial: false,
@@ -372,6 +471,11 @@ const retentionAliasDraft = reactive<Record<RetentionEventTarget, string>>({
 const funnelFilterExpanded = reactive<Record<string, boolean>>({})
 const funnelAliasEditing = reactive<Record<string, boolean>>({})
 const funnelAliasDraft = reactive<Record<string, string>>({})
+const distributionFilterExpanded = ref(false)
+const intervalFilterExpanded = reactive<Record<IntervalEventTarget, boolean>>({
+  start: false,
+  end: false,
+})
 const builderAgentAdvice = reactive({
   visible: false,
   severity: '',
@@ -814,13 +918,50 @@ const analysisModelOptions = [
   { label: '事件分析', value: 'event' as AnalysisModel },
   { label: '留存分析', value: 'retention' as AnalysisModel },
   { label: '漏斗分析', value: 'funnel' as AnalysisModel },
+  { label: '分布分析', value: 'distribution' as AnalysisModel },
+  { label: '间隔分析', value: 'interval' as AnalysisModel },
+  { label: '路径分析', value: 'path' as AnalysisModel },
 ]
 const isRetentionAnalysis = computed(() => sqlBuilder.analysisModel === 'retention')
 const isFunnelAnalysis = computed(() => sqlBuilder.analysisModel === 'funnel')
+const isDistributionAnalysis = computed(() => sqlBuilder.analysisModel === 'distribution')
+const isIntervalAnalysis = computed(() => sqlBuilder.analysisModel === 'interval')
+const isPathAnalysis = computed(() => sqlBuilder.analysisModel === 'path')
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
 const funnelEntityFieldOptions = computed(() => builderFieldOptions.value)
 const funnelEventOptions = computed(() => trackingEventCatalogOptions.value)
+const distributionEntityFieldOptions = computed(() => builderFieldOptions.value)
+const distributionEventOptions = computed(() => trackingEventCatalogOptions.value)
+const distributionEventPropertyOptions = computed(() => eventFilterFieldOptions(sqlBuilder.distribution.event))
+const distributionEventLabel = computed(() => (
+  fieldOptionByValue(sqlBuilder.distribution.event)?.displayName
+  || fieldOptionByValue(sqlBuilder.distribution.event)?.label
+  || '参与事件'
+))
+const intervalEntityFieldOptions = computed(() => builderFieldOptions.value)
+const intervalEventOptions = computed(() => trackingEventCatalogOptions.value)
+const intervalStartPropertyOptions = computed(() => eventFilterFieldOptions(sqlBuilder.interval.startEvent))
+const intervalEndPropertyOptions = computed(() => {
+  const options = eventFilterFieldOptions(sqlBuilder.interval.endEvent)
+  const startOption = fieldOptionByValue(sqlBuilder.interval.relatedProperty.startProperty)
+  if (!startOption) return options
+  const startType = intervalPropertyTypeFamily(startOption)
+  return startType ? options.filter((option) => intervalPropertyTypeFamily(option) === startType) : options
+})
+const pathEventOptions = computed(() => trackingEventCatalogOptions.value)
+const pathEventPropertyOptions = (eventValue: string) => eventFilterFieldOptions(eventValue)
+const pathInitialEventOptions = computed(() => sqlBuilder.path.events
+  .filter((item) => item.event)
+  .map((item) => {
+    const option = fieldOptionByValue(item.event)
+    return {
+      value: item.event,
+      label: option?.displayName || option?.label || item.event,
+      field: option?.field || item.event,
+      table: option?.table || '',
+    }
+  }))
 const builderMetricOptions = computed(() =>
   sqlBuilder.metricItems.map((item, index) => ({
     label: metricOutputAlias(item, index),
@@ -1544,6 +1685,9 @@ function resetSqlBuilderState() {
   sqlBuilder.approximate = false
   resetRetentionConfig()
   resetFunnelConfig()
+  resetDistributionConfig()
+  resetIntervalConfig()
+  resetPathConfig()
   clearBuilderAgentAdvice()
 }
 
@@ -1947,6 +2091,66 @@ function builderConfigForSave() {
         relatedProperty: sqlBuilder.funnel.relatedPropertyEnabled ? step.relatedProperty : '',
       })),
     } : undefined,
+    distribution: sqlBuilder.analysisModel === 'distribution' ? {
+      entityField: sqlBuilder.distribution.entityField,
+      event: sqlBuilder.distribution.event,
+      eventFilters: {
+        logic: builderLogic(sqlBuilder.distribution.eventFilterLogic),
+        rules: compactBuilderFilters(sqlBuilder.distribution.eventFilters),
+      },
+      metric: {
+        kind: sqlBuilder.distribution.metric.kind,
+        field: sqlBuilder.distribution.metric.kind === 'property' ? sqlBuilder.distribution.metric.field : '',
+        aggregation: sqlBuilder.distribution.metric.aggregation,
+      },
+      interval: {
+        mode: sqlBuilder.distribution.interval.mode,
+        customBounds: sqlBuilder.distribution.interval.mode === 'custom'
+          ? [...sqlBuilder.distribution.interval.customBounds]
+          : [],
+      },
+      simultaneous: {
+        enabled: sqlBuilder.distribution.simultaneous.enabled,
+        event: sqlBuilder.distribution.simultaneous.enabled ? sqlBuilder.distribution.simultaneous.event : '',
+        aggregation: sqlBuilder.distribution.simultaneous.aggregation,
+        metricField: sqlBuilder.distribution.simultaneous.enabled
+          && sqlBuilder.distribution.simultaneous.aggregation !== 'count'
+          ? sqlBuilder.distribution.simultaneous.metricField
+          : '',
+      },
+    } : undefined,
+    interval: sqlBuilder.analysisModel === 'interval' ? {
+      entityField: sqlBuilder.interval.entityField,
+      startEvent: sqlBuilder.interval.startEvent,
+      startEventFilters: {
+        logic: builderLogic(sqlBuilder.interval.startEventFilterLogic),
+        rules: compactBuilderFilters(sqlBuilder.interval.startEventFilters),
+      },
+      endEvent: sqlBuilder.interval.endEvent,
+      endEventFilters: {
+        logic: builderLogic(sqlBuilder.interval.endEventFilterLogic),
+        rules: compactBuilderFilters(sqlBuilder.interval.endEventFilters),
+      },
+      relatedProperty: {
+        enabled: sqlBuilder.interval.relatedProperty.enabled,
+        startProperty: sqlBuilder.interval.relatedProperty.enabled
+          ? sqlBuilder.interval.relatedProperty.startProperty
+          : '',
+        endProperty: sqlBuilder.interval.relatedProperty.enabled
+          ? sqlBuilder.interval.relatedProperty.endProperty
+          : '',
+      },
+      limitSeconds: clampIntervalLimitSeconds(sqlBuilder.interval.limitSeconds),
+    } : undefined,
+    path: sqlBuilder.analysisModel === 'path' ? {
+      events: sqlBuilder.path.events.map((item) => ({
+        id: item.id,
+        event: item.event,
+        splitProperties: [...item.splitProperties],
+      })),
+      initialEvent: sqlBuilder.path.initialEvent,
+      sessionGapSeconds: clampPathSessionGapSeconds(sqlBuilder.path.sessionGapSeconds),
+    } : undefined,
     timeField: SQL_EDITOR_TIME_FIELD,
     timeGrain: SQL_EDITOR_TIME_GRAIN,
     timeRange: 'expression',
@@ -1973,7 +2177,7 @@ function restoreSqlBuilderState(value: any) {
   if (!value || typeof value !== 'object') {
     return
   }
-  sqlBuilder.analysisModel = value.analysisModel === 'retention' || value.analysisModel === 'funnel'
+  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path'].includes(value.analysisModel)
     ? value.analysisModel
     : 'event'
   const retention = value.retention && typeof value.retention === 'object' ? value.retention : {}
@@ -2041,6 +2245,84 @@ function restoreSqlBuilderState(value: any) {
     funnelAliasEditing[step.id] = false
     funnelAliasDraft[step.id] = ''
   })
+  const distribution = value.distribution && typeof value.distribution === 'object' ? value.distribution : {}
+  sqlBuilder.distribution.entityField = typeof distribution.entityField === 'string' ? distribution.entityField : ''
+  sqlBuilder.distribution.event = typeof distribution.event === 'string' ? distribution.event : ''
+  sqlBuilder.distribution.eventFilterLogic = builderLogic(distribution.eventFilters?.logic)
+  sqlBuilder.distribution.eventFilters = restoreBuilderFilters(distribution.eventFilters?.rules)
+  const distributionMetric = distribution.metric && typeof distribution.metric === 'object' ? distribution.metric : {}
+  sqlBuilder.distribution.metric.kind = ['count', 'days', 'hours', 'property'].includes(distributionMetric.kind)
+    ? distributionMetric.kind
+    : 'count'
+  sqlBuilder.distribution.metric.field = sqlBuilder.distribution.metric.kind === 'property'
+    && typeof distributionMetric.field === 'string'
+    ? distributionMetric.field
+    : ''
+  sqlBuilder.distribution.metric.aggregation = typeof distributionMetric.aggregation === 'string'
+    ? distributionMetric.aggregation
+    : 'sum'
+  const distributionInterval = distribution.interval && typeof distribution.interval === 'object' ? distribution.interval : {}
+  sqlBuilder.distribution.interval.mode = ['auto', 'discrete', 'custom'].includes(distributionInterval.mode)
+    ? distributionInterval.mode
+    : 'auto'
+  sqlBuilder.distribution.interval.customBounds = Array.isArray(distributionInterval.customBounds)
+    ? distributionInterval.customBounds.map(Number).filter(Number.isFinite)
+    : []
+  const distributionSimultaneous = distribution.simultaneous && typeof distribution.simultaneous === 'object'
+    ? distribution.simultaneous
+    : {}
+  sqlBuilder.distribution.simultaneous.enabled = distributionSimultaneous.enabled === true
+  sqlBuilder.distribution.simultaneous.event = sqlBuilder.distribution.simultaneous.enabled
+    && typeof distributionSimultaneous.event === 'string'
+    ? distributionSimultaneous.event
+    : ''
+  sqlBuilder.distribution.simultaneous.aggregation = builderAggregationOptions.some(
+    (option) => option.value === distributionSimultaneous.aggregation
+  ) ? distributionSimultaneous.aggregation : 'count'
+  sqlBuilder.distribution.simultaneous.metricField = sqlBuilder.distribution.simultaneous.enabled
+    && sqlBuilder.distribution.simultaneous.aggregation !== 'count'
+    && typeof distributionSimultaneous.metricField === 'string'
+    ? distributionSimultaneous.metricField
+    : ''
+  distributionFilterExpanded.value = false
+  const interval = value.interval && typeof value.interval === 'object' ? value.interval : {}
+  sqlBuilder.interval.entityField = typeof interval.entityField === 'string' ? interval.entityField : ''
+  sqlBuilder.interval.startEvent = typeof interval.startEvent === 'string' ? interval.startEvent : ''
+  sqlBuilder.interval.startEventFilterLogic = builderLogic(interval.startEventFilters?.logic)
+  sqlBuilder.interval.startEventFilters = restoreBuilderFilters(interval.startEventFilters?.rules)
+  sqlBuilder.interval.endEvent = typeof interval.endEvent === 'string' ? interval.endEvent : ''
+  sqlBuilder.interval.endEventFilterLogic = builderLogic(interval.endEventFilters?.logic)
+  sqlBuilder.interval.endEventFilters = restoreBuilderFilters(interval.endEventFilters?.rules)
+  const intervalRelatedProperty = interval.relatedProperty && typeof interval.relatedProperty === 'object'
+    ? interval.relatedProperty
+    : {}
+  sqlBuilder.interval.relatedProperty.enabled = intervalRelatedProperty.enabled === true
+  sqlBuilder.interval.relatedProperty.startProperty = sqlBuilder.interval.relatedProperty.enabled
+    && typeof intervalRelatedProperty.startProperty === 'string'
+    ? intervalRelatedProperty.startProperty
+    : ''
+  sqlBuilder.interval.relatedProperty.endProperty = sqlBuilder.interval.relatedProperty.enabled
+    && typeof intervalRelatedProperty.endProperty === 'string'
+    ? intervalRelatedProperty.endProperty
+    : ''
+  sqlBuilder.interval.limitSeconds = clampIntervalLimitSeconds(interval.limitSeconds)
+  intervalFilterExpanded.start = false
+  intervalFilterExpanded.end = false
+  const path = value.path && typeof value.path === 'object' ? value.path : {}
+  const restoredPathEvents = Array.isArray(path.events)
+    ? path.events.slice(0, PATH_EVENT_LIMIT).map((item: any, index: number) => ({
+        id: typeof item?.id === 'string' && item.id ? item.id : `path-event-${index}`,
+        event: typeof item?.event === 'string' ? item.event : '',
+        splitProperties: Array.isArray(item?.splitProperties)
+          ? item.splitProperties.filter((field: any) => typeof field === 'string')
+          : [],
+      }))
+    : []
+  sqlBuilder.path.events = restoredPathEvents.length
+    ? restoredPathEvents
+    : [{ id: 'path-event-initial', event: '', splitProperties: [] }]
+  sqlBuilder.path.initialEvent = typeof path.initialEvent === 'string' ? path.initialEvent : ''
+  sqlBuilder.path.sessionGapSeconds = clampPathSessionGapSeconds(path.sessionGapSeconds)
   sqlBuilder.dateExpressionPickerEnabled = true
   sqlBuilder.metricDateExpressionEnabled = value.metricDateExpressionEnabled === true
   const timeExpression = normalizeDashboardDateExpression(value.timeExpression)
@@ -2580,6 +2862,33 @@ function builderEventScopeIssues() {
     appendEventScopeFilterIssues(sqlBuilder.retention.initialEventFilters, 'retention.initial_event_filter', issues)
     appendEventScopeFilterIssues(sqlBuilder.retention.returnEventFilters, 'retention.return_event_filter', issues)
   }
+  if (isDistributionAnalysis.value) {
+    if (sqlBuilder.distribution.metric.kind === 'property') {
+      appendEventScopeFieldIssue(sqlBuilder.distribution.metric.field, 'distribution.metric.field', issues)
+    }
+    if (sqlBuilder.distribution.simultaneous.enabled && sqlBuilder.distribution.simultaneous.aggregation !== 'count') {
+      appendEventScopeFieldIssue(
+        sqlBuilder.distribution.simultaneous.metricField,
+        'distribution.simultaneous.metricField',
+        issues
+      )
+    }
+    appendEventScopeFilterIssues(sqlBuilder.distribution.eventFilters, 'distribution.event_filter', issues)
+  }
+  if (isIntervalAnalysis.value) {
+    appendEventScopeFieldIssue(sqlBuilder.interval.relatedProperty.startProperty, 'interval.related_property.start', issues)
+    appendEventScopeFieldIssue(sqlBuilder.interval.relatedProperty.endProperty, 'interval.related_property.end', issues)
+    appendEventScopeFilterIssues(sqlBuilder.interval.startEventFilters, 'interval.start_event_filter', issues)
+    appendEventScopeFilterIssues(sqlBuilder.interval.endEventFilters, 'interval.end_event_filter', issues)
+  }
+  if (isPathAnalysis.value) {
+    sqlBuilder.path.events.forEach((item, index) => {
+      appendEventScopeFieldIssue(item.event, `path.events[${index}].event`, issues)
+      item.splitProperties.forEach((field, splitIndex) => {
+        appendEventScopeFieldIssue(field, `path.events[${index}].splitProperties[${splitIndex}]`, issues)
+      })
+    })
+  }
   sqlBuilder.groups.forEach((field, index) => appendEventScopeFieldIssue(field, `group[${index}]`, issues))
   appendEventScopeFilterIssues(sqlBuilder.globalFilters, 'global_filter', issues)
   return unique(issues)
@@ -2631,6 +2940,28 @@ function builderFilterScopeIssues() {
       sqlBuilder.retention.returnEventFilters,
       retentionEventFilterFieldOptions('return'),
       'retention.return_event_filter',
+      issues
+    )
+  }
+  if (isDistributionAnalysis.value) {
+    appendFilterRangeIssues(
+      sqlBuilder.distribution.eventFilters,
+      distributionEventPropertyOptions.value,
+      'distribution.event_filter',
+      issues
+    )
+  }
+  if (isIntervalAnalysis.value) {
+    appendFilterRangeIssues(
+      sqlBuilder.interval.startEventFilters,
+      intervalEventFilterFieldOptions('start'),
+      'interval.start_event_filter',
+      issues
+    )
+    appendFilterRangeIssues(
+      sqlBuilder.interval.endEventFilters,
+      intervalEventFilterFieldOptions('end'),
+      'interval.end_event_filter',
       issues
     )
   }
@@ -2717,8 +3048,44 @@ function resetFunnelConfig() {
   })
 }
 
+function resetDistributionConfig() {
+  sqlBuilder.distribution.entityField = ''
+  sqlBuilder.distribution.event = ''
+  sqlBuilder.distribution.eventFilterLogic = 'and'
+  sqlBuilder.distribution.eventFilters = []
+  sqlBuilder.distribution.metric = { kind: 'count', field: '', aggregation: 'sum' }
+  sqlBuilder.distribution.interval = { mode: 'auto', customBounds: [] }
+  sqlBuilder.distribution.simultaneous.enabled = false
+  sqlBuilder.distribution.simultaneous.event = ''
+  sqlBuilder.distribution.simultaneous.aggregation = 'count'
+  sqlBuilder.distribution.simultaneous.metricField = ''
+  distributionFilterExpanded.value = false
+}
+
+function resetIntervalConfig() {
+  sqlBuilder.interval.entityField = ''
+  sqlBuilder.interval.startEvent = ''
+  sqlBuilder.interval.startEventFilterLogic = 'and'
+  sqlBuilder.interval.startEventFilters = []
+  sqlBuilder.interval.endEvent = ''
+  sqlBuilder.interval.endEventFilterLogic = 'and'
+  sqlBuilder.interval.endEventFilters = []
+  sqlBuilder.interval.relatedProperty.enabled = false
+  sqlBuilder.interval.relatedProperty.startProperty = ''
+  sqlBuilder.interval.relatedProperty.endProperty = ''
+  sqlBuilder.interval.limitSeconds = DEFAULT_INTERVAL_LIMIT_SECONDS
+  intervalFilterExpanded.start = false
+  intervalFilterExpanded.end = false
+}
+
+function resetPathConfig() {
+  sqlBuilder.path.events = [{ id: 'path-event-initial', event: '', splitProperties: [] }]
+  sqlBuilder.path.initialEvent = ''
+  sqlBuilder.path.sessionGapSeconds = DEFAULT_PATH_SESSION_GAP_SECONDS
+}
+
 function handleAnalysisModelChange(model: AnalysisModel) {
-  sqlBuilder.analysisModel = model === 'retention' || model === 'funnel' ? model : 'event'
+  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path'].includes(model) ? model : 'event'
   if (sqlBuilder.analysisModel === 'retention') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -2726,6 +3093,9 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     form.chartType = 'table'
     resetRetentionConfig()
     resetFunnelConfig()
+    resetDistributionConfig()
+    resetIntervalConfig()
+    resetPathConfig()
   } else if (sqlBuilder.analysisModel === 'funnel') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -2733,15 +3103,335 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     form.chartType = 'funnel'
     resetRetentionConfig()
     resetFunnelConfig()
+    resetDistributionConfig()
+    resetIntervalConfig()
+    resetPathConfig()
+  } else if (sqlBuilder.analysisModel === 'distribution') {
+    sqlBuilder.metricItems = []
+    sqlBuilder.calculatedMetrics = []
+    activeFormulaMetricId.value = ''
+    form.chartType = 'table'
+    resetRetentionConfig()
+    resetFunnelConfig()
+    resetDistributionConfig()
+    resetIntervalConfig()
+    resetPathConfig()
+  } else if (sqlBuilder.analysisModel === 'interval') {
+    sqlBuilder.metricItems = []
+    sqlBuilder.calculatedMetrics = []
+    activeFormulaMetricId.value = ''
+    form.chartType = 'table'
+    resetRetentionConfig()
+    resetFunnelConfig()
+    resetDistributionConfig()
+    resetIntervalConfig()
+    resetPathConfig()
+  } else if (sqlBuilder.analysisModel === 'path') {
+    sqlBuilder.metricItems = []
+    sqlBuilder.calculatedMetrics = []
+    activeFormulaMetricId.value = ''
+    form.chartType = 'sankey'
+    resetRetentionConfig()
+    resetFunnelConfig()
+    resetDistributionConfig()
+    resetIntervalConfig()
+    resetPathConfig()
   } else {
     resetRetentionConfig()
     resetFunnelConfig()
+    resetDistributionConfig()
+    resetIntervalConfig()
+    resetPathConfig()
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
     addMetricItem()
   }
   sqlBuilder.groups = sqlBuilder.groups.filter((field) => optionExists(field, builderFieldOptions.value))
   lastPreviewSignature.value = ''
+}
+
+function handleDistributionEventChange(eventValue: string) {
+  const changed = sqlBuilder.distribution.event !== eventValue
+  sqlBuilder.distribution.event = eventValue
+  if (!changed) return
+  sqlBuilder.distribution.eventFilters = []
+  sqlBuilder.distribution.eventFilterLogic = 'and'
+  sqlBuilder.distribution.metric = { kind: 'count', field: '', aggregation: 'sum' }
+  distributionFilterExpanded.value = false
+}
+
+function updateDistributionMetric(metric: DistributionMetricConfig) {
+  sqlBuilder.distribution.metric = { ...metric }
+}
+
+function updateDistributionInterval(interval: DistributionIntervalConfig) {
+  sqlBuilder.distribution.interval = {
+    mode: interval.mode,
+    customBounds: [...interval.customBounds],
+  }
+}
+
+function toggleDistributionEventFilter() {
+  if (!sqlBuilder.distribution.event) return
+  if (!distributionFilterExpanded.value && !sqlBuilder.distribution.eventFilters.length) {
+    sqlBuilder.distribution.eventFilters.push(emptyBuilderFilter())
+  }
+  distributionFilterExpanded.value = !distributionFilterExpanded.value
+}
+
+function distributionSimultaneousMetricFieldOptions() {
+  return metricMeasureFieldOptions({
+    field: sqlBuilder.distribution.simultaneous.event,
+    aggregation: sqlBuilder.distribution.simultaneous.aggregation,
+  })
+}
+
+function syncDistributionSimultaneousMetricField() {
+  const simultaneous = sqlBuilder.distribution.simultaneous
+  if (simultaneous.aggregation === 'count') {
+    simultaneous.metricField = ''
+    return
+  }
+  if (!optionExists(simultaneous.metricField, distributionSimultaneousMetricFieldOptions())) {
+    simultaneous.metricField = ''
+  }
+}
+
+function handleDistributionSimultaneousToggle(enabled: boolean) {
+  if (enabled) return
+  sqlBuilder.distribution.simultaneous.event = ''
+  sqlBuilder.distribution.simultaneous.aggregation = 'count'
+  sqlBuilder.distribution.simultaneous.metricField = ''
+}
+
+function distributionBlockingIssues() {
+  if (!isDistributionAnalysis.value) return []
+  const issues: string[] = []
+  const distribution = sqlBuilder.distribution
+  if (!distribution.entityField) issues.push('分布分析请先选择分析主体。')
+  if (!distribution.event) issues.push('分布分析请先选择参与事件。')
+  if (distribution.metric.kind === 'property' && !distribution.metric.field) {
+    issues.push('分布分析选择事件属性指标时，请先选择事件属性。')
+  }
+  if (distribution.interval.mode === 'custom') {
+    const bounds = distribution.interval.customBounds
+    if (bounds.length < 2 || bounds.some((value, index) => index > 0 && value <= bounds[index - 1])) {
+      issues.push('分布分析自定义区间至少需要两个严格递增的数字边界。')
+    }
+  }
+  if (distribution.simultaneous.enabled && !distribution.simultaneous.event) {
+    issues.push('分布分析使用同时展示时请选择参与事件。')
+  }
+  if (
+    distribution.simultaneous.enabled
+    && distribution.simultaneous.aggregation !== 'count'
+    && !distribution.simultaneous.metricField
+  ) {
+    issues.push('分布分析同时展示使用非次数聚合时，请选择计算字段。')
+  }
+  return issues
+}
+
+function sanitizeDistributionConfig() {
+  if (!isDistributionAnalysis.value) return
+  const distribution = sqlBuilder.distribution
+  const cleared: string[] = []
+  if (distribution.entityField && !optionExists(distribution.entityField, distributionEntityFieldOptions.value)) {
+    distribution.entityField = ''
+    cleared.push('分析主体')
+  }
+  if (distribution.event && !optionExists(distribution.event, distributionEventOptions.value)) {
+    distribution.event = ''
+    distribution.eventFilters = []
+    distribution.metric = { kind: 'count', field: '', aggregation: 'sum' }
+    distributionFilterExpanded.value = false
+    cleared.push('参与事件')
+  }
+  if (distribution.metric.kind === 'property'
+    && distribution.metric.field
+    && !optionExists(distribution.metric.field, distributionEventPropertyOptions.value)) {
+    distribution.metric = { kind: 'count', field: '', aggregation: 'sum' }
+    cleared.push('分布指标')
+  }
+  if (filterFieldValues(distribution.eventFilters).some((field) => !optionExists(field, distributionEventPropertyOptions.value))) {
+    distribution.eventFilters = []
+    distributionFilterExpanded.value = false
+    cleared.push('参与事件筛选')
+  }
+  const simultaneous = distribution.simultaneous
+  if (simultaneous.event && !optionExists(simultaneous.event, distributionEventOptions.value)) {
+    simultaneous.event = ''
+    simultaneous.metricField = ''
+    cleared.push('同时展示事件')
+  }
+  if (simultaneous.metricField && !optionExists(simultaneous.metricField, distributionSimultaneousMetricFieldOptions())) {
+    simultaneous.metricField = ''
+    cleared.push('同时展示计算字段')
+  }
+  if (cleared.length) {
+    ElMessage.warning(`${cleared.join('、')}在当前数据源中无效，已清除，请重新选择。`)
+  }
+}
+
+function intervalPropertyTypeFamily(option?: SchemaFieldOption | null) {
+  if (!option) return ''
+  const typeText = [option.propertyType, option.semanticType, option.type, option.category]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  if (!typeText) return ''
+  if (/(int|decimal|numeric|number|float|double|real|money|金额|数值|数字)/.test(typeText)) return 'numeric'
+  if (/(date|time|timestamp|datetime|日期|时间)/.test(typeText)) return 'temporal'
+  if (/(bool|boolean|布尔)/.test(typeText)) return 'boolean'
+  if (/(char|string|text|varchar|enum|文本|字符串)/.test(typeText)) return 'text'
+  return typeText
+}
+
+function intervalEventFilterFieldOptions(target: IntervalEventTarget) {
+  return eventFilterFieldOptions(target === 'start' ? sqlBuilder.interval.startEvent : sqlBuilder.interval.endEvent)
+}
+
+function handleIntervalEventChange(target: IntervalEventTarget, eventValue: string) {
+  const eventKey = target === 'start' ? 'startEvent' : 'endEvent'
+  const filtersKey = target === 'start' ? 'startEventFilters' : 'endEventFilters'
+  const logicKey = target === 'start' ? 'startEventFilterLogic' : 'endEventFilterLogic'
+  const propertyKey = target === 'start' ? 'startProperty' : 'endProperty'
+  const changed = sqlBuilder.interval[eventKey] !== eventValue
+  sqlBuilder.interval[eventKey] = eventValue
+  if (!changed) return
+  sqlBuilder.interval[filtersKey] = []
+  sqlBuilder.interval[logicKey] = 'and'
+  sqlBuilder.interval.relatedProperty[propertyKey] = ''
+  intervalFilterExpanded[target] = false
+  if (target === 'start' && sqlBuilder.interval.relatedProperty.endProperty) {
+    sqlBuilder.interval.relatedProperty.endProperty = ''
+  }
+}
+
+function toggleIntervalEventFilter(target: IntervalEventTarget) {
+  const event = target === 'start' ? sqlBuilder.interval.startEvent : sqlBuilder.interval.endEvent
+  if (!event) return
+  const filters = target === 'start' ? sqlBuilder.interval.startEventFilters : sqlBuilder.interval.endEventFilters
+  if (!intervalFilterExpanded[target] && !filters.length) filters.push(emptyBuilderFilter())
+  intervalFilterExpanded[target] = !intervalFilterExpanded[target]
+}
+
+function handleIntervalRelatedPropertyToggle(enabled: boolean) {
+  if (enabled) return
+  sqlBuilder.interval.relatedProperty.startProperty = ''
+  sqlBuilder.interval.relatedProperty.endProperty = ''
+}
+
+function handleIntervalStartPropertyChange(value: string) {
+  sqlBuilder.interval.relatedProperty.startProperty = value
+  if (sqlBuilder.interval.relatedProperty.endProperty
+    && !optionExists(sqlBuilder.interval.relatedProperty.endProperty, intervalEndPropertyOptions.value)) {
+    sqlBuilder.interval.relatedProperty.endProperty = ''
+  }
+}
+
+function intervalBlockingIssues() {
+  if (!isIntervalAnalysis.value) return []
+  const issues: string[] = []
+  const interval = sqlBuilder.interval
+  if (!interval.entityField) issues.push('间隔分析请先选择分析主体。')
+  if (!interval.startEvent) issues.push('间隔分析请先选择起点事件。')
+  if (!interval.endEvent) issues.push('间隔分析请先选择终点事件。')
+  if (interval.limitSeconds < INTERVAL_LIMIT_MIN_SECONDS || interval.limitSeconds > INTERVAL_LIMIT_MAX_SECONDS) {
+    issues.push('间隔分析上限必须在 1 分钟到 180 天之间。')
+  }
+  if (interval.relatedProperty.enabled) {
+    if (!interval.relatedProperty.startProperty) issues.push('使用关联属性时请选择起点事件属性。')
+    if (!interval.relatedProperty.endProperty) issues.push('使用关联属性时请选择终点事件属性。')
+    const startType = intervalPropertyTypeFamily(fieldOptionByValue(interval.relatedProperty.startProperty))
+    const endType = intervalPropertyTypeFamily(fieldOptionByValue(interval.relatedProperty.endProperty))
+    if (startType && endType && startType !== endType) issues.push('起点事件属性和终点事件属性的类型必须一致。')
+  }
+  return issues
+}
+
+function sanitizeIntervalConfig() {
+  if (!isIntervalAnalysis.value) return
+  const interval = sqlBuilder.interval
+  const cleared: string[] = []
+  if (interval.entityField && !optionExists(interval.entityField, intervalEntityFieldOptions.value)) {
+    interval.entityField = ''
+    cleared.push('分析主体')
+  }
+  for (const target of ['start', 'end'] as IntervalEventTarget[]) {
+    const eventKey = target === 'start' ? 'startEvent' : 'endEvent'
+    const filtersKey = target === 'start' ? 'startEventFilters' : 'endEventFilters'
+    const options = intervalEventOptions.value
+    if (interval[eventKey] && !optionExists(interval[eventKey], options)) {
+      interval[eventKey] = ''
+      interval[filtersKey] = []
+      intervalFilterExpanded[target] = false
+      cleared.push(target === 'start' ? '起点事件' : '终点事件')
+    }
+    const filterOptions = intervalEventFilterFieldOptions(target)
+    if (filterFieldValues(interval[filtersKey]).some((field) => !optionExists(field, filterOptions))) {
+      interval[filtersKey] = []
+      intervalFilterExpanded[target] = false
+      cleared.push(target === 'start' ? '起点事件筛选' : '终点事件筛选')
+    }
+  }
+  if (interval.relatedProperty.startProperty
+    && !optionExists(interval.relatedProperty.startProperty, intervalStartPropertyOptions.value)) {
+    interval.relatedProperty.startProperty = ''
+    cleared.push('起点事件关联属性')
+  }
+  if (interval.relatedProperty.endProperty
+    && !optionExists(interval.relatedProperty.endProperty, intervalEndPropertyOptions.value)) {
+    interval.relatedProperty.endProperty = ''
+    cleared.push('终点事件关联属性')
+  }
+  interval.limitSeconds = clampIntervalLimitSeconds(interval.limitSeconds)
+  if (cleared.length) ElMessage.warning(`${cleared.join('、')}在当前数据源中无效，已清除，请重新选择。`)
+}
+
+function sanitizePathConfig() {
+  if (!isPathAnalysis.value) return
+  const cleared: string[] = []
+  const validEvents = pathEventOptions.value
+  sqlBuilder.path.events = sqlBuilder.path.events.slice(0, PATH_EVENT_LIMIT).map((item) => {
+    let event = item.event
+    let splitProperties = [...item.splitProperties]
+    if (event && !optionExists(event, validEvents)) {
+      event = ''
+      splitProperties = []
+      cleared.push('参与事件')
+    }
+    const allowedProperties = pathEventPropertyOptions(event)
+    const nextSplitProperties = splitProperties.filter((field) => optionExists(field, allowedProperties))
+    if (nextSplitProperties.length !== splitProperties.length) cleared.push('事件拆分属性')
+    return { ...item, event, splitProperties: nextSplitProperties }
+  })
+  if (!sqlBuilder.path.events.length) {
+    sqlBuilder.path.events = [{ id: 'path-event-initial', event: '', splitProperties: [] }]
+  }
+  if (sqlBuilder.path.initialEvent && !sqlBuilder.path.events.some((item) => item.event === sqlBuilder.path.initialEvent)) {
+    sqlBuilder.path.initialEvent = ''
+    cleared.push('初始事件')
+  }
+  sqlBuilder.path.sessionGapSeconds = clampPathSessionGapSeconds(sqlBuilder.path.sessionGapSeconds)
+  if (cleared.length) ElMessage.warning(`${unique(cleared).join('、')}在当前数据源中无效，已清除，请重新选择。`)
+}
+
+function pathBlockingIssues() {
+  if (!isPathAnalysis.value) return []
+  const issues: string[] = []
+  const path = sqlBuilder.path
+  const selectedEvents = path.events.filter((item) => item.event)
+  if (!selectedEvents.length) issues.push('路径分析请先选择参与分析的事件。')
+  if (path.events.length > PATH_EVENT_LIMIT) issues.push(`路径分析最多支持 ${PATH_EVENT_LIMIT} 个参与事件。`)
+  if (!path.initialEvent) issues.push('路径分析请先选择初始事件。')
+  if (path.initialEvent && !selectedEvents.some((item) => item.event === path.initialEvent)) {
+    issues.push('路径分析初始事件必须来自参与分析的事件。')
+  }
+  if (path.sessionGapSeconds < PATH_SESSION_GAP_MIN_SECONDS || path.sessionGapSeconds > PATH_SESSION_GAP_MAX_SECONDS) {
+    issues.push('路径分析会话间隔必须在 1 秒到 24 小时之间。')
+  }
+  return issues
 }
 
 function sanitizeRetentionConfig() {
@@ -3096,6 +3786,27 @@ function selectedBuilderFieldValues() {
         ...filterFieldValues(step.filters),
       ]),
     ] : []),
+    ...(sqlBuilder.analysisModel === 'distribution' ? [
+      sqlBuilder.distribution.entityField,
+      sqlBuilder.distribution.event,
+      sqlBuilder.distribution.metric.field,
+      sqlBuilder.distribution.simultaneous.event,
+      sqlBuilder.distribution.simultaneous.metricField,
+      ...filterFieldValues(sqlBuilder.distribution.eventFilters),
+    ] : []),
+    ...(sqlBuilder.analysisModel === 'interval' ? [
+      sqlBuilder.interval.entityField,
+      sqlBuilder.interval.startEvent,
+      sqlBuilder.interval.endEvent,
+      sqlBuilder.interval.relatedProperty.startProperty,
+      sqlBuilder.interval.relatedProperty.endProperty,
+      ...filterFieldValues(sqlBuilder.interval.startEventFilters),
+      ...filterFieldValues(sqlBuilder.interval.endEventFilters),
+    ] : []),
+    ...(sqlBuilder.analysisModel === 'path' ? [
+      ...sqlBuilder.path.events.flatMap((item) => [item.event, ...item.splitProperties]),
+      sqlBuilder.path.initialEvent,
+    ] : []),
     ...sqlBuilder.metricItems.flatMap((item) => [item.field, item.metric]),
     ...sqlBuilder.calculatedMetrics.flatMap((item) => [item.pendingEventField, item.pendingMetricField]),
     ...formulaFields,
@@ -3172,6 +3883,72 @@ function collectBuilderAiContext() {
           ? fieldOptionPayload(step.relatedProperty)
           : null,
       })),
+    } : null,
+    distribution: sqlBuilder.analysisModel === 'distribution' ? {
+      content: '按每个分析主体参与事件后的个人聚合值划分区间，查看各区间主体数量、占比和可选同时展示指标',
+      entityField: fieldOptionPayload(sqlBuilder.distribution.entityField),
+      event: fieldOptionPayload(sqlBuilder.distribution.event),
+      eventFilters: {
+        logic: sqlBuilder.distribution.eventFilterLogic,
+        rules: filterContext(sqlBuilder.distribution.eventFilters),
+      },
+      metric: {
+        kind: sqlBuilder.distribution.metric.kind,
+        field: sqlBuilder.distribution.metric.kind === 'property'
+          ? fieldOptionPayload(sqlBuilder.distribution.metric.field)
+          : null,
+        aggregation: sqlBuilder.distribution.metric.aggregation,
+      },
+      interval: {
+        mode: sqlBuilder.distribution.interval.mode,
+        customBounds: [...sqlBuilder.distribution.interval.customBounds],
+      },
+      simultaneous: {
+        enabled: sqlBuilder.distribution.simultaneous.enabled,
+        event: sqlBuilder.distribution.simultaneous.enabled
+          ? fieldOptionPayload(sqlBuilder.distribution.simultaneous.event)
+          : null,
+        aggregation: sqlBuilder.distribution.simultaneous.aggregation,
+        metricField: sqlBuilder.distribution.simultaneous.enabled
+          && sqlBuilder.distribution.simultaneous.aggregation !== 'count'
+          ? fieldOptionPayload(sqlBuilder.distribution.simultaneous.metricField)
+          : null,
+      },
+    } : null,
+    interval: sqlBuilder.analysisModel === 'interval' ? {
+      content: '分析同一主体依次完成起点事件和终点事件的时间间隔；不同事件按最后一个连续起点匹配后续第一个终点，相同事件按相邻两次匹配',
+      entityField: fieldOptionPayload(sqlBuilder.interval.entityField),
+      startEvent: fieldOptionPayload(sqlBuilder.interval.startEvent),
+      startEventFilters: {
+        logic: sqlBuilder.interval.startEventFilterLogic,
+        rules: filterContext(sqlBuilder.interval.startEventFilters),
+      },
+      endEvent: fieldOptionPayload(sqlBuilder.interval.endEvent),
+      endEventFilters: {
+        logic: sqlBuilder.interval.endEventFilterLogic,
+        rules: filterContext(sqlBuilder.interval.endEventFilters),
+      },
+      relatedProperty: {
+        enabled: sqlBuilder.interval.relatedProperty.enabled,
+        startProperty: sqlBuilder.interval.relatedProperty.enabled
+          ? fieldOptionPayload(sqlBuilder.interval.relatedProperty.startProperty)
+          : null,
+        endProperty: sqlBuilder.interval.relatedProperty.enabled
+          ? fieldOptionPayload(sqlBuilder.interval.relatedProperty.endProperty)
+          : null,
+        comparison: 'equal',
+      },
+      limitSeconds: clampIntervalLimitSeconds(sqlBuilder.interval.limitSeconds),
+    } : null,
+    path: sqlBuilder.analysisModel === 'path' ? {
+      content: '按会话追踪参与分析事件的行为顺序，展示初始事件之后的节点流入和流出',
+      events: sqlBuilder.path.events.map((item, index) => ({
+        order: index + 1,
+        event: fieldOptionPayload(item.event),
+        splitProperties: item.splitProperties.map(fieldOptionPayload).filter(Boolean),
+      })),
+      initialEvent: fieldOptionPayload(sqlBuilder.path.initialEvent),
+      sessionGapSeconds: clampPathSessionGapSeconds(sqlBuilder.path.sessionGapSeconds),
     } : null,
     chart: {
       title: form.title,
@@ -3262,7 +4039,17 @@ function collectLocalBuilderConfigIssues() {
   const eventScopeIssues = builderBlockingScopeIssues()
   const retentionIssues = retentionBlockingIssues()
   const funnelIssues = funnelBlockingIssues()
-  const issues: string[] = [...eventScopeIssues, ...retentionIssues, ...funnelIssues]
+  const distributionIssues = distributionBlockingIssues()
+  const intervalIssues = intervalBlockingIssues()
+  const pathIssues = pathBlockingIssues()
+  const issues: string[] = [
+    ...eventScopeIssues,
+    ...retentionIssues,
+    ...funnelIssues,
+    ...distributionIssues,
+    ...intervalIssues,
+    ...pathIssues,
+  ]
   const suggestions: string[] = []
   if (eventScopeIssues.length && eventFieldScope.value.defaultEventTable) {
     suggestions.push(`请重新选择 ${eventFieldScope.value.defaultEventTable} 表中的字段后再生成 SQL。`)
@@ -3449,10 +4236,29 @@ async function generateBuilderAiSql() {
   const eventScopeIssues = builderBlockingScopeIssues()
   const retentionIssues = retentionBlockingIssues()
   const funnelIssues = funnelBlockingIssues()
-  if (retentionIssues.length || funnelIssues.length) {
+  const distributionIssues = distributionBlockingIssues()
+  const intervalIssues = intervalBlockingIssues()
+  const pathIssues = pathBlockingIssues()
+  if (retentionIssues.length || funnelIssues.length || distributionIssues.length || intervalIssues.length || pathIssues.length) {
     const localAdvice = collectLocalBuilderConfigIssues()
-    const analysisIssues = retentionIssues.length ? retentionIssues : funnelIssues
-    const analysisLabel = retentionIssues.length ? '留存' : '漏斗'
+    const analysisIssues = retentionIssues.length
+      ? retentionIssues
+      : funnelIssues.length
+        ? funnelIssues
+        : distributionIssues.length
+          ? distributionIssues
+          : intervalIssues.length
+            ? intervalIssues
+            : pathIssues
+    const analysisLabel = retentionIssues.length
+      ? '留存'
+      : funnelIssues.length
+        ? '漏斗'
+        : distributionIssues.length
+          ? '分布'
+          : intervalIssues.length
+            ? '间隔'
+            : '路径'
     setBuilderAgentAdvice({
       severity: 'warning',
       intent: inferBuilderIntentText(),
@@ -3570,6 +4376,48 @@ async function generateBuilderAiSql() {
     const valueField = String(resultConfig.value_field || resultConfig.valueField || 'step_count')
     form.y = [valueField]
   }
+  if (sqlBuilder.analysisModel === 'distribution' || result.analysis_model === 'distribution') {
+    const resultConfig = result.result_config || result.resultConfig || {}
+    form.chartType = 'table'
+    form.columns = [
+      String(resultConfig.date_field || resultConfig.dateField || 'distribution_date'),
+      String(resultConfig.total_entities_field || resultConfig.totalEntitiesField || 'total_entities'),
+      String(resultConfig.interval_field || resultConfig.intervalField || 'interval_label'),
+      String(resultConfig.entity_count_field || resultConfig.entityCountField || 'entity_count'),
+      String(resultConfig.entity_rate_field || resultConfig.entityRateField || 'entity_rate'),
+      ...(resultConfig.simultaneous_value_field || resultConfig.simultaneousValueField
+        ? [String(resultConfig.simultaneous_value_field || resultConfig.simultaneousValueField)]
+        : []),
+    ]
+  }
+  if (sqlBuilder.analysisModel === 'interval' || result.analysis_model === 'interval') {
+    const resultConfig = result.result_config || result.resultConfig || {}
+    form.chartType = 'table'
+    form.columns = [
+      String(resultConfig.date_field || resultConfig.dateField || 'interval_date'),
+      String(resultConfig.entity_count_field || resultConfig.entityCountField || 'entity_count'),
+      String(resultConfig.interval_count_field || resultConfig.intervalCountField || 'interval_count'),
+      String(resultConfig.max_field || resultConfig.maxField || 'max_interval_seconds'),
+      String(resultConfig.p75_field || resultConfig.p75Field || 'p75_interval_seconds'),
+      String(resultConfig.median_field || resultConfig.medianField || 'median_interval_seconds'),
+      String(resultConfig.p25_field || resultConfig.p25Field || 'p25_interval_seconds'),
+      String(resultConfig.min_field || resultConfig.minField || 'min_interval_seconds'),
+      String(resultConfig.avg_field || resultConfig.avgField || 'avg_interval_seconds'),
+    ]
+  }
+  if (sqlBuilder.analysisModel === 'path' || result.analysis_model === 'path') {
+    const resultConfig = result.result_config || result.resultConfig || {}
+    form.chartType = 'sankey'
+    form.x = String(resultConfig.source_field || resultConfig.sourceField || 'path_source')
+    form.y = [String(resultConfig.value_field || resultConfig.valueField || 'path_value')]
+    form.series = String(resultConfig.target_field || resultConfig.targetField || 'path_target')
+    form.columns = [
+      String(resultConfig.step_field || resultConfig.stepField || 'path_step'),
+      form.x,
+      form.series,
+      form.y[0],
+    ]
+  }
   syncDashboardDateParameterUsage()
   if (result.success) {
     ElMessage.success('已生成 SQL')
@@ -3683,6 +4531,9 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
     schemaTables.value = metadata.schemaTables.length ? metadata.schemaTables : previewSchemaTables()
     sanitizeRetentionConfig()
     sanitizeFunnelConfig()
+    sanitizeDistributionConfig()
+    sanitizeIntervalConfig()
+    sanitizePathConfig()
     if (sqlBuilder.analysisModel === 'event') {
       if (!sqlBuilder.metricItems.length && !sqlBuilder.calculatedMetrics.length) {
         addMetricItem()
@@ -4102,6 +4953,9 @@ function currentPreviewSignature() {
     analysisModel: sqlBuilder.analysisModel,
     retention: sqlBuilder.analysisModel === 'retention' ? sqlBuilder.retention : null,
     funnel: sqlBuilder.analysisModel === 'funnel' ? sqlBuilder.funnel : null,
+    distribution: sqlBuilder.analysisModel === 'distribution' ? sqlBuilder.distribution : null,
+    interval: sqlBuilder.analysisModel === 'interval' ? sqlBuilder.interval : null,
+    path: sqlBuilder.analysisModel === 'path' ? sqlBuilder.path : null,
     sources: [...form.sourceTypes],
     sql: hasSqlSource.value
       ? {
@@ -4900,6 +5754,12 @@ function initEditor() {
     ? 'table'
     : isFunnelAnalysis.value
       ? 'funnel'
+      : isDistributionAnalysis.value
+        ? 'table'
+      : isIntervalAnalysis.value
+        ? 'table'
+      : isPathAnalysis.value
+        ? 'sankey'
       : (chart.sourceType || chart.type || 'table')
   form.columns = axisValues(chart.columns)
   form.x = axisValues(chart.xAxis)[0] || ''
@@ -5853,7 +6713,7 @@ function closeDrawer() {
               </div>
             </section>
 
-            <section v-if="!isRetentionAnalysis && !isFunnelAnalysis" class="builder-section">
+            <section v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis" class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
                   <BuilderSectionIcon class="builder-section-icon" />
@@ -6186,6 +7046,319 @@ function closeDrawer() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </section>
+
+            <section v-else-if="isDistributionAnalysis" class="builder-section distribution-builder-section">
+              <div class="distribution-heading-row">
+                <div class="builder-section-head">
+                  <div class="builder-section-title">
+                    <BuilderSectionIcon class="builder-section-icon" />
+                    <span>分布分析</span>
+                  </div>
+                </div>
+                <div class="distribution-subject-line">
+                  <span>对</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.distribution.entityField"
+                    :options="distributionEntityFieldOptions"
+                    :loading="schemaLoading"
+                    mode="property"
+                    placeholder="选择分析主体"
+                  />
+                  <span>进行分析</span>
+                </div>
+              </div>
+
+              <div class="distribution-event-block">
+                <span class="distribution-config-label">参与事件</span>
+                <div class="distribution-event-editor" :class="{ 'is-active': distributionFilterExpanded }">
+                  <div class="distribution-event-row">
+                    <BuilderFieldPicker
+                      :model-value="sqlBuilder.distribution.event"
+                      :options="distributionEventOptions"
+                      :loading="schemaLoading"
+                      mode="tracking-event"
+                      placeholder="选择参与事件"
+                      @update:modelValue="handleDistributionEventChange"
+                    />
+                    <span>的</span>
+                    <DistributionMetricPicker
+                      :model-value="sqlBuilder.distribution.metric"
+                      :event-label="distributionEventLabel"
+                      :property-options="distributionEventPropertyOptions"
+                      :loading="schemaLoading"
+                      :disabled="!sqlBuilder.distribution.event"
+                      @update:modelValue="updateDistributionMetric"
+                    />
+                    <DistributionIntervalSettings
+                      :model-value="sqlBuilder.distribution.interval"
+                      :disabled="!sqlBuilder.distribution.event"
+                      @update:modelValue="updateDistributionInterval"
+                    />
+                    <button
+                      type="button"
+                      class="retention-event-action"
+                      :class="{ 'is-active': distributionFilterExpanded || hasEffectiveBuilderFilters(sqlBuilder.distribution.eventFilters) }"
+                      title="筛选参与事件"
+                      aria-label="筛选参与事件"
+                      :disabled="!sqlBuilder.distribution.event"
+                      @click="toggleDistributionEventFilter"
+                    >
+                      <el-icon><Filter /></el-icon>
+                    </button>
+                  </div>
+                </div>
+                <div v-if="distributionFilterExpanded" class="retention-event-filter-panel">
+                  <BuilderFilterTree
+                    :nodes="sqlBuilder.distribution.eventFilters"
+                    :logic="sqlBuilder.distribution.eventFilterLogic"
+                    :field-options="distributionEventPropertyOptions"
+                    :operator-options="builderFilterOperatorOptions"
+                    :schema-loading="schemaLoading"
+                    picker-mode="filter-property"
+                    :filter-property-tabs="['all', 'event', 'user']"
+                    :show-toolbar="true"
+                    empty-text="暂无参与事件筛选"
+                    @update:logic="sqlBuilder.distribution.eventFilterLogic = $event"
+                    @empty="distributionFilterExpanded = false"
+                  />
+                </div>
+              </div>
+
+              <div class="distribution-simultaneous-block">
+                <div class="distribution-switch-row">
+                  <span>使用同时展示</span>
+                  <el-switch
+                    v-model="sqlBuilder.distribution.simultaneous.enabled"
+                    @change="handleDistributionSimultaneousToggle"
+                  />
+                </div>
+                <div v-if="sqlBuilder.distribution.simultaneous.enabled" class="distribution-simultaneous-flow">
+                  <span>同时展示区间内主体参与</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.distribution.simultaneous.event"
+                    :options="distributionEventOptions"
+                    :loading="schemaLoading"
+                    mode="tracking-event"
+                    placeholder="选择参与事件"
+                    @update:modelValue="syncDistributionSimultaneousMetricField"
+                  />
+                  <span>的</span>
+                  <el-select
+                    v-model="sqlBuilder.distribution.simultaneous.aggregation"
+                    size="small"
+                    @change="syncDistributionSimultaneousMetricField"
+                  >
+                    <el-option
+                      v-for="option in builderAggregationOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                  <BuilderFieldPicker
+                    v-if="sqlBuilder.distribution.simultaneous.aggregation !== 'count'"
+                    v-model="sqlBuilder.distribution.simultaneous.metricField"
+                    :options="distributionSimultaneousMetricFieldOptions()"
+                    :loading="schemaLoading"
+                    mode="metric"
+                    placeholder="计算字段"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section v-else-if="isIntervalAnalysis" class="builder-section interval-builder-section">
+              <div class="interval-heading-row">
+                <div class="builder-section-head">
+                  <div class="builder-section-title">
+                    <BuilderSectionIcon class="builder-section-icon" />
+                    <span>间隔分析</span>
+                  </div>
+                </div>
+                <div class="interval-subject-line">
+                  <span>对</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.interval.entityField"
+                    :options="intervalEntityFieldOptions"
+                    :loading="schemaLoading"
+                    mode="property"
+                    placeholder="选择分析主体"
+                  />
+                  <span>进行分析</span>
+                </div>
+              </div>
+
+              <div class="interval-event-stack">
+                <div class="interval-event-block">
+                  <span class="interval-config-label">起点事件</span>
+                  <div class="interval-event-editor" :class="{ 'is-active': intervalFilterExpanded.start }">
+                    <div class="interval-event-row">
+                      <BuilderFieldPicker
+                        :model-value="sqlBuilder.interval.startEvent"
+                        :options="intervalEventOptions"
+                        :loading="schemaLoading"
+                        mode="tracking-event"
+                        placeholder="选择起点事件"
+                        @update:modelValue="handleIntervalEventChange('start', $event)"
+                      />
+                      <button
+                        type="button"
+                        class="retention-event-action"
+                        :class="{ 'is-active': intervalFilterExpanded.start || hasEffectiveBuilderFilters(sqlBuilder.interval.startEventFilters) }"
+                        title="筛选起点事件"
+                        aria-label="筛选起点事件"
+                        :disabled="!sqlBuilder.interval.startEvent"
+                        @click="toggleIntervalEventFilter('start')"
+                      >
+                        <el-icon><Filter /></el-icon>
+                      </button>
+                    </div>
+                  </div>
+                  <div v-if="intervalFilterExpanded.start" class="retention-event-filter-panel">
+                    <BuilderFilterTree
+                      :nodes="sqlBuilder.interval.startEventFilters"
+                      :logic="sqlBuilder.interval.startEventFilterLogic"
+                      :field-options="intervalEventFilterFieldOptions('start')"
+                      :operator-options="builderFilterOperatorOptions"
+                      :schema-loading="schemaLoading"
+                      picker-mode="filter-property"
+                      :filter-property-tabs="['all', 'event', 'user']"
+                      :show-toolbar="true"
+                      empty-text="暂无起点事件筛选"
+                      @update:logic="sqlBuilder.interval.startEventFilterLogic = $event"
+                      @empty="intervalFilterExpanded.start = false"
+                    />
+                  </div>
+                </div>
+
+                <div class="interval-event-block">
+                  <span class="interval-config-label">终点事件</span>
+                  <div class="interval-event-editor" :class="{ 'is-active': intervalFilterExpanded.end }">
+                    <div class="interval-event-row">
+                      <BuilderFieldPicker
+                        :model-value="sqlBuilder.interval.endEvent"
+                        :options="intervalEventOptions"
+                        :loading="schemaLoading"
+                        mode="tracking-event"
+                        placeholder="选择终点事件"
+                        @update:modelValue="handleIntervalEventChange('end', $event)"
+                      />
+                      <button
+                        type="button"
+                        class="retention-event-action"
+                        :class="{ 'is-active': intervalFilterExpanded.end || hasEffectiveBuilderFilters(sqlBuilder.interval.endEventFilters) }"
+                        title="筛选终点事件"
+                        aria-label="筛选终点事件"
+                        :disabled="!sqlBuilder.interval.endEvent"
+                        @click="toggleIntervalEventFilter('end')"
+                      >
+                        <el-icon><Filter /></el-icon>
+                      </button>
+                    </div>
+                  </div>
+                  <div v-if="intervalFilterExpanded.end" class="retention-event-filter-panel">
+                    <BuilderFilterTree
+                      :nodes="sqlBuilder.interval.endEventFilters"
+                      :logic="sqlBuilder.interval.endEventFilterLogic"
+                      :field-options="intervalEventFilterFieldOptions('end')"
+                      :operator-options="builderFilterOperatorOptions"
+                      :schema-loading="schemaLoading"
+                      picker-mode="filter-property"
+                      :filter-property-tabs="['all', 'event', 'user']"
+                      :show-toolbar="true"
+                      empty-text="暂无终点事件筛选"
+                      @update:logic="sqlBuilder.interval.endEventFilterLogic = $event"
+                      @empty="intervalFilterExpanded.end = false"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div class="interval-option-block">
+                <div class="interval-switch-row">
+                  <span>使用关联属性</span>
+                  <el-switch
+                    v-model="sqlBuilder.interval.relatedProperty.enabled"
+                    @change="handleIntervalRelatedPropertyToggle"
+                  />
+                </div>
+                <div v-if="sqlBuilder.interval.relatedProperty.enabled" class="interval-property-match">
+                  <BuilderFieldPicker
+                    :model-value="sqlBuilder.interval.relatedProperty.startProperty"
+                    :options="intervalStartPropertyOptions"
+                    :loading="schemaLoading"
+                    mode="filter-property"
+                    placeholder="起点事件属性"
+                    @update:modelValue="handleIntervalStartPropertyChange"
+                  />
+                  <span>的值与</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.interval.relatedProperty.endProperty"
+                    :options="intervalEndPropertyOptions"
+                    :loading="schemaLoading"
+                    mode="filter-property"
+                    placeholder="终点事件属性"
+                  />
+                  <span>相等</span>
+                </div>
+              </div>
+
+              <div class="interval-limit-row">
+                <div>
+                  <span class="interval-config-label">间隔上限</span>
+                  <p>起点事件到终点事件的间隔不超过</p>
+                </div>
+                <IntervalLimitPicker v-model="sqlBuilder.interval.limitSeconds" />
+              </div>
+            </section>
+
+            <section v-else-if="isPathAnalysis" class="builder-section path-builder-section">
+              <div class="path-heading-row">
+                <div class="builder-section-head">
+                  <div class="builder-section-title">
+                    <BuilderSectionIcon class="builder-section-icon" />
+                    <span>路径分析</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="path-config-block">
+                <span class="path-config-label">参与分析的事件</span>
+                <div class="path-event-summary">
+                  <span class="path-event-summary-badge">事件({{ sqlBuilder.path.events.filter((item) => item.event).length }})</span>
+                  <span>最多选择 {{ PATH_EVENT_LIMIT }} 个事件，可按事件属性拆分节点</span>
+                </div>
+                <PathEventList
+                  v-model="sqlBuilder.path.events"
+                  :event-options="pathEventOptions"
+                  :property-options="pathEventPropertyOptions"
+                  :loading="schemaLoading"
+                  :max-events="PATH_EVENT_LIMIT"
+                />
+              </div>
+
+              <div class="path-config-block path-initial-event-block">
+                <span class="path-config-label">分析路径仪</span>
+                <div class="path-initial-event-row">
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.path.initialEvent"
+                    :options="pathInitialEventOptions"
+                    :loading="schemaLoading"
+                    mode="tracking-event"
+                    placeholder="选择初始事件"
+                  />
+                  <span>作为</span>
+                  <span class="path-role-tag">初始事件</span>
+                </div>
+              </div>
+
+              <div class="path-session-block">
+                <span class="path-config-label">会话间隔时长</span>
+                  <div class="path-session-row">
+                    <PathSessionGapPicker v-model="sqlBuilder.path.sessionGapSeconds" />
+                  </div>
               </div>
             </section>
 
@@ -6685,7 +7858,7 @@ function closeDrawer() {
           </div>
           <div class="builder-bottom-bar">
             <div class="builder-bottom-options">
-              <el-checkbox v-if="sqlBuilder.activeTab === 'builder' && !isRetentionAnalysis && !isFunnelAnalysis" v-model="sqlBuilder.approximate">
+              <el-checkbox v-if="sqlBuilder.activeTab === 'builder' && !isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis" v-model="sqlBuilder.approximate">
                 近似计算
               </el-checkbox>
             </div>
@@ -6931,7 +8104,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-if="!isRetentionAnalysis && !isFunnelAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
+            <el-select v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -6939,10 +8112,10 @@ function closeDrawer() {
                 :value="item.value"
               />
             </el-select>
-            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : '留存表'" disabled />
+            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : isDistributionAnalysis ? '分布表' : isIntervalAnalysis ? '间隔表' : isPathAnalysis ? '桑基图' : '留存表'" disabled />
           </el-form-item>
         </div>
-        <el-form-item v-if="form.chartType === 'table' && !isRetentionAnalysis" :label="t('dashboard.sql_editor_columns')">
+        <el-form-item v-if="form.chartType === 'table' && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis" :label="t('dashboard.sql_editor_columns')">
           <el-select v-model="form.columns" multiple filterable>
             <el-option
               v-for="field in fieldOptions"
@@ -7507,6 +8680,285 @@ function closeDrawer() {
   margin-bottom: 24px;
 }
 
+.distribution-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.interval-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.interval-heading-row .builder-section-head {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.interval-subject-line {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 280px) auto;
+  align-items: center;
+  width: auto;
+  min-width: 0;
+  gap: 8px;
+  color: #303643;
+  font-size: 13px;
+}
+
+.interval-subject-line :deep(.builder-field-picker-trigger) {
+  width: 100%;
+}
+
+.interval-event-stack {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.interval-event-block {
+  min-width: 0;
+}
+
+.interval-config-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #8a93a3;
+  font-size: 12px;
+}
+
+.interval-event-editor {
+  min-width: 0;
+  padding: 5px 24px 7px 0;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.interval-event-editor:hover,
+.interval-event-editor:focus-within,
+.interval-event-editor.is-active {
+  background: #f7f8fa;
+}
+
+.interval-event-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 360px) 30px;
+  align-items: center;
+  gap: 8px;
+}
+
+.interval-event-row :deep(.builder-field-picker),
+.interval-property-match :deep(.builder-field-picker) {
+  min-width: 0;
+}
+
+.interval-option-block {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.interval-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(100%, 360px);
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.interval-property-match {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  max-width: 760px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.interval-limit-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.interval-limit-row .interval-config-label {
+  margin-bottom: 7px;
+}
+
+.interval-limit-row p {
+  margin: 0;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.path-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.path-config-block,
+.path-session-block {
+  margin-top: 20px;
+}
+
+.path-config-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #8a93a3;
+  font-size: 12px;
+}
+
+.path-event-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: #8992a1;
+  font-size: 12px;
+}
+
+.path-event-summary-badge,
+.path-role-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  color: #374151;
+  background: #f0f2f6;
+  white-space: nowrap;
+}
+
+.path-initial-event-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 260px) auto auto;
+  align-items: center;
+  gap: 9px;
+  color: #707988;
+  font-size: 13px;
+}
+
+.path-session-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #505968;
+  font-size: 13px;
+}
+
+.path-session-row :deep(.el-input-number) {
+  width: 82px;
+}
+
+.path-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #aab2bf;
+  border-radius: 50%;
+  color: #8b94a2;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.path-session-exact {
+  color: #9aa2af;
+  font-size: 12px;
+}
+
+.distribution-heading-row .builder-section-head {
+  flex: 0 0 96px;
+  margin-bottom: 0;
+}
+
+.distribution-subject-line {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: auto minmax(160px, 280px) auto;
+  align-items: center;
+  justify-content: start;
+  gap: 10px;
+  color: #505968;
+  font-size: 13px;
+}
+
+.distribution-subject-line :deep(.builder-field-picker-trigger) {
+  width: 100%;
+}
+
+.distribution-event-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.distribution-config-label {
+  color: #8a93a3;
+  font-size: 12px;
+}
+
+.distribution-event-editor {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px 8px 0;
+  transition: background-color 0.16s ease;
+}
+
+.distribution-event-editor:hover,
+.distribution-event-editor:focus-within,
+.distribution-event-editor.is-active {
+  background: #f7f8fa;
+}
+
+.distribution-event-row {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.distribution-event-row :deep(.builder-field-picker) {
+  min-width: 0;
+}
+
+.distribution-simultaneous-block {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  color: #505968;
+  font-size: 12px;
+}
+
+.distribution-switch-row,
+.distribution-simultaneous-flow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.distribution-simultaneous-flow {
+  flex-wrap: wrap;
+}
+
+.distribution-simultaneous-flow :deep(.builder-field-picker-trigger) {
+  min-width: 160px;
+}
+
 .funnel-heading-row .builder-section-head {
   flex: 0 0 96px;
   margin-bottom: 0;
@@ -7700,7 +9152,9 @@ function closeDrawer() {
 @media (max-width: 720px) {
   .analysis-model-row,
   .retention-heading-row,
-  .funnel-heading-row {
+  .funnel-heading-row,
+  .distribution-heading-row,
+  .interval-heading-row {
     flex-wrap: wrap;
     gap: 10px;
   }
@@ -7713,6 +9167,53 @@ function closeDrawer() {
   .funnel-heading-row .funnel-subject-line {
     flex-basis: 100%;
     grid-template-columns: auto minmax(160px, 1fr) auto;
+  }
+
+  .path-heading-row {
+    gap: 10px;
+  }
+
+  .distribution-heading-row .distribution-subject-line {
+    flex-basis: 100%;
+    grid-template-columns: auto minmax(160px, 1fr) auto;
+  }
+
+  .interval-heading-row .interval-subject-line {
+    width: 100%;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .distribution-event-row {
+    flex-wrap: wrap;
+  }
+
+
+  .interval-event-row,
+  .interval-property-match {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .interval-event-row .retention-event-action {
+    justify-self: start;
+  }
+
+  .interval-limit-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .path-event-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .path-initial-event-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .path-session-row {
+    flex-wrap: wrap;
   }
 }
 

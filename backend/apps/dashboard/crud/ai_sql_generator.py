@@ -57,6 +57,8 @@ _DATABASE_CURRENT_DATE_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 RETENTION_COHORT_DAYS = 7
+INTERVAL_LIMIT_MIN_SECONDS = 60
+INTERVAL_LIMIT_MAX_SECONDS = 180 * 24 * 60 * 60
 
 
 class DashboardManualChartGraphState(TypedDict, total=False):
@@ -254,6 +256,12 @@ def _tracking_event_name_from_field(field: Any) -> str:
 _FORMULA_OPERATORS = {"+", "-", "*", "/"}
 _FORMULA_PRECEDENCE = {"+": 1, "-": 1, "*": 2, "/": 2}
 _SUPPORTED_METRIC_AGGREGATIONS = {"count", "count_distinct", "sum", "avg", "max", "min"}
+_SUPPORTED_DISTRIBUTION_PROPERTY_AGGREGATIONS = {
+    "sum", "avg", "median", "max", "min", "count_distinct", "variance", "stddev",
+    "percentile_99", "percentile_95", "percentile_90", "percentile_80", "percentile_75",
+    "percentile_70", "percentile_60", "percentile_40", "percentile_30", "percentile_25",
+    "percentile_20", "percentile_10", "percentile_05",
+}
 _NUMERIC_TYPE_KEYWORDS = (
     "int", "float", "double", "decimal", "number", "numeric", "real",
     "数值", "数字", "整数", "小数",
@@ -534,6 +542,15 @@ def _retention_simultaneous_metric(retention: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _distribution_simultaneous_metric(distribution: dict[str, Any]) -> dict[str, Any]:
+    simultaneous = distribution.get("simultaneous") if isinstance(distribution.get("simultaneous"), dict) else {}
+    return {
+        "field": simultaneous.get("event"),
+        "metricField": simultaneous.get("metricField") or simultaneous.get("metric_field"),
+        "aggregation": simultaneous.get("aggregation") or "count",
+    }
+
+
 def _field_is_known_non_numeric(field: Any) -> bool:
     if not isinstance(field, dict):
         return False
@@ -549,6 +566,21 @@ def _field_is_known_non_numeric(field: Any) -> bool:
     if _text_has_numeric_type_hint(type_text):
         return False
     return _text_has_non_numeric_type_hint(type_text)
+
+
+def _field_type_family(field: Any) -> str:
+    type_text = _field_reference_text(field)
+    if not type_text.strip():
+        return ""
+    if _text_has_numeric_type_hint(type_text):
+        return "numeric"
+    if any(keyword in type_text for keyword in ("date", "time", "timestamp", "datetime", "日期", "时间")):
+        return "temporal"
+    if any(keyword in type_text for keyword in ("bool", "boolean", "布尔")):
+        return "boolean"
+    if any(keyword in type_text for keyword in ("char", "string", "text", "varchar", "enum", "文本", "字符串")):
+        return "text"
+    return " ".join(type_text.split())
 
 
 def _validate_metric_item(
@@ -634,14 +666,20 @@ def _normalize_manual_config(
     ).strip()
     time_config["date_expression"] = time_config.get("dateExpression") or time_config.get("date_expression")
     analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
-    if analysis_model not in {"event", "retention", "funnel"}:
+    if analysis_model not in {"event", "retention", "funnel", "distribution", "interval", "path"}:
         analysis_model = "event"
     retention = dict(context.get("retention") or {}) if isinstance(context.get("retention"), dict) else {}
     funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
+    distribution = dict(context.get("distribution") or {}) if isinstance(context.get("distribution"), dict) else {}
+    interval = dict(context.get("interval") or {}) if isinstance(context.get("interval"), dict) else {}
+    path = dict(context.get("path") or {}) if isinstance(context.get("path"), dict) else {}
     return {
         "analysis_model": analysis_model,
         "retention": retention,
         "funnel": funnel,
+        "distribution": distribution,
+        "interval": interval,
+        "path": path,
         "chart": context.get("chart") if isinstance(context.get("chart"), dict) else {
             "title": request.title,
             "type": request.chart_type,
@@ -1246,6 +1284,52 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
         table_name = _field_table_name(field)
         if table_name:
             tables.add(table_name)
+    distribution = normalized_config.get("distribution") if isinstance(normalized_config.get("distribution"), dict) else {}
+    distribution_metric = distribution.get("metric") if isinstance(distribution.get("metric"), dict) else {}
+    distribution_simultaneous = (
+        distribution.get("simultaneous") if isinstance(distribution.get("simultaneous"), dict) else {}
+    )
+    distribution_fields = [
+        distribution.get("entityField") or distribution.get("entity_field"),
+        distribution.get("event"),
+        distribution_metric.get("field"),
+        distribution_simultaneous.get("event"),
+        _metric_measure_field(_distribution_simultaneous_metric(distribution)),
+    ]
+    distribution_fields.extend(_iter_filter_rule_fields(
+        distribution.get("eventFilters") or distribution.get("event_filters")
+    ))
+    for field in distribution_fields:
+        table_name = _field_table_name(field)
+        if table_name:
+            tables.add(table_name)
+    interval = normalized_config.get("interval") if isinstance(normalized_config.get("interval"), dict) else {}
+    interval_related = interval.get("relatedProperty") if isinstance(interval.get("relatedProperty"), dict) else {}
+    interval_fields = [
+        interval.get("entityField") or interval.get("entity_field"),
+        interval.get("startEvent") or interval.get("start_event"),
+        interval.get("endEvent") or interval.get("end_event"),
+        interval_related.get("startProperty") or interval_related.get("start_property"),
+        interval_related.get("endProperty") or interval_related.get("end_property"),
+    ]
+    for filter_config in (
+        interval.get("startEventFilters") or interval.get("start_event_filters"),
+        interval.get("endEventFilters") or interval.get("end_event_filters"),
+    ):
+        interval_fields.extend(_iter_filter_rule_fields(filter_config))
+    for field in interval_fields:
+        table_name = _field_table_name(field)
+        if table_name:
+            tables.add(table_name)
+    path = normalized_config.get("path") if isinstance(normalized_config.get("path"), dict) else {}
+    path_fields: list[Any] = [path.get("initialEvent") or path.get("initial_event")]
+    for event_item in _list_dict_items(path.get("events")):
+        path_fields.append(event_item.get("event"))
+        path_fields.extend(event_item.get("splitProperties") or event_item.get("split_properties") or [])
+    for field in path_fields:
+        table_name = _field_table_name(field)
+        if table_name:
+            tables.add(table_name)
     return tables
 
 
@@ -1441,6 +1525,239 @@ def _deterministic_validate_manual_config(
                 if filter_event_name and event_name and filter_event_name != event_name:
                     issues.append(f"{filter_label}不属于当前选择的事件。")
 
+    if analysis_model == "distribution":
+        distribution = normalized_config.get("distribution") if isinstance(normalized_config.get("distribution"), dict) else {}
+        entity_field = distribution.get("entityField") or distribution.get("entity_field")
+        event = distribution.get("event")
+        metric = distribution.get("metric") if isinstance(distribution.get("metric"), dict) else {}
+        metric_kind = str(metric.get("kind") or "count").strip().lower()
+        metric_field = metric.get("field")
+        metric_aggregation = str(metric.get("aggregation") or "sum").strip().lower()
+        interval = distribution.get("interval") if isinstance(distribution.get("interval"), dict) else {}
+        interval_mode = str(interval.get("mode") or "auto").strip().lower()
+        custom_bounds = interval.get("customBounds") or interval.get("custom_bounds") or []
+        simultaneous = distribution.get("simultaneous") if isinstance(distribution.get("simultaneous"), dict) else {}
+        simultaneous_enabled = simultaneous.get("enabled") is True
+        simultaneous_event = simultaneous.get("event")
+
+        if not _field_has_resolvable_reference(entity_field):
+            issues.append("分布分析请先选择分析主体。")
+        if not _field_has_resolvable_reference(event):
+            issues.append("分布分析请先选择参与事件。")
+        if not _field_has_resolvable_reference(time_config.get("field")):
+            issues.append("分布分析请先选择时间字段。")
+        if metric_kind not in {"count", "days", "hours", "property"}:
+            issues.append("分布分析使用了不支持的指标类型。")
+        if metric_kind == "property":
+            if not _field_has_resolvable_reference(metric_field):
+                issues.append("分布分析选择事件属性指标时，请先选择事件属性。")
+            if metric_aggregation not in _SUPPORTED_DISTRIBUTION_PROPERTY_AGGREGATIONS:
+                issues.append(f"分布分析使用了不支持的事件属性聚合方式：{metric_aggregation}。")
+            if metric_aggregation not in {"count_distinct"} and metric_field and _field_is_known_non_numeric(metric_field):
+                issues.append("分布分析当前事件属性聚合要求数值字段。")
+        if interval_mode not in {"auto", "discrete", "custom"}:
+            issues.append("分布分析使用了不支持的区间模式。")
+        if interval_mode == "custom":
+            try:
+                normalized_bounds = [float(value) for value in custom_bounds]
+            except (TypeError, ValueError):
+                normalized_bounds = []
+            if (
+                len(normalized_bounds) < 2
+                or len(normalized_bounds) > 20
+                or any(value <= normalized_bounds[index - 1] for index, value in enumerate(normalized_bounds) if index)
+            ):
+                issues.append("分布分析自定义区间需要 2 到 20 个严格递增的数字边界。")
+        if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "table":
+            issues.append("分布分析当前只能使用分布表结果。")
+        if simultaneous_enabled:
+            simultaneous_metric = _distribution_simultaneous_metric(distribution)
+            if not _field_has_resolvable_reference(simultaneous_event):
+                issues.append("分布分析使用同时展示时请选择参与事件。")
+            else:
+                issues.extend(_validate_metric_item(
+                    simultaneous_metric,
+                    "分布分析同时展示指标",
+                    require_aggregation=True,
+                ))
+                issues.extend(_metric_permission_issues(
+                    simultaneous_metric,
+                    "分布分析同时展示指标",
+                    allowed_tables,
+                    allowed_fields_by_table,
+                ))
+
+        for field, label in (
+            (entity_field, "分布分析主体"),
+            (event, "分布分析参与事件"),
+            (metric_field if metric_kind == "property" else None, "分布分析事件属性"),
+            (simultaneous_event if simultaneous_enabled else None, "分布分析同时展示事件"),
+        ):
+            if not field:
+                continue
+            issues.extend(_tracking_event_metadata_issues(field, label))
+            issues.extend(_json_subfield_mapping_issues(field, label))
+            issues.extend(_field_table_permission_issues(field, label, allowed_tables))
+            issues.extend(_field_schema_permission_issues(field, label, allowed_fields_by_table))
+        event_name = _tracking_event_name_from_field(event)
+        metric_event_name = _tracking_event_name_from_field(metric_field)
+        if metric_kind == "property" and metric_event_name and event_name and metric_event_name != event_name:
+            issues.append("分布分析事件属性不属于当前参与事件。")
+        for index, filter_field in enumerate(_iter_filter_rule_fields(
+            distribution.get("eventFilters") or distribution.get("event_filters")
+        )):
+            label = f"分布分析参与事件筛选{index + 1}"
+            issues.extend(_json_subfield_mapping_issues(filter_field, label))
+            issues.extend(_field_table_permission_issues(filter_field, label, allowed_tables))
+            issues.extend(_field_schema_permission_issues(filter_field, label, allowed_fields_by_table))
+            filter_event_name = _tracking_event_name_from_field(filter_field)
+            if filter_event_name and event_name and filter_event_name != event_name:
+                issues.append(f"{label}不属于当前参与事件。")
+
+    if analysis_model == "interval":
+        interval = normalized_config.get("interval") if isinstance(normalized_config.get("interval"), dict) else {}
+        entity_field = interval.get("entityField") or interval.get("entity_field")
+        start_event = interval.get("startEvent") or interval.get("start_event")
+        end_event = interval.get("endEvent") or interval.get("end_event")
+        related_property = interval.get("relatedProperty") if isinstance(interval.get("relatedProperty"), dict) else {}
+        related_enabled = related_property.get("enabled") is True
+        start_property = related_property.get("startProperty") or related_property.get("start_property")
+        end_property = related_property.get("endProperty") or related_property.get("end_property")
+        limit_seconds = interval.get("limitSeconds")
+        if limit_seconds is None:
+            limit_seconds = interval.get("limit_seconds")
+
+        if not _field_has_resolvable_reference(entity_field):
+            issues.append("间隔分析请先选择分析主体。")
+        if not _field_has_resolvable_reference(start_event):
+            issues.append("间隔分析请先选择起点事件。")
+        if not _field_has_resolvable_reference(end_event):
+            issues.append("间隔分析请先选择终点事件。")
+        if not _field_has_resolvable_reference(time_config.get("field")):
+            issues.append("间隔分析请先选择时间字段。")
+        if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "table":
+            issues.append("间隔分析当前只能使用间隔表结果。")
+        try:
+            normalized_limit_seconds = int(limit_seconds)
+        except (TypeError, ValueError):
+            normalized_limit_seconds = 0
+        if normalized_limit_seconds < INTERVAL_LIMIT_MIN_SECONDS or normalized_limit_seconds > INTERVAL_LIMIT_MAX_SECONDS:
+            issues.append("间隔分析上限必须是 1 分钟到 180 天。")
+
+        if related_enabled and not _field_has_resolvable_reference(start_property):
+            issues.append("使用关联属性时请选择起点事件属性。")
+        if related_enabled and not _field_has_resolvable_reference(end_property):
+            issues.append("使用关联属性时请选择终点事件属性。")
+        start_type_family = _field_type_family(start_property)
+        end_type_family = _field_type_family(end_property)
+        if related_enabled and start_type_family and end_type_family and start_type_family != end_type_family:
+            issues.append("起点事件属性和终点事件属性的类型必须一致。")
+
+        for field, label in (
+            (entity_field, "间隔分析主体"),
+            (start_event, "间隔分析起点事件"),
+            (end_event, "间隔分析终点事件"),
+            (start_property if related_enabled else None, "间隔分析起点事件属性"),
+            (end_property if related_enabled else None, "间隔分析终点事件属性"),
+        ):
+            if not field:
+                continue
+            issues.extend(_tracking_event_metadata_issues(field, label))
+            issues.extend(_json_subfield_mapping_issues(field, label))
+            issues.extend(_field_table_permission_issues(field, label, allowed_tables))
+            issues.extend(_field_schema_permission_issues(field, label, allowed_fields_by_table))
+
+        for property_field, event_field, label in (
+            (start_property, start_event, "起点事件关联属性"),
+            (end_property, end_event, "终点事件关联属性"),
+        ):
+            property_event_name = _tracking_event_name_from_field(property_field)
+            expected_event_name = _tracking_event_name_from_field(event_field)
+            if related_enabled and property_event_name and expected_event_name and property_event_name != expected_event_name:
+                issues.append(f"{label}不属于当前选择的事件。")
+
+        for filter_config, event_field, label in (
+            (
+                interval.get("startEventFilters") or interval.get("start_event_filters"),
+                start_event,
+                "起点事件筛选",
+            ),
+            (
+                interval.get("endEventFilters") or interval.get("end_event_filters"),
+                end_event,
+                "终点事件筛选",
+            ),
+        ):
+            expected_event_name = _tracking_event_name_from_field(event_field)
+            for index, filter_field in enumerate(_iter_filter_rule_fields(filter_config)):
+                filter_label = f"{label}{index + 1}"
+                issues.extend(_json_subfield_mapping_issues(filter_field, filter_label))
+                issues.extend(_field_table_permission_issues(filter_field, filter_label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(filter_field, filter_label, allowed_fields_by_table))
+                filter_event_name = _tracking_event_name_from_field(filter_field)
+                if filter_event_name and expected_event_name and filter_event_name != expected_event_name:
+                    issues.append(f"{filter_label}不属于当前选择的事件。")
+
+    if analysis_model == "path":
+        path = normalized_config.get("path") if isinstance(normalized_config.get("path"), dict) else {}
+        events = _list_dict_items(path.get("events"))
+        selected_events = [item for item in events if _field_has_resolvable_reference(item.get("event"))]
+        initial_event = path.get("initialEvent") or path.get("initial_event")
+        initial_name = _tracking_event_name_from_field(initial_event)
+        if not selected_events:
+            issues.append("路径分析至少需要一个参与分析事件。")
+        if len(events) > 30:
+            issues.append("路径分析最多支持 30 个参与分析事件。")
+        if not _field_has_resolvable_reference(initial_event):
+            issues.append("路径分析请先选择初始事件。")
+        elif initial_name and initial_name not in {
+            _tracking_event_name_from_field(item.get("event")) for item in selected_events
+        }:
+            issues.append("路径分析初始事件必须来自参与分析的事件。")
+        if not _field_has_resolvable_reference(time_config.get("field")):
+            issues.append("路径分析请先选择时间字段。")
+        if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "sankey":
+            issues.append("路径分析只能使用桑基图结果。")
+        session_gap = path.get("sessionGapSeconds")
+        if session_gap is None:
+            session_gap = path.get("session_gap_seconds")
+        try:
+            normalized_session_gap = int(session_gap)
+        except (TypeError, ValueError):
+            normalized_session_gap = 0
+        if normalized_session_gap < 1 or normalized_session_gap > 24 * 60 * 60:
+            issues.append("路径分析会话间隔必须是 1 秒到 24 小时。")
+
+        for index, event_item in enumerate(events):
+            event = event_item.get("event")
+            label = f"路径参与事件{index + 1}"
+            if not _field_has_resolvable_reference(event):
+                issues.append(f"{label}请先选择事件。")
+            elif isinstance(event, dict) and str(event.get("kind") or "") != "tracking-event":
+                issues.append(f"{label}必须是事件，而不是普通字段。")
+            if event:
+                issues.extend(_tracking_event_metadata_issues(event, label))
+                issues.extend(_json_subfield_mapping_issues(event, label))
+                issues.extend(_field_table_permission_issues(event, label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(event, label, allowed_fields_by_table))
+            event_name = _tracking_event_name_from_field(event)
+            split_properties = event_item.get("splitProperties") or event_item.get("split_properties") or []
+            for split_index, property_field in enumerate(split_properties):
+                property_label = f"{label}拆分属性{split_index + 1}"
+                if not _field_has_resolvable_reference(property_field):
+                    issues.append(f"{property_label}缺少字段。")
+                    continue
+                if isinstance(property_field, dict) and str(property_field.get("kind") or "") != "tracking-property":
+                    issues.append(f"{property_label}必须是当前事件属性。")
+                issues.extend(_json_subfield_mapping_issues(property_field, property_label))
+                issues.extend(_field_table_permission_issues(property_field, property_label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(property_field, property_label, allowed_fields_by_table))
+                property_event_name = _tracking_event_name_from_field(property_field)
+                if property_event_name and event_name and property_event_name != event_name:
+                    issues.append(f"{property_label}不属于当前参与事件。")
+            if list(_iter_filter_rule_fields(event_item.get("filters") or event_item.get("eventFilters") or event_item.get("event_filters"))):
+                issues.append(f"{label}不支持事件筛选条件。")
+
     for index, metric in enumerate(metrics):
         label = str(metric.get("alias") or metric.get("label") or f"分析指标{index + 1}").strip()
         issues.extend(_validate_metric_item(metric, label))
@@ -1475,7 +1792,7 @@ def _deterministic_validate_manual_config(
         issues=issues,
         warnings=warnings,
         suggestions=_unique_text_items(suggestions),
-        analysis_model=analysis_model if analysis_model in {"retention", "funnel"} else "event",
+        analysis_model=analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path"} else "event",
     )
 
 
@@ -1492,6 +1809,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
     )
     analysis_model = str(normalized_config.get("analysis_model") or "event")
     retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
+    interval = normalized_config.get("interval") if isinstance(normalized_config.get("interval"), dict) else {}
     result_contract: dict[str, Any] = {}
     if analysis_model == "retention":
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
@@ -1512,10 +1830,69 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
                 *(["related_property"] if "related_property" in required_columns else []),
             ],
         }
+    elif analysis_model == "distribution":
+        distribution = normalized_config.get("distribution") if isinstance(normalized_config.get("distribution"), dict) else {}
+        simultaneous = distribution.get("simultaneous") if isinstance(distribution.get("simultaneous"), dict) else {}
+        required_columns = [
+            "distribution_date",
+            "total_entities",
+            "interval_order",
+            "interval_label",
+            "entity_count",
+            "entity_rate",
+        ]
+        if simultaneous.get("enabled") is True:
+            required_columns.append("simultaneous_value")
+        result_contract = {
+            "type": "distribution_table",
+            "required_columns": required_columns,
+            "final_grain": [
+                "distribution_date",
+                *[f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])],
+                "interval_order",
+                "interval_label",
+            ],
+            "interval_mode": str((distribution.get("interval") or {}).get("mode") or "auto"),
+        }
+    elif analysis_model == "interval":
+        result_contract = {
+            "type": "interval_table",
+            "required_columns": [
+                "interval_date",
+                "entity_count",
+                "interval_count",
+                "max_interval_seconds",
+                "p75_interval_seconds",
+                "median_interval_seconds",
+                "p25_interval_seconds",
+                "min_interval_seconds",
+                "avg_interval_seconds",
+            ],
+            "duration_unit": "seconds",
+            "limit_seconds": int(interval.get("limitSeconds") or interval.get("limit_seconds") or 3600),
+            "final_grain": [
+                "interval_date",
+                *[f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])],
+            ],
+        }
+    elif analysis_model == "path":
+        result_contract = {
+            "type": "path_sankey",
+            "required_columns": ["path_source", "path_target", "path_value", "path_step"],
+            "source_field": "path_source",
+            "target_field": "path_target",
+            "value_field": "path_value",
+            "step_field": "path_step",
+            "session_count_field": "session_count",
+            "final_grain": ["path_step", "path_source", "path_target"],
+        }
     return {
         "analysis_model": analysis_model,
         "retention": retention,
         "funnel": normalized_config.get("funnel") or {},
+        "distribution": normalized_config.get("distribution") or {},
+        "interval": interval,
+        "path": normalized_config.get("path") or {},
         "result_contract": result_contract,
         "time": time_config,
         "date_parameters": {
@@ -1682,6 +2059,58 @@ def _dashboard_config_prompt(
             f"当前配置的漏斗步骤数量：{len(steps)}，窗口期：{funnel.get('windowDays') or funnel.get('window_days') or 1} 天。",
             "最终返回 chart_type 必须为 funnel。",
         ]
+    distribution = context.get("distribution") if isinstance(context.get("distribution"), dict) else {}
+    distribution_rules: list[str] = []
+    if analysis_model == "distribution":
+        metric = distribution.get("metric") if isinstance(distribution.get("metric"), dict) else {}
+        interval = distribution.get("interval") if isinstance(distribution.get("interval"), dict) else {}
+        simultaneous = distribution.get("simultaneous") if isinstance(distribution.get("simultaneous"), dict) else {}
+        distribution_rules = [
+            "当前 analysisModel=distribution，只能使用 distribution 配置生成分布查询；不得读取或套用事件、留存、漏斗模型的指标语义。",
+            "先按 distribution.entityField 和 distribution.event 筛选参与过事件的分析主体，再按日期粒度及分组项对每个主体计算一个 distribution_value。未参与该事件的主体不进入任何区间。",
+            "distribution.metric.kind=count 时 distribution_value 是主体当期事件次数；days 时是主体发生事件的去重自然日数；hours 时是主体发生事件的去重小时数；property 时必须按 metric.field 和 metric.aggregation 聚合。",
+            "property 的 percentile_XX 表示对应百分位数，median 表示中位数，variance/stddev 表示方差/标准差；必须使用当前 SQL 方言支持的函数，不能降级成平均值或其他聚合。",
+            "distribution.eventFilters 只应用于参与事件明细；全局筛选和分组项继续使用公共配置，不得互换筛选范围。",
+            "distribution.interval.mode=discrete 时每个 distribution_value 单独成区间；mode=custom 时严格按 customBounds 生成小于首边界、相邻边界和大于等于末边界的完整互斥区间；mode=auto 时按数据最小最大值：差值小于 12 使用离散值，否则划分 12 个等宽区间。",
+            "最终结果按日期、分组和区间输出固定长表列 distribution_date、interval_order、interval_label、entity_count、entity_rate；entity_rate 是当前日期及分组内区间主体数占参与事件主体总数的比例。",
+            "distribution.simultaneous.enabled=true 时，在区间主体集合上按 simultaneous.event、aggregation、metricField 计算事件分析指标并输出 simultaneous_value；不得把它用于划分主区间。",
+            f"当前分布指标配置：{_safe_json(metric)}。",
+            f"当前分布区间配置：{_safe_json(interval)}。",
+            f"当前同时展示配置：{_safe_json(simultaneous)}。",
+            "最终返回 chart_type 必须为 table。",
+        ]
+    path = context.get("path") if isinstance(context.get("path"), dict) else {}
+    path_rules: list[str] = []
+    if analysis_model == "path":
+        path_events = _list_dict_items(path.get("events"))
+        path_rules = [
+            "当前 analysisModel=path，只能使用 path 配置生成路径查询；不得读取或套用留存、漏斗、分布、间隔模型的指标语义。",
+            "路径分析以同一分析主体的会话为基础，从 path.initialEvent 开始向后寻找后续节点；相邻事件时间间隔超过 sessionGapSeconds 时必须结束当前会话。",
+            "参与分析事件最多 30 个，事件本身不支持事件筛选；每个事件的 splitProperties 是该事件节点身份的一部分，同一事件不同属性值必须作为不同节点。",
+            "必须按同一主体和事件时间排序，先切分会话，再从初始事件开始为相邻节点生成 source/target 边；不要把路径分析实现成漏斗步骤计数，也不要按固定步骤直接聚合事件次数。",
+            "最多展示 10 个路径步骤；每一步按节点流量聚合，但最终边结果必须固定输出 path_source、path_target、path_value、path_step，并可额外输出 session_count。path_value 是边的会话数。",
+            f"当前路径参与事件数量：{len(path_events)}；初始事件：{_safe_json(path.get('initialEvent') or path.get('initial_event'))}；会话间隔：{path.get('sessionGapSeconds') or path.get('session_gap_seconds') or 1800} 秒。",
+            "最终返回 chart_type 必须为 sankey。",
+        ]
+    interval = context.get("interval") if isinstance(context.get("interval"), dict) else {}
+    interval_rules: list[str] = []
+    if analysis_model == "interval":
+        related_property = interval.get("relatedProperty") if isinstance(interval.get("relatedProperty"), dict) else {}
+        interval_rules = [
+            "当前 analysisModel=interval，只能使用 interval 配置生成间隔查询；不得读取或套用事件、留存、漏斗、分布模型的指标语义。",
+            "同一分析主体的起点事件和终点事件必须按事件时间顺序配对，最终持续时间统一计算为秒。",
+            "起点事件与终点事件不同时采用最短间隔原则：连续出现多个起点时只保留最后一个起点，每个起点只匹配其后第一个有效终点；例如 A1,A2,B1,B2 只生成 A2-B1，A1,B1,A2,B2 生成两条间隔。",
+            "起点事件与终点事件相同时，按同一主体相邻两条有效事件配对，N 条事件生成 N-1 条间隔；禁止把一条事件与自身配对。",
+            "startEventFilters 和 endEventFilters 只应用于各自事件明细；全局筛选和分组项继续使用公共配置，不得交换或合并筛选范围。",
+            "interval.relatedProperty.enabled=true 时，起点和终点分别使用配置属性关联，属性值必须相等且两端 NULL 值事件必须剔除；不得按字段名猜测其他关联属性。",
+            "仅保留大于等于 0 且小于等于 interval.limitSeconds 的间隔，超过上限的数据在聚合前剔除。",
+            "最终结果按起点事件日期和分组统计，并固定输出 interval_date、entity_count、interval_count、max_interval_seconds、p75_interval_seconds、median_interval_seconds、p25_interval_seconds、min_interval_seconds、avg_interval_seconds。",
+            "entity_count 是产生有效间隔的主体去重数，interval_count 是有效配对数；所有时长统计列必须保持数值秒，不得在 SQL 中拼接中文时长文本。",
+            "分位数必须使用当前 SQL 方言支持的确定性百分位函数，不得用平均值或最大最小值替代。",
+            f"当前关联属性配置：{_safe_json(related_property)}。",
+            f"当前间隔上限：{interval.get('limitSeconds') or interval.get('limit_seconds') or 3600} 秒。",
+            "最终返回 chart_type 必须为 table。",
+        ]
     return "\n".join([
         "请处理下面的手动图表配置。",
         "",
@@ -1720,9 +2149,12 @@ def _dashboard_config_prompt(
         "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段；必须使用字段对象的 expression，不得把用户属性改为 user 表或其他表的同名字段。",
         "字段对象包含 sourceField、jsonPath 和 expression 时，JSON 子字段必须使用 expression；不得自行改写 JSON 宿主列或路径。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
-        "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention/funnel 字段信息生成 SQL；不要编造未提供字段。",
+         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention/funnel/distribution/interval/path 字段信息生成 SQL；不要编造未提供字段。",
         *retention_rules,
         *funnel_rules,
+        *distribution_rules,
+        *interval_rules,
+        *path_rules,
         *date_parameter_rules,
         *_dashboard_sql_dialect_rules(sql_dialect, datasource),
     ])
@@ -1917,6 +2349,85 @@ def _funnel_sql_result_issues(
     return [f"漏斗 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
 
 
+def _distribution_sql_result_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+) -> list[str]:
+    if str(normalized_config.get("analysis_model") or "event") != "distribution":
+        return []
+    distribution = normalized_config.get("distribution") if isinstance(normalized_config.get("distribution"), dict) else {}
+    simultaneous = distribution.get("simultaneous") if isinstance(distribution.get("simultaneous"), dict) else {}
+    required_aliases = [
+        "distribution_date",
+        "total_entities",
+        "interval_order",
+        "interval_label",
+        "entity_count",
+        "entity_rate",
+    ]
+    if simultaneous.get("enabled") is True:
+        required_aliases.append("simultaneous_value")
+    normalized_sql = str(sql or "").lower()
+    missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
+    issues = [f"分布 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    if not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
+        issues.append("分布 SQL 必须按分析主体去重统计 entity_count。")
+    if not re.search(r"\bnullif\s*\(", normalized_sql):
+        issues.append("分布 SQL 的 entity_rate 必须使用 NULLIF 保护分母。")
+    return _unique_text_items(issues)
+
+
+def _interval_sql_result_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+) -> list[str]:
+    if str(normalized_config.get("analysis_model") or "event") != "interval":
+        return []
+    required_aliases = [
+        "interval_date",
+        "entity_count",
+        "interval_count",
+        "max_interval_seconds",
+        "p75_interval_seconds",
+        "median_interval_seconds",
+        "p25_interval_seconds",
+        "min_interval_seconds",
+        "avg_interval_seconds",
+    ]
+    normalized_sql = str(sql or "").lower()
+    missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
+    issues = [f"间隔 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    if not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
+        issues.append("间隔 SQL 必须按分析主体去重统计 entity_count。")
+    if not re.search(r"\bcount\s*\(", normalized_sql):
+        issues.append("间隔 SQL 必须统计有效配对数 interval_count。")
+    for function_name, label in (("max", "最大值"), ("min", "最小值"), ("avg", "平均值")):
+        if not re.search(rf"\b{function_name}\s*\(", normalized_sql):
+            issues.append(f"间隔 SQL 缺少{label}聚合。")
+    if not re.search(r"\b(?:percentile|percentile_cont|quantile|quantile_cont|median)\s*\(", normalized_sql):
+        issues.append("间隔 SQL 必须使用当前方言支持的分位数函数计算四分位数。")
+    return _unique_text_items(issues)
+
+
+def _path_sql_result_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+) -> list[str]:
+    if str(normalized_config.get("analysis_model") or "event") != "path":
+        return []
+    required_aliases = ["path_source", "path_target", "path_value", "path_step"]
+    normalized_sql = str(sql or "").lower()
+    missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
+    issues = [f"路径 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    if not re.search(r"\bcount\s*\(", normalized_sql):
+        issues.append("路径 SQL 必须统计相邻路径边的会话数。")
+    if not re.search(r"\b(?:lag|lead)\s*\(", normalized_sql):
+        issues.append("路径 SQL 必须按会话内事件时间生成相邻节点。")
+    if not re.search(r"\bsession(?:_|\b)|\bsession_gap\b|\b(?:datediff|timestampdiff|date_diff|extract)\b", normalized_sql):
+        issues.append("路径 SQL 必须应用会话间隔规则。")
+    return _unique_text_items(issues)
+
+
 def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
     common_prompt = (
         "你是 BI 手动看板 SQL 生成节点。确定性配置校验已经通过，你只负责根据当前配置、公式 IR 和 SQL plan 生成只读 SELECT SQL。\n"
@@ -1963,6 +2474,73 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。"
             "period_offset 只能作为中间计算字段，不能出现在基础 Cohort 最终结果中。\n"
             "day_0 到 day_7 都表示对应周期回访人数占 cohort_size 的比例；不得输出长表 matched_rate 代替这些固定列。\n"
+        )
+    elif str(analysis_model or "event") == "interval":
+        structure_prompt = (
+            "当前 SQL plan 的 analysis_model=interval，必须使用间隔分析专用的事件排序、配对、上限过滤和统计结构。\n"
+            "间隔 SQL 结构范式：\n"
+            "WITH scoped_events AS (...仅保留起点/终点事件、主体、事件时间、分组、关联属性和各自筛选...),\n"
+            "ordered_events AS (...按主体、分组和关联属性分区，并按事件时间稳定排序...),\n"
+            "paired AS (...按 interval 配对规则生成 start_time 与 end_time，禁止笛卡尔积产生重复配对...),\n"
+            "valid_intervals AS (\n"
+            "    SELECT <start_date> AS interval_date, entity_id, <groups>,\n"
+            "           <dialect_timestamp_diff_seconds>(start_time, end_time) AS interval_seconds\n"
+            "    FROM paired\n"
+            "    WHERE end_time >= start_time\n"
+            "      AND <dialect_timestamp_diff_seconds>(start_time, end_time) <= <configured_limit_seconds>\n"
+            ")\n"
+            "SELECT interval_date,\n"
+            "       COUNT(DISTINCT entity_id) AS entity_count,\n"
+            "       COUNT(*) AS interval_count,\n"
+            "       MAX(interval_seconds) AS max_interval_seconds,\n"
+            "       <p75_function>(interval_seconds) AS p75_interval_seconds,\n"
+            "       <median_function>(interval_seconds) AS median_interval_seconds,\n"
+            "       <p25_function>(interval_seconds) AS p25_interval_seconds,\n"
+            "       MIN(interval_seconds) AS min_interval_seconds,\n"
+            "       AVG(interval_seconds) AS avg_interval_seconds\n"
+            "FROM valid_intervals\n"
+            "GROUP BY interval_date, <groups>\n"
+            "ORDER BY interval_date, <groups>。\n"
+            "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；所有时长列必须为数值秒。\n"
+            "不同事件必须实现最后起点到首个后续终点的最短配对；相同事件必须使用相邻行配对，不能复用不同事件算法导致遗漏或重复。\n"
+        )
+    elif str(analysis_model or "event") == "distribution":
+        structure_prompt = (
+            "当前 SQL plan 的 analysis_model=distribution，必须使用分布分析专用的按主体聚合、区间划分、区间统计三层结构。\n"
+            "分布 SQL 结构范式：\n"
+            "WITH base_events AS (...仅保留配置事件、日期、主体、分组和配置属性...),\n"
+            "entity_values AS (\n"
+            "    SELECT <distribution_date> AS distribution_date, <entity_id> AS entity_id, <groups>,\n"
+            "           <configured_per_entity_aggregation> AS distribution_value\n"
+            "    FROM base_events\n"
+            "    GROUP BY distribution_date, entity_id, <groups>\n"
+            "),\n"
+            "bucketed AS (...按 distribution.interval 生成互斥且完整的 interval_order 与 interval_label...),\n"
+            "totals AS (...按 distribution_date 与 groups 统计参与事件的主体总数...)\n"
+            "SELECT distribution_date, total_entities, interval_order, interval_label,\n"
+            "       COUNT(DISTINCT entity_id) AS entity_count,\n"
+            "       ROUND(COUNT(DISTINCT entity_id) * 100.0 / NULLIF(total_entities, 0), 2) AS entity_rate\n"
+            "       <启用时输出 simultaneous_value>\n"
+            "FROM bucketed ...\n"
+            "GROUP BY distribution_date, <groups>, interval_order, interval_label, total_entities\n"
+            "ORDER BY distribution_date, <groups>, interval_order。\n"
+            "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；interval_order 只负责稳定排序，interval_label 是展示文本。\n"
+            "主体必须先聚合再分桶，禁止直接按事件明细行分桶；entity_rate 分母只包含当期参与配置事件的主体。\n"
+        )
+    elif str(analysis_model or "event") == "path":
+        structure_prompt = (
+            "当前 SQL plan 的 analysis_model=path，必须使用路径分析专用的会话切分、节点排序和相邻边聚合结构；禁止把路径分析改写为漏斗或普通事件计数。\n"
+            "路径 SQL 结构范式：\n"
+            "WITH scoped_events AS (...按 path.events 只保留配置事件，输出 entity_id、event_time、event_name、拆分属性和分组...),\n"
+            "ordered_events AS (...按 entity_id 和配置分组排序，并用会话间隔识别会话边界...),\n"
+            "sessionized AS (...为每条事件生成 session_id，并保留每个会话的事件顺序...),\n"
+            "path_nodes AS (...从 path.initialEvent 开始向后取最多 10 个步骤；事件拆分属性参与节点身份...),\n"
+            "edges AS (...使用 LAG/LEAD 在同一会话内生成相邻 path_source/path_target，过滤跨会话边...),\n"
+            "SELECT path_source, path_target, COUNT(*) AS path_value, path_step\n"
+            "FROM edges\n"
+            "GROUP BY path_step, path_source, path_target\n"
+            "ORDER BY path_step, path_value DESC。\n"
+            "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；path_value 是边的会话流量，必须应用 sessionGapSeconds。\n"
         )
     else:
         structure_prompt = (
@@ -2369,7 +2947,7 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
         SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ], node="generate_sql")
-    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel"} else "event"
+    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path"} else "event"
     validation = state.get("validation_result")
     if validation:
         response.intent = response.intent or validation.intent
@@ -2471,6 +3049,30 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 未满足漏斗分析生成要求。"
         response.advice = "请按当前漏斗步骤顺序和固定结果列重新生成漏斗查询。"
         response.issues = _unique_text_items(list(response.issues or []) + funnel_issues)
+    elif distribution_issues := _distribution_sql_result_issues(
+        sql,
+        state.get("normalized_config") or {},
+    ):
+        response.success = False
+        response.message = "生成 SQL 未满足分布分析生成要求。"
+        response.advice = "请按主体聚合、区间划分和固定结果列重新生成分布查询。"
+        response.issues = _unique_text_items(list(response.issues or []) + distribution_issues)
+    elif interval_issues := _interval_sql_result_issues(
+        sql,
+        state.get("normalized_config") or {},
+    ):
+        response.success = False
+        response.message = "生成 SQL 未满足间隔分析生成要求。"
+        response.advice = "请按事件配对、间隔上限和固定统计列重新生成间隔查询。"
+        response.issues = _unique_text_items(list(response.issues or []) + interval_issues)
+    elif path_issues := _path_sql_result_issues(
+        sql,
+        state.get("normalized_config") or {},
+    ):
+        response.success = False
+        response.message = "生成 SQL 未满足路径分析生成要求。"
+        response.advice = "请按会话间隔、初始事件和相邻节点边重新生成路径查询。"
+        response.issues = _unique_text_items(list(response.issues or []) + path_issues)
     elif json_issues := _json_subfield_sql_issues(
         sql,
         state.get("json_subfield_requirements") or [],
@@ -2543,7 +3145,7 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
     )
     normalized_config = state.get("normalized_config") or {}
     analysis_model = str(normalized_config.get("analysis_model") or "event")
-    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel"} else "event"
+    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path"} else "event"
     if response.analysis_model == "retention":
         retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
@@ -2565,6 +3167,48 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "value_field": "step_count",
             "order_field": "step_order",
             "rate_fields": ["step_rate", "step_conversion_rate", "step_dropoff_rate"],
+        }
+    elif response.analysis_model == "distribution":
+        distribution = normalized_config.get("distribution") if isinstance(normalized_config.get("distribution"), dict) else {}
+        simultaneous = distribution.get("simultaneous") if isinstance(distribution.get("simultaneous"), dict) else {}
+        response.chart_type = "table"
+        response.result_config = {
+            "type": "distribution_table",
+            "date_field": "distribution_date",
+            "total_entities_field": "total_entities",
+            "interval_order_field": "interval_order",
+            "interval_field": "interval_label",
+            "entity_count_field": "entity_count",
+            "entity_rate_field": "entity_rate",
+            "simultaneous_value_field": "simultaneous_value" if simultaneous.get("enabled") is True else "",
+        }
+    elif response.analysis_model == "interval":
+        interval = normalized_config.get("interval") if isinstance(normalized_config.get("interval"), dict) else {}
+        response.chart_type = "table"
+        response.result_config = {
+            "type": "interval_table",
+            "date_field": "interval_date",
+            "entity_count_field": "entity_count",
+            "interval_count_field": "interval_count",
+            "max_field": "max_interval_seconds",
+            "p75_field": "p75_interval_seconds",
+            "median_field": "median_interval_seconds",
+            "p25_field": "p25_interval_seconds",
+            "min_field": "min_interval_seconds",
+            "avg_field": "avg_interval_seconds",
+            "duration_unit": "seconds",
+            "limit_seconds": int(interval.get("limitSeconds") or interval.get("limit_seconds") or 3600),
+        }
+    elif response.analysis_model == "path":
+        response.chart_type = "sankey"
+        response.result_config = {
+            "type": "path_sankey",
+            "source_field": "path_source",
+            "target_field": "path_target",
+            "value_field": "path_value",
+            "step_field": "path_step",
+            "session_count_field": "session_count",
+            "max_steps": 10,
         }
     return {
         "response": response,

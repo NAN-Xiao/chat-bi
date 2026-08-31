@@ -7,6 +7,26 @@ const source = readFileSync(
   fileURLToPath(new URL('./DashboardSqlEditor.vue', import.meta.url)),
   'utf8'
 )
+const distributionMetricPickerSource = readFileSync(
+  fileURLToPath(new URL('./DistributionMetricPicker.vue', import.meta.url)),
+  'utf8'
+)
+const distributionIntervalSettingsSource = readFileSync(
+  fileURLToPath(new URL('./DistributionIntervalSettings.vue', import.meta.url)),
+  'utf8'
+)
+const intervalLimitPickerSource = readFileSync(
+  fileURLToPath(new URL('./IntervalLimitPicker.vue', import.meta.url)),
+  'utf8'
+)
+const pathEventListSource = readFileSync(
+  fileURLToPath(new URL('./PathEventList.vue', import.meta.url)),
+  'utf8'
+)
+const pathSessionGapPickerSource = readFileSync(
+  fileURLToPath(new URL('./PathSessionGapPicker.vue', import.meta.url)),
+  'utf8'
+)
 
 test('renders the analysis model selector before event metrics', () => {
   const modelIndex = source.indexOf('<span>分析模型</span>')
@@ -15,7 +35,7 @@ test('renders the analysis model selector before event metrics', () => {
   assert.ok(modelIndex >= 0, '图表配置卡必须提供分析模型下拉列表')
   assert.ok(metricIndex >= 0, '事件分析必须继续提供分析指标')
   assert.ok(modelIndex < metricIndex, '分析模型必须位于分析指标上方')
-  assert.match(source, /事件分析[\s\S]*?留存分析[\s\S]*?漏斗分析/, '分析模型需要提供事件、留存和漏斗分析')
+  assert.match(source, /事件分析[\s\S]*?留存分析[\s\S]*?漏斗分析[\s\S]*?分布分析/, '分析模型需要提供事件、留存、漏斗和分布分析')
   assert.match(source, /class="analysis-model-row"/)
   assert.match(source, /class="retention-heading-row"/)
   assert.match(
@@ -59,7 +79,7 @@ test('persists and restores retention configuration in the SQL builder', () => {
 
   assert.match(saveBody, /analysisModel:\s*sqlBuilder\.analysisModel/)
   assert.match(saveBody, /retention:\s*sqlBuilder\.analysisModel === 'retention'/)
-  assert.match(restoreBody, /value\.analysisModel === 'retention' \|\| value\.analysisModel === 'funnel'/)
+  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path'\]\.includes\(value\.analysisModel\)/)
   assert.match(restoreBody, /retention\.entityField/)
   assert.match(restoreBody, /retention\.initialEvent/)
   assert.match(restoreBody, /retention\.returnEvent/)
@@ -185,4 +205,99 @@ test('provides ordered funnel steps with window and related-property controls', 
   assert.match(source, /function removeFunnelStep\(index: number\)/)
   assert.match(source, /function funnelBlockingIssues\(\)/)
   assert.match(source, /step_field\s*\|\| resultConfig\.stepField \|\| 'step_name'/)
+})
+
+test('keeps distribution analysis configuration and controls isolated from other models', () => {
+  const saveBody = source.match(/function builderConfigForSave\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const restoreBody = source.match(
+    /function restoreSqlBuilderState\(value: any\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction formulaTokensReferenceMetricIds/
+  )?.[1] || ''
+  const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+
+  assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution'/)
+  assert.match(source, /const isDistributionAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'distribution'\)/)
+  assert.match(saveBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
+  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path'\]\.includes\(value\.analysisModel\)/)
+  assert.match(contextBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
+  assert.match(switchBody, /sqlBuilder\.analysisModel === 'distribution'/)
+  assert.match(switchBody, /resetDistributionConfig\(\)/)
+  assert.match(source, /<DistributionMetricPicker[\s\S]*?@update:modelValue="updateDistributionMetric"/)
+  assert.match(source, /<DistributionIntervalSettings[\s\S]*?@update:modelValue="updateDistributionInterval"/)
+  assert.match(source, />使用同时展示</)
+  assert.match(source, /function distributionBlockingIssues\(\)/)
+  assert.match(source, /form\.chartType = 'table'/)
+  assert.match(source, /total_entities_field[\s\S]*?'total_entities'/)
+  assert.equal((distributionMetricPickerSource.match(/:teleported="false"/g) || []).length, 2)
+  assert.match(distributionMetricPickerSource, /distribution-metric-popper[\s\S]*?max-width:\s*calc\(100vw - 24px\)/)
+  assert.match(distributionIntervalSettingsSource, /distribution-interval-popper[\s\S]*?max-width:\s*calc\(100vw - 24px\)/)
+})
+
+test('keeps interval analysis isolated and exposes the reference controls', () => {
+  const saveBody = source.match(/function builderConfigForSave\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const restoreBody = source.match(
+    /function restoreSqlBuilderState\(value: any\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction formulaTokensReferenceMetricIds/
+  )?.[1] || ''
+  const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+
+  assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution' \| 'interval'/)
+  assert.match(source, /const isIntervalAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'interval'\)/)
+  assert.match(saveBody, /interval:\s*sqlBuilder\.analysisModel === 'interval'/)
+  assert.match(restoreBody, /sqlBuilder\.interval\.startEvent/)
+  assert.match(restoreBody, /sqlBuilder\.interval\.endEvent/)
+  assert.match(restoreBody, /clampIntervalLimitSeconds\(interval\.limitSeconds\)/)
+  assert.match(contextBody, /interval:\s*sqlBuilder\.analysisModel === 'interval'/)
+  assert.match(contextBody, /comparison:\s*'equal'/)
+  assert.match(switchBody, /sqlBuilder\.analysisModel === 'interval'/)
+  assert.match(switchBody, /resetIntervalConfig\(\)/)
+  assert.match(source, />间隔分析</)
+  assert.match(source, />起点事件</)
+  assert.match(source, />终点事件</)
+  assert.match(source, />使用关联属性</)
+  assert.match(source, />间隔上限</)
+  assert.match(source, /<IntervalLimitPicker v-model="sqlBuilder\.interval\.limitSeconds"/)
+  assert.match(source, /function intervalBlockingIssues\(\)/)
+  assert.match(source, /interval_count_field[\s\S]*?'interval_count'/)
+  assert.match(intervalLimitPickerSource, /1小时[\s\S]*?3小时[\s\S]*?12小时/)
+  assert.match(intervalLimitPickerSource, /天（即24小时）/)
+  assert.match(intervalLimitPickerSource, /INTERVAL_LIMIT_MIN_SECONDS/)
+  assert.match(intervalLimitPickerSource, /INTERVAL_LIMIT_MAX_SECONDS/)
+  assert.match(intervalLimitPickerSource, /interval-limit-popper[\s\S]*?max-width:\s*calc\(100vw - 24px\)/)
+})
+
+test('keeps path analysis isolated and exposes event split and session controls', () => {
+  const saveBody = source.match(/function builderConfigForSave\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const restoreBody = source.match(
+    /function restoreSqlBuilderState\(value: any\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction formulaTokensReferenceMetricIds/
+  )?.[1] || ''
+  const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const signatureBody = source.match(/function currentPreviewSignature\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+
+  assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution' \| 'interval' \| 'path'/)
+  assert.match(source, /const isPathAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'path'\)/)
+  assert.match(saveBody, /path:\s*sqlBuilder\.analysisModel === 'path'/)
+  assert.match(restoreBody, /PATH_EVENT_LIMIT/)
+  assert.match(restoreBody, /sqlBuilder\.path\.initialEvent/)
+  assert.match(restoreBody, /sqlBuilder\.path\.sessionGapSeconds/)
+  assert.match(contextBody, /path:\s*sqlBuilder\.analysisModel === 'path'/)
+  assert.match(signatureBody, /path:\s*sqlBuilder\.analysisModel === 'path'/)
+  assert.match(switchBody, /sqlBuilder\.analysisModel === 'path'/)
+  assert.match(switchBody, /resetPathConfig\(\)/)
+  assert.match(source, /<PathEventList[\s\S]*?:max-events="PATH_EVENT_LIMIT"/)
+  assert.match(source, /<PathSessionGapPicker v-model="sqlBuilder\.path\.sessionGapSeconds"/)
+  assert.match(source, /最多选择 \{\{ PATH_EVENT_LIMIT \}\} 个事件/)
+  assert.match(source, /路径分析只能使用桑基图结果|桑基图/)
+  assert.match(pathEventListSource, /multiple/)
+  assert.match(pathEventListSource, /拆分属性/)
+  assert.match(pathEventListSource, /最多选择 \{\{ maxEvents \}\} 个参与事件/)
+  assert.match(pathSessionGapPickerSource, /PATH_SESSION_GAP_MIN_SECONDS/)
+  assert.match(pathSessionGapPickerSource, /PATH_SESSION_GAP_MAX_SECONDS/)
+  assert.match(pathSessionGapPickerSource, /会话间隔数值/)
+  assert.match(pathSessionGapPickerSource, /会话间隔单位/)
+  assert.match(pathSessionGapPickerSource, /秒/)
+  assert.match(pathSessionGapPickerSource, /分钟/)
+  assert.match(pathSessionGapPickerSource, /小时/)
+  assert.match(pathSessionGapPickerSource, /path-session-gap-info/)
 })
