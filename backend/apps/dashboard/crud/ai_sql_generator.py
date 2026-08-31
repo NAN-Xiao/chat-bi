@@ -61,6 +61,13 @@ INTERVAL_LIMIT_MIN_SECONDS = 60
 INTERVAL_LIMIT_MAX_SECONDS = 180 * 24 * 60 * 60
 REVENUE_OBSERVATION_MIN_DAYS = 1
 REVENUE_OBSERVATION_MAX_DAYS = 365
+ATTRIBUTION_EVENT_LIMIT = 30
+ATTRIBUTION_WINDOW_UNIT_SECONDS = {
+    "day": 24 * 60 * 60,
+    "hour": 60 * 60,
+    "minute": 60,
+}
+ATTRIBUTION_WINDOW_MAX_SECONDS = 365 * 24 * 60 * 60
 
 
 class DashboardManualChartGraphState(TypedDict, total=False):
@@ -738,7 +745,7 @@ def _normalize_manual_config(
     ).strip()
     time_config["date_expression"] = time_config.get("dateExpression") or time_config.get("date_expression")
     analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
-    if analysis_model not in {"event", "retention", "funnel", "distribution", "interval", "path", "revenue"}:
+    if analysis_model not in {"event", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution"}:
         analysis_model = "event"
     retention = dict(context.get("retention") or {}) if isinstance(context.get("retention"), dict) else {}
     funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
@@ -750,6 +757,7 @@ def _normalize_manual_config(
     interval = dict(context.get("interval") or {}) if isinstance(context.get("interval"), dict) else {}
     path = dict(context.get("path") or {}) if isinstance(context.get("path"), dict) else {}
     revenue = dict(context.get("revenue") or {}) if isinstance(context.get("revenue"), dict) else {}
+    attribution = dict(context.get("attribution") or {}) if isinstance(context.get("attribution"), dict) else {}
     return {
         "analysis_model": analysis_model,
         "retention": retention,
@@ -758,6 +766,7 @@ def _normalize_manual_config(
         "interval": interval,
         "path": path,
         "revenue": revenue,
+        "attribution": attribution,
         "chart": context.get("chart") if isinstance(context.get("chart"), dict) else {
             "title": request.title,
             "type": request.chart_type,
@@ -1422,6 +1431,23 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
         table_name = _field_table_name(field)
         if table_name:
             tables.add(table_name)
+    attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
+    attribution_metric = attribution.get("targetMetric") if isinstance(attribution.get("targetMetric"), dict) else {}
+    attribution_fields: list[Any] = [
+        attribution.get("entityField") or attribution.get("entity_field"),
+        attribution.get("targetEvent") or attribution.get("target_event"),
+        attribution_metric.get("metricField") or attribution_metric.get("metric_field"),
+    ]
+    attribution_fields.extend(_iter_filter_rule_fields(
+        attribution.get("targetEventFilters") or attribution.get("target_event_filters")
+    ))
+    for event_item in _list_dict_items(attribution.get("events")):
+        attribution_fields.append(event_item.get("event"))
+        attribution_fields.extend(_iter_filter_rule_fields(event_item.get("filters")))
+    for field in attribution_fields:
+        table_name = _field_table_name(field)
+        if table_name:
+            tables.add(table_name)
     return tables
 
 
@@ -1907,6 +1933,96 @@ def _deterministic_validate_manual_config(
             if property_event_name and payment_event_name and property_event_name != payment_event_name:
                 issues.append(f"{label}不属于当前付费事件。")
 
+    if analysis_model == "attribution":
+        attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
+        entity_field = attribution.get("entityField") or attribution.get("entity_field")
+        target_event = attribution.get("targetEvent") or attribution.get("target_event")
+        method = str(attribution.get("method") or "linear").strip().lower()
+        window = attribution.get("window") if isinstance(attribution.get("window"), dict) else {}
+        window_mode = str(window.get("mode") or "custom").strip().lower()
+        window_unit = str(window.get("unit") or "day").strip().lower()
+        try:
+            window_value = int(window.get("value") or 0)
+        except (TypeError, ValueError):
+            window_value = 0
+        window_seconds = window_value * ATTRIBUTION_WINDOW_UNIT_SECONDS.get(window_unit, 0)
+        target_metric = attribution.get("targetMetric") if isinstance(attribution.get("targetMetric"), dict) else {}
+        target_aggregation = str(target_metric.get("aggregation") or "count").strip().lower()
+        target_metric_field = target_metric.get("metricField") or target_metric.get("metric_field")
+        attribution_events = _list_dict_items(attribution.get("events"))
+
+        if not _field_has_resolvable_reference(entity_field):
+            issues.append("归因分析请先选择分析主体。")
+        if method != "linear":
+            issues.append("归因分析当前仅支持线性归因。")
+        if window_mode != "custom" or window_unit not in ATTRIBUTION_WINDOW_UNIT_SECONDS:
+            issues.append("归因分析窗口期配置无效。")
+        elif window_seconds < 60 or window_seconds > ATTRIBUTION_WINDOW_MAX_SECONDS:
+            issues.append("归因分析窗口期必须在 1 分钟到 365 天之间。")
+        if not _field_has_resolvable_reference(target_event):
+            issues.append("归因分析请先选择目标事件。")
+        if not _field_has_resolvable_reference(time_config.get("field")):
+            issues.append("归因分析请先选择时间字段。")
+        if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "table":
+            issues.append("归因分析当前只能使用归因表结果。")
+        if not attribution_events:
+            issues.append("归因分析请至少选择一个归因事件。")
+        if len(attribution_events) > ATTRIBUTION_EVENT_LIMIT:
+            issues.append(f"归因分析最多支持 {ATTRIBUTION_EVENT_LIMIT} 个归因事件。")
+        if target_aggregation not in {"count", "sum", "avg", "max", "min", "count_distinct"}:
+            issues.append(f"归因分析使用了不支持的目标指标聚合方式：{target_aggregation}。")
+        if target_aggregation != "count" and not _field_has_resolvable_reference(target_metric_field):
+            issues.append("目标事件使用非次数聚合时，请选择计算字段。")
+        if target_aggregation in {"sum", "avg", "max", "min"} and target_metric_field and _field_is_known_non_numeric(target_metric_field):
+            issues.append("归因分析当前目标指标聚合要求数值字段。")
+
+        for field, label in (
+            (entity_field, "归因分析主体"),
+            (target_event, "归因分析目标事件"),
+            (target_metric_field if target_aggregation != "count" else None, "归因分析目标指标字段"),
+        ):
+            if not field:
+                continue
+            issues.extend(_tracking_event_metadata_issues(field, label))
+            issues.extend(_json_subfield_mapping_issues(field, label))
+            issues.extend(_field_table_permission_issues(field, label, allowed_tables))
+            issues.extend(_field_schema_permission_issues(field, label, allowed_fields_by_table))
+
+        target_event_name = _tracking_event_name_from_field(target_event)
+        metric_event_name = _tracking_event_name_from_field(target_metric_field)
+        if target_metric_field and metric_event_name and target_event_name and metric_event_name != target_event_name:
+            issues.append("归因分析目标指标字段不属于当前目标事件。")
+        for index, filter_field in enumerate(_iter_filter_rule_fields(
+            attribution.get("targetEventFilters") or attribution.get("target_event_filters")
+        )):
+            label = f"归因分析目标事件筛选{index + 1}"
+            issues.extend(_json_subfield_mapping_issues(filter_field, label))
+            issues.extend(_field_table_permission_issues(filter_field, label, allowed_tables))
+            issues.extend(_field_schema_permission_issues(filter_field, label, allowed_fields_by_table))
+            filter_event_name = _tracking_event_name_from_field(filter_field)
+            if filter_event_name and target_event_name and filter_event_name != target_event_name:
+                issues.append(f"{label}不属于当前目标事件。")
+
+        for index, event_item in enumerate(attribution_events):
+            event = event_item.get("event")
+            label = f"归因事件{index + 1}"
+            if not _field_has_resolvable_reference(event):
+                issues.append(f"{label}请先选择事件。")
+                continue
+            issues.extend(_tracking_event_metadata_issues(event, label))
+            issues.extend(_json_subfield_mapping_issues(event, label))
+            issues.extend(_field_table_permission_issues(event, label, allowed_tables))
+            issues.extend(_field_schema_permission_issues(event, label, allowed_fields_by_table))
+            event_name = _tracking_event_name_from_field(event)
+            for filter_index, filter_field in enumerate(_iter_filter_rule_fields(event_item.get("filters"))):
+                filter_label = f"{label}筛选{filter_index + 1}"
+                issues.extend(_json_subfield_mapping_issues(filter_field, filter_label))
+                issues.extend(_field_table_permission_issues(filter_field, filter_label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(filter_field, filter_label, allowed_fields_by_table))
+                filter_event_name = _tracking_event_name_from_field(filter_field)
+                if filter_event_name and event_name and filter_event_name != event_name:
+                    issues.append(f"{filter_label}不属于当前归因事件。")
+
     for index, metric in enumerate(metrics):
         label = str(metric.get("alias") or metric.get("label") or f"分析指标{index + 1}").strip()
         issues.extend(_validate_metric_item(metric, label))
@@ -1941,7 +2057,7 @@ def _deterministic_validate_manual_config(
         issues=issues,
         warnings=warnings,
         suggestions=_unique_text_items(suggestions),
-        analysis_model=analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue"} else "event",
+        analysis_model=analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution"} else "event",
     )
 
 
@@ -1960,6 +2076,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
     retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
     interval = normalized_config.get("interval") if isinstance(normalized_config.get("interval"), dict) else {}
     revenue = normalized_config.get("revenue") if isinstance(normalized_config.get("revenue"), dict) else {}
+    attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
     result_contract: dict[str, Any] = {}
     if analysis_model == "retention":
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
@@ -2059,6 +2176,22 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "metric_method": str((revenue.get("metric") or {}).get("method") or "count"),
             "cost_enabled": cost_enabled,
         }
+    elif analysis_model == "attribution":
+        window = attribution.get("window") if isinstance(attribution.get("window"), dict) else {}
+        window_unit = str(window.get("unit") or "day")
+        window_value = int(window.get("value") or 1)
+        result_contract = {
+            "type": "attribution_table",
+            "required_columns": [
+                "attribution_event",
+                "target_count",
+                "attributed_value",
+                "contribution_rate",
+            ],
+            "method": "linear",
+            "window_seconds": window_value * ATTRIBUTION_WINDOW_UNIT_SECONDS.get(window_unit, 0),
+            "final_grain": ["attribution_event"],
+        }
     return {
         "analysis_model": analysis_model,
         "retention": retention,
@@ -2067,6 +2200,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
         "interval": interval,
         "path": normalized_config.get("path") or {},
         "revenue": revenue,
+        "attribution": attribution,
         "result_contract": result_contract,
         "time": time_config,
         "date_parameters": {
@@ -2218,6 +2352,20 @@ def _dashboard_config_prompt(
             sql_dialect,
             datasource,
         ))
+    attribution = context.get("attribution") if isinstance(context.get("attribution"), dict) else {}
+    attribution_rules: list[str] = []
+    if analysis_model == "attribution":
+        attribution_events = _list_dict_items(attribution.get("events"))
+        attribution_rules = [
+            "当前 analysisModel=attribution，只能使用 attribution 配置生成归因查询；不得读取或套用事件、留存、漏斗、分布、间隔或路径模型的指标语义。",
+            "当前只支持 method=linear 的线性归因：对每个目标事件，找到同一主体在目标时间之前且位于 window 内的已配置归因事件，并把该目标事件的贡献在所有匹配触点之间等分。",
+            "目标事件必须使用 attribution.targetEvent，目标值必须严格按 targetMetric.aggregation 和 targetMetric.metricField 计算；targetEventFilters 只应用于目标事件明细。",
+            "每个 attribution.events[i].filters 只应用于该归因事件；事件与筛选不得交换。目标事件之后的触点、窗口之外的触点以及其他未配置事件不得参与归因。",
+            "includeDirect=true 时，没有匹配归因事件的目标转化归入 attribution_event='直接转化'；false 时必须排除这些目标转化。",
+            "最终结果固定输出 attribution_event、target_count、attributed_value、contribution_rate；target_count 是获得归因贡献的目标事件数，attributed_value 是按线性权重分配后的目标值，contribution_rate 是 attributed_value 占全部已归因目标值的比例并使用 NULLIF 保护分母。",
+            f"当前归因事件数量：{len(attribution_events)}；归因窗口：{_safe_json(attribution.get('window'))}；直接转化：{attribution.get('includeDirect') is True}。",
+            "最终返回 chart_type 必须为 table。",
+        ]
     funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
     funnel_rules: list[str] = []
     if analysis_model == "funnel":
@@ -2348,13 +2496,14 @@ def _dashboard_config_prompt(
         "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段；必须使用字段对象的 expression，不得把用户属性改为 user 表或其他表的同名字段。",
         "字段对象包含 sourceField、jsonPath 和 expression 时，JSON 子字段必须使用 expression；不得自行改写 JSON 宿主列或路径。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
-         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention/funnel/distribution/interval/path/revenue 字段信息生成 SQL；不要编造未提供字段。",
+         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention/funnel/distribution/interval/path/revenue/attribution 字段信息生成 SQL；不要编造未提供字段。",
         *retention_rules,
         *funnel_rules,
         *distribution_rules,
         *interval_rules,
         *path_rules,
         *revenue_rules,
+        *attribution_rules,
         *date_parameter_rules,
         *_dashboard_sql_dialect_rules(sql_dialect, datasource),
     ])
@@ -2662,6 +2811,25 @@ def _revenue_sql_result_issues(
     return _unique_text_items(issues)
 
 
+def _attribution_sql_result_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+) -> list[str]:
+    if str(normalized_config.get("analysis_model") or "event") != "attribution":
+        return []
+    required_aliases = ["attribution_event", "target_count", "attributed_value", "contribution_rate"]
+    normalized_sql = str(sql or "").lower()
+    missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
+    issues = [f"归因 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    if not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
+        issues.append("归因 SQL 必须按目标事件去重统计 target_count。")
+    if not re.search(r"\bnullif\s*\(", normalized_sql):
+        issues.append("归因 SQL 的线性权重或贡献占比必须使用 NULLIF 保护分母。")
+    if not re.search(r"(?:1(?:\.0)?\s*/|/\s*nullif|linear_weight|touch_count)", normalized_sql):
+        issues.append("归因 SQL 必须按每个目标的匹配触点数计算线性归因权重。")
+    return _unique_text_items(issues)
+
+
 def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
     common_prompt = (
         "你是 BI 手动看板 SQL 生成节点。确定性配置校验已经通过，你只负责根据当前配置、公式 IR 和 SQL plan 生成只读 SELECT SQL。\n"
@@ -2792,6 +2960,21 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。\n"
             "day_offset 只能作为中间计算字段；day_0 到 day_N 的值必须遵守 metric_method，不得输出回访比例或主体留存率。\n"
             "只允许使用 sql-plan.revenue，禁止读取 retention、funnel、distribution、interval 或 path 配置。\n"
+        )
+    elif str(analysis_model or "event") == "attribution":
+        structure_prompt = (
+            "当前 SQL plan 的 analysis_model=attribution，必须使用归因分析专用的目标识别、窗口触点匹配、线性权重和贡献汇总结构；禁止改写成漏斗或普通事件计数。\n"
+            "归因 SQL 结构范式：\n"
+            "WITH targets AS (...仅保留目标事件，输出 target_id、entity_id、target_time、target_value，并应用目标事件筛选...),\n"
+            "touches AS (...仅保留配置的归因事件，输出 entity_id、touch_time、attribution_event，并应用各自筛选...),\n"
+            "matched AS (...按同一主体连接 touch_time <= target_time 且时间差不超过配置 window_seconds 的触点...),\n"
+            "weighted AS (...按 target_id 计算匹配触点数，每个触点 linear_weight=1.0/NULLIF(touch_count, 0)；按 includeDirect 处理无触点目标...),\n"
+            "aggregated AS (...按 attribution_event 汇总目标数和 target_value * linear_weight...),\n"
+            "SELECT attribution_event, COUNT(DISTINCT target_id) AS target_count,\n"
+            "       SUM(weighted_target_value) AS attributed_value,\n"
+            "       ROUND(SUM(weighted_target_value) * 100.0 / NULLIF(SUM(SUM(weighted_target_value)) OVER (), 0), 2) AS contribution_rate\n"
+            "FROM weighted GROUP BY attribution_event ORDER BY attributed_value DESC。\n"
+            "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；触点只能发生在目标之前或同一时刻，且每个目标的线性权重之和必须为 1。\n"
         )
     else:
         structure_prompt = (
@@ -3198,7 +3381,7 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
         SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ], node="generate_sql")
-    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue"} else "event"
+    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution"} else "event"
     validation = state.get("validation_result")
     if validation:
         response.intent = response.intent or validation.intent
@@ -3332,6 +3515,14 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 未满足收入分析生成要求。"
         response.advice = "请按同期群、收入口径、观察时长和固定结果列重新生成收入查询。"
         response.issues = _unique_text_items(list(response.issues or []) + revenue_issues)
+    elif attribution_issues := _attribution_sql_result_issues(
+        sql,
+        state.get("normalized_config") or {},
+    ):
+        response.success = False
+        response.message = "生成 SQL 未满足归因分析生成要求。"
+        response.advice = "请按归因窗口、线性权重和固定结果列重新生成归因查询。"
+        response.issues = _unique_text_items(list(response.issues or []) + attribution_issues)
     elif json_issues := _json_subfield_sql_issues(
         sql,
         state.get("json_subfield_requirements") or [],
@@ -3404,7 +3595,7 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
     )
     normalized_config = state.get("normalized_config") or {}
     analysis_model = str(normalized_config.get("analysis_model") or "event")
-    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue"} else "event"
+    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution"} else "event"
     if response.analysis_model == "retention":
         retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
@@ -3486,6 +3677,18 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "observation_days": observation_days,
             "cost_value_field": "cost_value" if cost_enabled else "",
             "metric_method": str((revenue.get("metric") or {}).get("method") or "count"),
+        }
+    elif response.analysis_model == "attribution":
+        attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
+        response.chart_type = "table"
+        response.result_config = {
+            "type": "attribution_table",
+            "event_field": "attribution_event",
+            "target_count_field": "target_count",
+            "attributed_value_field": "attributed_value",
+            "contribution_rate_field": "contribution_rate",
+            "method": "linear",
+            "include_direct": attribution.get("includeDirect") is True,
         }
     return {
         "response": response,

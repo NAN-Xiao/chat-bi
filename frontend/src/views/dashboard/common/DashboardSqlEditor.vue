@@ -9,6 +9,7 @@ import { trackingConfigApi } from '@/api/system.ts'
 import { request } from '@/utils/request.ts'
 import { formatRequestErrorMessage } from '@/utils/request.ts'
 import BuilderSectionIcon from '@/assets/svg/dv-view.svg'
+import AttributionWindowPicker from '@/views/dashboard/common/AttributionWindowPicker.vue'
 import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
 import DistributionIntervalSettings from '@/views/dashboard/common/DistributionIntervalSettings.vue'
@@ -18,6 +19,14 @@ import IntervalLimitPicker from '@/views/dashboard/common/IntervalLimitPicker.vu
 import PathEventList from '@/views/dashboard/common/PathEventList.vue'
 import PathSessionGapPicker from '@/views/dashboard/common/PathSessionGapPicker.vue'
 import RevenueMetricPicker from '@/views/dashboard/common/RevenueMetricPicker.vue'
+import {
+  ATTRIBUTION_EVENT_LIMIT,
+  DEFAULT_ATTRIBUTION_WINDOW,
+  isValidAttributionWindow,
+  normalizeAttributionWindow,
+  type AttributionMethod,
+  type AttributionWindowConfig,
+} from '@/views/dashboard/common/attributionAnalysis.ts'
 import type {
   DistributionIntervalConfig,
   DistributionMetricConfig,
@@ -181,7 +190,7 @@ type SqlBuilderMetricItem = {
   filterLogic: SqlBuilderFilterLogic
   filters: SqlBuilderFilter[]
 }
-type AnalysisModel = 'event' | 'retention' | 'funnel' | 'distribution' | 'interval' | 'path' | 'revenue'
+type AnalysisModel = 'event' | 'retention' | 'funnel' | 'distribution' | 'interval' | 'path' | 'revenue' | 'attribution'
 type RetentionEventTarget = 'initial' | 'return'
 type IntervalEventTarget = 'start' | 'end'
 type SqlBuilderFunnelStep = {
@@ -266,6 +275,26 @@ type SqlBuilderRevenueConfig = {
   costEnabled: boolean
   costField: string
   observationDays: number
+}
+type SqlBuilderAttributionEvent = {
+  id: string
+  event: string
+  filterLogic: SqlBuilderFilterLogic
+  filters: SqlBuilderFilter[]
+}
+type SqlBuilderAttributionConfig = {
+  entityField: string
+  method: AttributionMethod
+  window: AttributionWindowConfig
+  targetEvent: string
+  targetEventFilterLogic: SqlBuilderFilterLogic
+  targetEventFilters: SqlBuilderFilter[]
+  targetMetric: {
+    aggregation: SqlBuilderAggregation
+    metricField: string
+  }
+  includeDirect: boolean
+  events: SqlBuilderAttributionEvent[]
 }
 type SqlBuilderCalculatedMetricItem = {
   id: string
@@ -489,6 +518,20 @@ const sqlBuilder = reactive({
     costField: '',
     observationDays: DEFAULT_REVENUE_OBSERVATION_DAYS,
   } as SqlBuilderRevenueConfig,
+  attribution: {
+    entityField: '',
+    method: 'linear',
+    window: { ...DEFAULT_ATTRIBUTION_WINDOW },
+    targetEvent: '',
+    targetEventFilterLogic: 'and',
+    targetEventFilters: [],
+    targetMetric: {
+      aggregation: 'count',
+      metricField: '',
+    },
+    includeDirect: true,
+    events: [],
+  } as SqlBuilderAttributionConfig,
 })
 const retentionFilterExpanded = reactive<Record<RetentionEventTarget, boolean>>({
   initial: false,
@@ -510,6 +553,8 @@ const intervalFilterExpanded = reactive<Record<IntervalEventTarget, boolean>>({
   start: false,
   end: false,
 })
+const attributionTargetFilterExpanded = ref(false)
+const attributionEventFilterExpanded = reactive<Record<string, boolean>>({})
 const builderAgentAdvice = reactive({
   visible: false,
   severity: '',
@@ -956,6 +1001,7 @@ const analysisModelOptions = [
   { label: '间隔分析', value: 'interval' as AnalysisModel },
   { label: '路径分析', value: 'path' as AnalysisModel },
   { label: '收入分析', value: 'revenue' as AnalysisModel },
+  { label: '归因分析', value: 'attribution' as AnalysisModel },
 ]
 const isRetentionAnalysis = computed(() => sqlBuilder.analysisModel === 'retention')
 const isFunnelAnalysis = computed(() => sqlBuilder.analysisModel === 'funnel')
@@ -963,6 +1009,7 @@ const isDistributionAnalysis = computed(() => sqlBuilder.analysisModel === 'dist
 const isIntervalAnalysis = computed(() => sqlBuilder.analysisModel === 'interval')
 const isPathAnalysis = computed(() => sqlBuilder.analysisModel === 'path')
 const isRevenueAnalysis = computed(() => sqlBuilder.analysisModel === 'revenue')
+const isAttributionAnalysis = computed(() => sqlBuilder.analysisModel === 'attribution')
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
 const funnelEntityFieldOptions = computed(() => builderFieldOptions.value)
@@ -1002,6 +1049,12 @@ const pathInitialEventOptions = computed(() => sqlBuilder.path.events
       table: option?.table || '',
     }
   }))
+const attributionEntityFieldOptions = computed(() => builderFieldOptions.value)
+const attributionEventOptions = computed(() => trackingEventCatalogOptions.value)
+const attributionTargetMetricFieldOptions = computed(() => metricMeasureFieldOptions({
+  field: sqlBuilder.attribution.targetEvent,
+  aggregation: sqlBuilder.attribution.targetMetric.aggregation,
+}))
 const builderMetricOptions = computed(() =>
   sqlBuilder.metricItems.map((item, index) => ({
     label: metricOutputAlias(item, index),
@@ -1728,6 +1781,7 @@ function resetSqlBuilderState() {
   resetDistributionConfig()
   resetIntervalConfig()
   resetPathConfig()
+  resetAttributionConfig()
   clearBuilderAgentAdvice()
 }
 
@@ -2202,6 +2256,31 @@ function builderConfigForSave() {
       costEnabled: sqlBuilder.revenue.costEnabled,
       costField: sqlBuilder.revenue.costEnabled ? sqlBuilder.revenue.costField : '',
       observationDays: clampRevenueObservationDays(sqlBuilder.revenue.observationDays),
+    } : null,
+    attribution: sqlBuilder.analysisModel === 'attribution' ? {
+      entityField: sqlBuilder.attribution.entityField,
+      method: sqlBuilder.attribution.method,
+      window: normalizeAttributionWindow(sqlBuilder.attribution.window),
+      targetEvent: sqlBuilder.attribution.targetEvent,
+      targetEventFilters: {
+        logic: builderLogic(sqlBuilder.attribution.targetEventFilterLogic),
+        rules: compactBuilderFilters(sqlBuilder.attribution.targetEventFilters),
+      },
+      targetMetric: {
+        aggregation: sqlBuilder.attribution.targetMetric.aggregation,
+        metricField: sqlBuilder.attribution.targetMetric.aggregation === 'count'
+          ? ''
+          : sqlBuilder.attribution.targetMetric.metricField,
+      },
+      includeDirect: sqlBuilder.attribution.includeDirect,
+      events: sqlBuilder.attribution.events.map((item) => ({
+        id: item.id,
+        event: item.event,
+        filters: {
+          logic: builderLogic(item.filterLogic),
+          rules: compactBuilderFilters(item.filters),
+        },
+      })),
     } : undefined,
     timeField: SQL_EDITOR_TIME_FIELD,
     timeGrain: SQL_EDITOR_TIME_GRAIN,
@@ -2229,7 +2308,7 @@ function restoreSqlBuilderState(value: any) {
   if (!value || typeof value !== 'object') {
     return
   }
-  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue'].includes(value.analysisModel)
+  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution'].includes(value.analysisModel)
     ? value.analysisModel
     : 'event'
   const retention = value.retention && typeof value.retention === 'object' ? value.retention : {}
@@ -2401,6 +2480,35 @@ function restoreSqlBuilderState(value: any) {
     ? revenue.costField
     : ''
   sqlBuilder.revenue.observationDays = clampRevenueObservationDays(revenue.observationDays)
+  const attribution = value.attribution && typeof value.attribution === 'object' ? value.attribution : {}
+  sqlBuilder.attribution.entityField = typeof attribution.entityField === 'string' ? attribution.entityField : ''
+  sqlBuilder.attribution.method = attribution.method === 'linear' ? attribution.method : 'linear'
+  sqlBuilder.attribution.window = normalizeAttributionWindow(attribution.window)
+  sqlBuilder.attribution.targetEvent = typeof attribution.targetEvent === 'string' ? attribution.targetEvent : ''
+  sqlBuilder.attribution.targetEventFilterLogic = builderLogic(attribution.targetEventFilters?.logic)
+  sqlBuilder.attribution.targetEventFilters = restoreBuilderFilters(attribution.targetEventFilters?.rules)
+  const attributionTargetMetric = attribution.targetMetric && typeof attribution.targetMetric === 'object'
+    ? attribution.targetMetric
+    : {}
+  sqlBuilder.attribution.targetMetric.aggregation = builderAggregationOptions.some(
+    (option) => option.value === attributionTargetMetric.aggregation
+  ) ? attributionTargetMetric.aggregation : 'count'
+  sqlBuilder.attribution.targetMetric.metricField = sqlBuilder.attribution.targetMetric.aggregation !== 'count'
+    && typeof attributionTargetMetric.metricField === 'string'
+    ? attributionTargetMetric.metricField
+    : ''
+  sqlBuilder.attribution.includeDirect = attribution.includeDirect !== false
+  sqlBuilder.attribution.events = Array.isArray(attribution.events)
+    ? attribution.events.slice(0, ATTRIBUTION_EVENT_LIMIT).map((item: any) => ({
+        id: typeof item?.id === 'string' && item.id ? item.id : nodeId('attribution-event'),
+        event: typeof item?.event === 'string' ? item.event : '',
+        filterLogic: builderLogic(item?.filters?.logic),
+        filters: restoreBuilderFilters(item?.filters?.rules),
+      }))
+    : []
+  Object.keys(attributionEventFilterExpanded).forEach((key) => { delete attributionEventFilterExpanded[key] })
+  sqlBuilder.attribution.events.forEach((item) => { attributionEventFilterExpanded[item.id] = false })
+  attributionTargetFilterExpanded.value = false
   sqlBuilder.dateExpressionPickerEnabled = true
   sqlBuilder.metricDateExpressionEnabled = value.metricDateExpressionEnabled === true
   const timeExpression = normalizeDashboardDateExpression(value.timeExpression)
@@ -2970,6 +3078,14 @@ function builderEventScopeIssues() {
       })
     })
   }
+  if (isAttributionAnalysis.value) {
+    appendEventScopeFieldIssue(sqlBuilder.attribution.targetMetric.metricField, 'attribution.target_metric.field', issues)
+    appendEventScopeFilterIssues(sqlBuilder.attribution.targetEventFilters, 'attribution.target_event_filter', issues)
+    sqlBuilder.attribution.events.forEach((item, index) => {
+      appendEventScopeFieldIssue(item.event, `attribution.events[${index}].event`, issues)
+      appendEventScopeFilterIssues(item.filters, `attribution.events[${index}].filter`, issues)
+    })
+  }
   sqlBuilder.groups.forEach((field, index) => appendEventScopeFieldIssue(field, `group[${index}]`, issues))
   appendEventScopeFilterIssues(sqlBuilder.globalFilters, 'global_filter', issues)
   return unique(issues)
@@ -3045,6 +3161,22 @@ function builderFilterScopeIssues() {
       'interval.end_event_filter',
       issues
     )
+  }
+  if (isAttributionAnalysis.value) {
+    appendFilterRangeIssues(
+      sqlBuilder.attribution.targetEventFilters,
+      eventFilterFieldOptions(sqlBuilder.attribution.targetEvent),
+      'attribution.target_event_filter',
+      issues
+    )
+    sqlBuilder.attribution.events.forEach((item, index) => {
+      appendFilterRangeIssues(
+        item.filters,
+        eventFilterFieldOptions(item.event),
+        `attribution.events[${index}].filter`,
+        issues
+      )
+    })
   }
   appendFilterRangeIssues(sqlBuilder.globalFilters, eventUserPropertyOptions.value, 'global_filter', issues)
   return unique(issues)
@@ -3175,8 +3307,33 @@ function resetRevenueConfig() {
   sqlBuilder.revenue.observationDays = DEFAULT_REVENUE_OBSERVATION_DAYS
 }
 
+function createAttributionEvent(): SqlBuilderAttributionEvent {
+  return {
+    id: nodeId('attribution-event'),
+    event: '',
+    filterLogic: 'and',
+    filters: [],
+  }
+}
+
+function resetAttributionConfig() {
+  sqlBuilder.attribution.entityField = ''
+  sqlBuilder.attribution.method = 'linear'
+  sqlBuilder.attribution.window = { ...DEFAULT_ATTRIBUTION_WINDOW }
+  sqlBuilder.attribution.targetEvent = ''
+  sqlBuilder.attribution.targetEventFilterLogic = 'and'
+  sqlBuilder.attribution.targetEventFilters = []
+  sqlBuilder.attribution.targetMetric.aggregation = 'count'
+  sqlBuilder.attribution.targetMetric.metricField = ''
+  sqlBuilder.attribution.includeDirect = true
+  sqlBuilder.attribution.events = [createAttributionEvent()]
+  attributionTargetFilterExpanded.value = false
+  Object.keys(attributionEventFilterExpanded).forEach((key) => { delete attributionEventFilterExpanded[key] })
+  sqlBuilder.attribution.events.forEach((item) => { attributionEventFilterExpanded[item.id] = false })
+}
+
 function handleAnalysisModelChange(model: AnalysisModel) {
-  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue'].includes(model) ? model : 'event'
+  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution'].includes(model) ? model : 'event'
   if (sqlBuilder.analysisModel === 'retention') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3188,6 +3345,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetIntervalConfig()
     resetPathConfig()
     resetRevenueConfig()
+    resetAttributionConfig()
   } else if (sqlBuilder.analysisModel === 'funnel') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3199,6 +3357,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetIntervalConfig()
     resetPathConfig()
     resetRevenueConfig()
+    resetAttributionConfig()
   } else if (sqlBuilder.analysisModel === 'distribution') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3210,6 +3369,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetIntervalConfig()
     resetPathConfig()
     resetRevenueConfig()
+    resetAttributionConfig()
   } else if (sqlBuilder.analysisModel === 'interval') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3221,6 +3381,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetIntervalConfig()
     resetPathConfig()
     resetRevenueConfig()
+    resetAttributionConfig()
   } else if (sqlBuilder.analysisModel === 'path') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3232,6 +3393,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetIntervalConfig()
     resetPathConfig()
     resetRevenueConfig()
+    resetAttributionConfig()
   } else if (sqlBuilder.analysisModel === 'revenue') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3243,6 +3405,19 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetIntervalConfig()
     resetPathConfig()
     resetRevenueConfig()
+    resetAttributionConfig()
+  } else if (sqlBuilder.analysisModel === 'attribution') {
+    sqlBuilder.metricItems = []
+    sqlBuilder.calculatedMetrics = []
+    activeFormulaMetricId.value = ''
+    form.chartType = 'table'
+    resetRetentionConfig()
+    resetFunnelConfig()
+    resetDistributionConfig()
+    resetIntervalConfig()
+    resetPathConfig()
+    resetRevenueConfig()
+    resetAttributionConfig()
   } else {
     resetRetentionConfig()
     resetFunnelConfig()
@@ -3250,6 +3425,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetIntervalConfig()
     resetPathConfig()
     resetRevenueConfig()
+    resetAttributionConfig()
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
     addMetricItem()
@@ -3607,6 +3783,127 @@ function pathBlockingIssues() {
     issues.push('路径分析会话间隔必须在 1 秒到 24 小时之间。')
   }
   return issues
+}
+
+function handleAttributionTargetEventChange(eventValue: string) {
+  const changed = sqlBuilder.attribution.targetEvent !== eventValue
+  sqlBuilder.attribution.targetEvent = eventValue
+  if (!changed) return
+  sqlBuilder.attribution.targetEventFilterLogic = 'and'
+  sqlBuilder.attribution.targetEventFilters = []
+  sqlBuilder.attribution.targetMetric.aggregation = 'count'
+  sqlBuilder.attribution.targetMetric.metricField = ''
+  attributionTargetFilterExpanded.value = false
+}
+
+function syncAttributionTargetMetricField() {
+  if (sqlBuilder.attribution.targetMetric.aggregation === 'count') {
+    sqlBuilder.attribution.targetMetric.metricField = ''
+    return
+  }
+  if (!optionExists(sqlBuilder.attribution.targetMetric.metricField, attributionTargetMetricFieldOptions.value)) {
+    sqlBuilder.attribution.targetMetric.metricField = ''
+  }
+}
+
+function toggleAttributionTargetFilter() {
+  if (!sqlBuilder.attribution.targetEvent) return
+  if (!attributionTargetFilterExpanded.value && !sqlBuilder.attribution.targetEventFilters.length) {
+    sqlBuilder.attribution.targetEventFilters.push(emptyBuilderFilter())
+  }
+  attributionTargetFilterExpanded.value = !attributionTargetFilterExpanded.value
+}
+
+function addAttributionEvent() {
+  if (sqlBuilder.attribution.events.length >= ATTRIBUTION_EVENT_LIMIT) {
+    ElMessage.warning(`归因分析最多支持 ${ATTRIBUTION_EVENT_LIMIT} 个归因事件。`)
+    return
+  }
+  const item = createAttributionEvent()
+  sqlBuilder.attribution.events.push(item)
+  attributionEventFilterExpanded[item.id] = false
+}
+
+function removeAttributionEvent(index: number) {
+  const [removed] = sqlBuilder.attribution.events.splice(index, 1)
+  if (removed) delete attributionEventFilterExpanded[removed.id]
+}
+
+function handleAttributionEventChange(item: SqlBuilderAttributionEvent, eventValue: string) {
+  if (item.event === eventValue) return
+  item.event = eventValue
+  item.filterLogic = 'and'
+  item.filters = []
+  attributionEventFilterExpanded[item.id] = false
+}
+
+function toggleAttributionEventFilter(item: SqlBuilderAttributionEvent) {
+  if (!item.event) return
+  if (!attributionEventFilterExpanded[item.id] && !item.filters.length) item.filters.push(emptyBuilderFilter())
+  attributionEventFilterExpanded[item.id] = !attributionEventFilterExpanded[item.id]
+}
+
+function attributionBlockingIssues() {
+  if (!isAttributionAnalysis.value) return []
+  const issues: string[] = []
+  const attribution = sqlBuilder.attribution
+  if (!attribution.entityField) issues.push('归因分析请先选择分析主体。')
+  if (attribution.method !== 'linear') issues.push('归因分析使用了不支持的归因方式。')
+  if (!isValidAttributionWindow(attribution.window)) issues.push('归因分析窗口期配置无效，请重新设置。')
+  if (!attribution.targetEvent) issues.push('归因分析请先选择目标事件。')
+  if (attribution.targetMetric.aggregation !== 'count' && !attribution.targetMetric.metricField) {
+    issues.push('目标事件使用非次数聚合时，请选择计算字段。')
+  }
+  if (!attribution.events.some((item) => item.event)) issues.push('归因分析请至少选择一个归因事件。')
+  if (attribution.events.length > ATTRIBUTION_EVENT_LIMIT) {
+    issues.push(`归因分析最多支持 ${ATTRIBUTION_EVENT_LIMIT} 个归因事件。`)
+  }
+  attribution.events.forEach((item, index) => {
+    if (!item.event) issues.push(`归因分析请先选择归因事件${index + 1}。`)
+  })
+  return issues
+}
+
+function sanitizeAttributionConfig() {
+  if (!isAttributionAnalysis.value) return
+  const attribution = sqlBuilder.attribution
+  const cleared: string[] = []
+  if (attribution.entityField && !optionExists(attribution.entityField, attributionEntityFieldOptions.value)) {
+    attribution.entityField = ''
+    cleared.push('分析主体')
+  }
+  if (attribution.targetEvent && !optionExists(attribution.targetEvent, attributionEventOptions.value)) {
+    attribution.targetEvent = ''
+    attribution.targetEventFilters = []
+    attribution.targetMetric.metricField = ''
+    attributionTargetFilterExpanded.value = false
+    cleared.push('目标事件')
+  }
+  if (filterFieldValues(attribution.targetEventFilters).some(
+    (field) => !optionExists(field, eventFilterFieldOptions(attribution.targetEvent))
+  )) {
+    attribution.targetEventFilters = []
+    attributionTargetFilterExpanded.value = false
+    cleared.push('目标事件筛选')
+  }
+  syncAttributionTargetMetricField()
+  attribution.events = attribution.events.slice(0, ATTRIBUTION_EVENT_LIMIT).map((item) => {
+    if (item.event && !optionExists(item.event, attributionEventOptions.value)) {
+      item.event = ''
+      item.filters = []
+      attributionEventFilterExpanded[item.id] = false
+      cleared.push('归因事件')
+    }
+    if (filterFieldValues(item.filters).some((field) => !optionExists(field, eventFilterFieldOptions(item.event)))) {
+      item.filters = []
+      attributionEventFilterExpanded[item.id] = false
+      cleared.push('归因事件筛选')
+    }
+    return item
+  })
+  attribution.window = normalizeAttributionWindow(attribution.window)
+  if (!attribution.events.length) addAttributionEvent()
+  if (cleared.length) ElMessage.warning(`${unique(cleared).join('、')}在当前数据源中无效，已清除，请重新选择。`)
 }
 
 function sanitizeRetentionConfig() {
@@ -3990,6 +4287,13 @@ function selectedBuilderFieldValues() {
       sqlBuilder.revenue.metric.field,
       sqlBuilder.revenue.costField,
     ] : []),
+    ...(sqlBuilder.analysisModel === 'attribution' ? [
+      sqlBuilder.attribution.entityField,
+      sqlBuilder.attribution.targetEvent,
+      sqlBuilder.attribution.targetMetric.metricField,
+      ...filterFieldValues(sqlBuilder.attribution.targetEventFilters),
+      ...sqlBuilder.attribution.events.flatMap((item) => [item.event, ...filterFieldValues(item.filters)]),
+    ] : []),
     ...sqlBuilder.metricItems.flatMap((item) => [item.field, item.metric]),
     ...sqlBuilder.calculatedMetrics.flatMap((item) => [item.pendingEventField, item.pendingMetricField]),
     ...formulaFields,
@@ -4150,6 +4454,32 @@ function collectBuilderAiContext() {
       },
       observationDays: clampRevenueObservationDays(sqlBuilder.revenue.observationDays),
     } : null,
+    attribution: sqlBuilder.analysisModel === 'attribution' ? {
+      content: '把目标事件发生前窗口期内的归因事件按线性归因方式均分贡献，统计各归因事件获得的目标次数、目标值和贡献占比',
+      entityField: fieldOptionPayload(sqlBuilder.attribution.entityField),
+      method: sqlBuilder.attribution.method,
+      window: normalizeAttributionWindow(sqlBuilder.attribution.window),
+      targetEvent: fieldOptionPayload(sqlBuilder.attribution.targetEvent),
+      targetEventFilters: {
+        logic: sqlBuilder.attribution.targetEventFilterLogic,
+        rules: filterContext(sqlBuilder.attribution.targetEventFilters),
+      },
+      targetMetric: {
+        aggregation: sqlBuilder.attribution.targetMetric.aggregation,
+        metricField: sqlBuilder.attribution.targetMetric.aggregation === 'count'
+          ? null
+          : fieldOptionPayload(sqlBuilder.attribution.targetMetric.metricField),
+      },
+      includeDirect: sqlBuilder.attribution.includeDirect,
+      events: sqlBuilder.attribution.events.map((item, index) => ({
+        order: index + 1,
+        event: fieldOptionPayload(item.event),
+        filters: {
+          logic: item.filterLogic,
+          rules: filterContext(item.filters),
+        },
+      })),
+    } : null,
     chart: {
       title: form.title,
       type: form.chartType,
@@ -4243,6 +4573,7 @@ function collectLocalBuilderConfigIssues() {
   const intervalIssues = intervalBlockingIssues()
   const pathIssues = pathBlockingIssues()
   const revenueIssues = revenueBlockingIssues()
+  const attributionIssues = attributionBlockingIssues()
   const issues: string[] = [
     ...eventScopeIssues,
     ...retentionIssues,
@@ -4251,6 +4582,7 @@ function collectLocalBuilderConfigIssues() {
     ...intervalIssues,
     ...pathIssues,
     ...revenueIssues,
+    ...attributionIssues,
   ]
   const suggestions: string[] = []
   if (eventScopeIssues.length && eventFieldScope.value.defaultEventTable) {
@@ -4441,7 +4773,8 @@ async function generateBuilderAiSql() {
   const distributionIssues = distributionBlockingIssues()
   const intervalIssues = intervalBlockingIssues()
   const pathIssues = pathBlockingIssues()
-  if (retentionIssues.length || funnelIssues.length || distributionIssues.length || intervalIssues.length || pathIssues.length) {
+  const attributionIssues = attributionBlockingIssues()
+  if (retentionIssues.length || funnelIssues.length || distributionIssues.length || intervalIssues.length || pathIssues.length || attributionIssues.length) {
     const localAdvice = collectLocalBuilderConfigIssues()
     const analysisIssues = retentionIssues.length
       ? retentionIssues
@@ -4451,7 +4784,9 @@ async function generateBuilderAiSql() {
           ? distributionIssues
           : intervalIssues.length
             ? intervalIssues
-            : pathIssues
+            : pathIssues.length
+              ? pathIssues
+              : attributionIssues
     const analysisLabel = retentionIssues.length
       ? '留存'
       : funnelIssues.length
@@ -4460,7 +4795,9 @@ async function generateBuilderAiSql() {
           ? '分布'
           : intervalIssues.length
             ? '间隔'
-            : '路径'
+            : pathIssues.length
+              ? '路径'
+              : '归因'
     setBuilderAgentAdvice({
       severity: 'warning',
       intent: inferBuilderIntentText(),
@@ -4620,7 +4957,7 @@ async function generateBuilderAiSql() {
       form.y[0],
     ]
   }
-  if (sqlBuilder.analysisModel === 'revenue' || result.analysis_model === 'revenue') {
+    if (sqlBuilder.analysisModel === 'revenue' || result.analysis_model === 'revenue') {
     const resultConfig = result.result_config || result.resultConfig || {}
     const observationDays = clampRevenueObservationDays(
       resultConfig.observation_days || resultConfig.observationDays || sqlBuilder.revenue.observationDays
@@ -4636,6 +4973,16 @@ async function generateBuilderAiSql() {
       ...(resultConfig.roi_field || resultConfig.roiField
         ? [String(resultConfig.roi_field || resultConfig.roiField)]
         : []),
+    ]
+  }
+  if (sqlBuilder.analysisModel === 'attribution' || result.analysis_model === 'attribution') {
+    const resultConfig = result.result_config || result.resultConfig || {}
+    form.chartType = 'table'
+    form.columns = [
+      String(resultConfig.event_field || resultConfig.eventField || 'attribution_event'),
+      String(resultConfig.target_count_field || resultConfig.targetCountField || 'target_count'),
+      String(resultConfig.attributed_value_field || resultConfig.attributedValueField || 'attributed_value'),
+      String(resultConfig.contribution_rate_field || resultConfig.contributionRateField || 'contribution_rate'),
     ]
   }
   syncDashboardDateParameterUsage()
@@ -4755,6 +5102,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
     sanitizeIntervalConfig()
     sanitizePathConfig()
     sanitizeRevenueConfig()
+    sanitizeAttributionConfig()
     if (sqlBuilder.analysisModel === 'event') {
       if (!sqlBuilder.metricItems.length && !sqlBuilder.calculatedMetrics.length) {
         addMetricItem()
@@ -5178,6 +5526,7 @@ function currentPreviewSignature() {
     interval: sqlBuilder.analysisModel === 'interval' ? sqlBuilder.interval : null,
     path: sqlBuilder.analysisModel === 'path' ? sqlBuilder.path : null,
     revenue: sqlBuilder.analysisModel === 'revenue' ? sqlBuilder.revenue : null,
+    attribution: sqlBuilder.analysisModel === 'attribution' ? sqlBuilder.attribution : null,
     sources: [...form.sourceTypes],
     sql: hasSqlSource.value
       ? {
@@ -5982,6 +6331,8 @@ function initEditor() {
         ? 'table'
       : isPathAnalysis.value
         ? 'sankey'
+      : isAttributionAnalysis.value
+        ? 'table'
       : (chart.sourceType || chart.type || 'table')
   form.columns = axisValues(chart.columns)
   form.x = axisValues(chart.xAxis)[0] || ''
@@ -6935,7 +7286,7 @@ function closeDrawer() {
               </div>
             </section>
 
-            <section v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis" class="builder-section">
+            <section v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis" class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
                   <BuilderSectionIcon class="builder-section-icon" />
@@ -7697,6 +8048,166 @@ function closeDrawer() {
               </div>
             </section>
 
+            <section v-else-if="isAttributionAnalysis" class="builder-section attribution-builder-section">
+              <div class="attribution-heading-row">
+                <div class="builder-section-head">
+                  <div class="builder-section-title">
+                    <BuilderSectionIcon class="builder-section-icon" />
+                    <span>归因分析</span>
+                  </div>
+                </div>
+                <div class="attribution-subject-line">
+                  <span>对</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.attribution.entityField"
+                    :options="attributionEntityFieldOptions"
+                    :loading="schemaLoading"
+                    mode="property"
+                    placeholder="选择分析主体"
+                  />
+                  <span>进行分析</span>
+                </div>
+              </div>
+
+              <div class="attribution-settings">
+                <div class="attribution-method-row">
+                  <span>归因方式</span>
+                  <el-select v-model="sqlBuilder.attribution.method" class="attribution-method-select">
+                    <el-option label="线性归因" value="linear" />
+                  </el-select>
+                </div>
+                <AttributionWindowPicker v-model="sqlBuilder.attribution.window" />
+              </div>
+
+              <div class="attribution-divider" />
+
+              <div class="attribution-event-block">
+                <span class="attribution-config-label">目标事件</span>
+                <div class="attribution-target-row">
+                  <BuilderFieldPicker
+                    :model-value="sqlBuilder.attribution.targetEvent"
+                    :options="attributionEventOptions"
+                    :loading="schemaLoading"
+                    mode="tracking-event"
+                    placeholder="选择目标事件"
+                    @update:modelValue="handleAttributionTargetEventChange"
+                  />
+                  <span>的</span>
+                  <el-select
+                    v-model="sqlBuilder.attribution.targetMetric.aggregation"
+                    class="attribution-metric-select"
+                    @change="syncAttributionTargetMetricField"
+                  >
+                    <el-option
+                      v-for="option in builderAggregationOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                  <BuilderFieldPicker
+                    v-if="sqlBuilder.attribution.targetMetric.aggregation !== 'count'"
+                    v-model="sqlBuilder.attribution.targetMetric.metricField"
+                    :options="attributionTargetMetricFieldOptions"
+                    :loading="schemaLoading"
+                    mode="metric"
+                    placeholder="计算字段"
+                  />
+                  <button
+                    type="button"
+                    class="retention-event-action"
+                    :class="{ 'is-active': attributionTargetFilterExpanded || hasEffectiveBuilderFilters(sqlBuilder.attribution.targetEventFilters) }"
+                    title="筛选目标事件"
+                    aria-label="筛选目标事件"
+                    :disabled="!sqlBuilder.attribution.targetEvent"
+                    @click="toggleAttributionTargetFilter"
+                  >
+                    <el-icon><Filter /></el-icon>
+                  </button>
+                </div>
+                <div v-if="attributionTargetFilterExpanded" class="retention-event-filter-panel">
+                  <BuilderFilterTree
+                    :nodes="sqlBuilder.attribution.targetEventFilters"
+                    :logic="sqlBuilder.attribution.targetEventFilterLogic"
+                    :field-options="eventFilterFieldOptions(sqlBuilder.attribution.targetEvent)"
+                    :operator-options="builderFilterOperatorOptions"
+                    :schema-loading="schemaLoading"
+                    picker-mode="filter-property"
+                    :filter-property-tabs="['all', 'event', 'user']"
+                    :show-toolbar="true"
+                    empty-text="暂无目标事件筛选"
+                    @update:logic="sqlBuilder.attribution.targetEventFilterLogic = $event"
+                    @empty="attributionTargetFilterExpanded = false"
+                  />
+                </div>
+              </div>
+
+              <el-checkbox v-model="sqlBuilder.attribution.includeDirect" class="attribution-direct-checkbox">
+                直接转化参与归因计算
+                <el-tooltip content="没有匹配归因事件的目标转化将作为直接转化计入结果。" placement="top">
+                  <span class="attribution-info-icon" aria-label="直接转化说明">i</span>
+                </el-tooltip>
+              </el-checkbox>
+
+              <div class="attribution-event-block attribution-source-block">
+                <span class="attribution-config-label">归因事件</span>
+                <div v-for="(item, index) in sqlBuilder.attribution.events" :key="item.id" class="attribution-source-item">
+                  <span class="attribution-event-index">{{ index + 1 }}</span>
+                  <div class="attribution-source-content">
+                    <div class="attribution-source-row">
+                      <BuilderFieldPicker
+                        :model-value="item.event"
+                        :options="attributionEventOptions"
+                        :loading="schemaLoading"
+                        mode="tracking-event"
+                        placeholder="选择归因事件"
+                        @update:modelValue="handleAttributionEventChange(item, $event)"
+                      />
+                      <button
+                        type="button"
+                        class="retention-event-action"
+                        :class="{ 'is-active': attributionEventFilterExpanded[item.id] || hasEffectiveBuilderFilters(item.filters) }"
+                        :title="`筛选归因事件${index + 1}`"
+                        :aria-label="`筛选归因事件${index + 1}`"
+                        :disabled="!item.event"
+                        @click="toggleAttributionEventFilter(item)"
+                      >
+                        <el-icon><Filter /></el-icon>
+                      </button>
+                      <button
+                        type="button"
+                        class="retention-event-action"
+                        :title="`删除归因事件${index + 1}`"
+                        :aria-label="`删除归因事件${index + 1}`"
+                        @click="removeAttributionEvent(index)"
+                      >
+                        <el-icon><Delete /></el-icon>
+                      </button>
+                    </div>
+                    <div v-if="attributionEventFilterExpanded[item.id]" class="retention-event-filter-panel">
+                      <BuilderFilterTree
+                        :nodes="item.filters"
+                        :logic="item.filterLogic"
+                        :field-options="eventFilterFieldOptions(item.event)"
+                        :operator-options="builderFilterOperatorOptions"
+                        :schema-loading="schemaLoading"
+                        picker-mode="filter-property"
+                        :filter-property-tabs="['all', 'event', 'user']"
+                        :show-toolbar="true"
+                        :empty-text="`暂无归因事件${index + 1}筛选`"
+                        @update:logic="item.filterLogic = $event"
+                        @empty="attributionEventFilterExpanded[item.id] = false"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="builder-add-link attribution-add-event" @click="addAttributionEvent">
+                  <el-icon><Plus /></el-icon>
+                  <span>归因事件</span>
+                </button>
+              </div>
+            </section>
+
             <section v-else-if="isFunnelAnalysis" class="builder-section funnel-builder-section">
               <div class="funnel-heading-row">
                 <div class="builder-section-head">
@@ -8187,7 +8698,7 @@ function closeDrawer() {
           </div>
           <div class="builder-bottom-bar">
             <div class="builder-bottom-options">
-              <el-checkbox v-if="sqlBuilder.activeTab === 'builder' && !isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis" v-model="sqlBuilder.approximate">
+              <el-checkbox v-if="sqlBuilder.activeTab === 'builder' && !isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isAttributionAnalysis" v-model="sqlBuilder.approximate">
                 近似计算
               </el-checkbox>
             </div>
@@ -8433,7 +8944,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
+            <el-select v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -8441,10 +8952,10 @@ function closeDrawer() {
                 :value="item.value"
               />
             </el-select>
-            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : isDistributionAnalysis ? '分布表' : isIntervalAnalysis ? '间隔表' : isPathAnalysis ? '桑基图' : isRevenueAnalysis ? '收入表' : '留存表'" disabled />
+            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : isDistributionAnalysis ? '分布表' : isIntervalAnalysis ? '间隔表' : isPathAnalysis ? '桑基图' : isRevenueAnalysis ? '收入表' : isAttributionAnalysis ? '归因表' : '留存表'" disabled />
           </el-form-item>
         </div>
-        <el-form-item v-if="form.chartType === 'table' && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis" :label="t('dashboard.sql_editor_columns')">
+        <el-form-item v-if="form.chartType === 'table' && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis" :label="t('dashboard.sql_editor_columns')">
           <el-select v-model="form.columns" multiple filterable>
             <el-option
               v-for="field in fieldOptions"
@@ -9216,7 +9727,20 @@ function closeDrawer() {
   margin-bottom: 0;
 }
 
-.revenue-subject-line {
+.attribution-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.attribution-heading-row .builder-section-head {
+  flex: 0 0 96px;
+  margin-bottom: 0;
+}
+
+.revenue-subject-line,
+.attribution-subject-line {
   flex: 1 1 auto;
   display: grid;
   grid-template-columns: auto minmax(160px, 280px) auto;
@@ -9244,15 +9768,59 @@ function closeDrawer() {
   min-width: 0;
 }
 
-.revenue-config-label {
+.revenue-config-label,
+.attribution-config-label {
+  display: block;
+  margin-bottom: 8px;
   color: #8a93a3;
   font-size: 12px;
+}
+
+.attribution-subject-line :deep(.builder-field-picker-trigger) {
+  width: 100%;
+}
+
+.attribution-settings {
+  display: grid;
+  gap: 14px;
+  color: #505968;
+  font-size: 13px;
+}
+
+.attribution-method-row {
+  display: grid;
+  grid-template-columns: 64px minmax(100px, 160px);
+  align-items: center;
+  gap: 8px;
+}
+
+.attribution-method-select {
+  width: 100%;
+}
+
+.attribution-divider {
+  height: 1px;
+  margin: 18px -22px;
+  background: #eef0f4;
+}
+
+.attribution-event-block {
+  min-width: 0;
 }
 
 .revenue-event-flow,
 .revenue-metric-flow,
 .revenue-cost-field-row,
 .revenue-observation-row > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #505968;
+  font-size: 13px;
+}
+
+.attribution-target-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -9295,6 +9863,77 @@ function closeDrawer() {
 
 .revenue-observation-row :deep(.el-input-number) {
   width: 80px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.attribution-target-row :deep(.builder-field-picker) {
+  min-width: 150px;
+}
+
+.attribution-metric-select {
+  width: 104px;
+}
+
+.attribution-direct-checkbox {
+  margin-top: 14px;
+}
+
+.attribution-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  border: 1px solid #aab2bf;
+  border-radius: 50%;
+  color: #8b94a2;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.attribution-source-block {
+  margin-top: 22px;
+}
+
+.attribution-source-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.attribution-event-index {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 3px;
+  border-radius: 7px;
+  color: #fff;
+  background: #252b56;
+  font-size: 12px;
+}
+
+.attribution-source-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.attribution-source-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 360px) 30px 30px;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+}
+
+.attribution-add-event {
+  margin: 4px 0 0 34px;
 }
 
 .distribution-heading-row .builder-section-head {
@@ -9580,6 +10219,24 @@ function closeDrawer() {
   .revenue-heading-row {
     flex-wrap: wrap;
     gap: 10px;
+  }
+
+  .attribution-heading-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .attribution-heading-row .attribution-subject-line {
+    flex-basis: 100%;
+    grid-template-columns: auto minmax(160px, 1fr) auto;
+  }
+
+  .attribution-target-row {
+    flex-wrap: wrap;
+  }
+
+  .attribution-source-row {
+    grid-template-columns: minmax(0, 1fr) 30px 30px;
   }
 
   .retention-heading-row .retention-subject-line {
