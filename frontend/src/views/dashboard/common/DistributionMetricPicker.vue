@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ArrowRight, Search } from '@element-plus/icons-vue'
 import type { FieldOption } from './builderFieldPickerOptions'
 import { fieldOptionDisplayName } from './builderFieldPickerOptions'
 import type {
@@ -25,7 +26,8 @@ const emits = defineEmits<{
 }>()
 
 const visible = ref(false)
-const draft = ref<DistributionMetricConfig>({ kind: 'count', field: '', aggregation: 'sum' })
+const propertySearch = ref('')
+const pendingProperty = ref('')
 
 const presetOptions = [
   { label: '次数', value: 'count' as DistributionMetricKind },
@@ -57,8 +59,18 @@ const aggregationOptions: Array<{ label: string; value: DistributionPropertyAggr
   { label: '5分位数', value: 'percentile_05' },
 ]
 
-const selectableProperties = computed(() => props.propertyOptions.filter((item) => item.value && item.kind !== 'tracking-event'))
+const selectableProperties = computed(() => props.propertyOptions.filter((item) => (
+  item.value && item.kind !== 'tracking-event'
+)))
+const filteredProperties = computed(() => {
+  const keyword = propertySearch.value.trim().toLocaleLowerCase()
+  if (!keyword) return selectableProperties.value
+  return selectableProperties.value.filter((item) => (
+    fieldOptionDisplayName(item).toLocaleLowerCase().includes(keyword)
+  ))
+})
 const selectedProperty = computed(() => selectableProperties.value.find((item) => item.value === props.modelValue.field))
+const pendingPropertyOption = computed(() => selectableProperties.value.find((item) => item.value === pendingProperty.value))
 const selectedAggregationLabel = computed(() => (
   aggregationOptions.find((item) => item.value === props.modelValue.aggregation)?.label || '总和'
 ))
@@ -71,11 +83,8 @@ const displayLabel = computed(() => {
 
 watch(visible, (next) => {
   if (!next) return
-  draft.value = {
-    kind: props.modelValue.kind || 'count',
-    field: props.modelValue.field || '',
-    aggregation: props.modelValue.aggregation || 'sum',
-  }
+  propertySearch.value = ''
+  pendingProperty.value = props.modelValue.kind === 'property' ? props.modelValue.field : ''
 })
 
 function choosePreset(kind: DistributionMetricKind) {
@@ -83,12 +92,16 @@ function choosePreset(kind: DistributionMetricKind) {
   visible.value = false
 }
 
-function applyPropertyMetric() {
-  if (!draft.value.field) return
+function chooseProperty(field: string) {
+  pendingProperty.value = field
+}
+
+function chooseAggregation(aggregation: DistributionPropertyAggregation) {
+  if (!pendingProperty.value) return
   emits('update:modelValue', {
     kind: 'property',
-    field: draft.value.field,
-    aggregation: draft.value.aggregation,
+    field: pendingProperty.value,
+    aggregation,
   })
   visible.value = false
 }
@@ -98,9 +111,10 @@ function applyPropertyMetric() {
   <el-popover
     v-model:visible="visible"
     placement="bottom-start"
-    :width="440"
+    :width="320"
     trigger="click"
     popper-class="distribution-metric-popper"
+    :teleported="false"
   >
     <template #reference>
       <button
@@ -114,64 +128,77 @@ function applyPropertyMetric() {
       </button>
     </template>
 
-    <div class="distribution-metric-panel">
-      <div class="distribution-metric-sentence">
-        <span>将</span>
-        <strong>{{ eventLabel }}</strong>
-        <span>的</span>
-      </div>
-      <div class="distribution-preset-list" aria-label="预置计算方法">
-        <span class="distribution-option-heading">预置计算方法</span>
-        <button
-          v-for="option in presetOptions"
-          :key="option.value"
-          type="button"
-          class="distribution-preset-option"
-          :class="{ 'is-active': modelValue.kind === option.value }"
-          @click="choosePreset(option.value)"
+    <div class="distribution-metric-panel" :class="{ 'has-aggregation': pendingProperty }">
+      <div class="distribution-metric-main">
+        <div class="distribution-metric-sentence">
+          <span>将</span>
+          <strong>{{ eventLabel }}</strong>
+          <span>的指标设为</span>
+        </div>
+
+        <el-input
+          v-model="propertySearch"
+          class="distribution-metric-search"
+          clearable
+          placeholder="请输入搜索"
+          aria-label="搜索分布指标"
+          @keydown.stop
         >
-          {{ option.label }}
-        </button>
-      </div>
-      <div class="distribution-property-metric">
-        <span class="distribution-option-heading">事件属性指标</span>
-        <div class="distribution-property-flow">
-          <el-select
-            v-model="draft.field"
-            filterable
-            clearable
-            :teleported="false"
-            :loading="loading"
-            placeholder="选择事件属性"
-            aria-label="分布事件属性"
-          >
-            <el-option
-              v-for="option in selectableProperties"
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+
+        <div class="distribution-metric-scroll">
+          <div class="distribution-metric-group">
+            <span class="distribution-option-heading">预置计算方法</span>
+            <button
+              v-for="option in presetOptions"
               :key="option.value"
-              :label="fieldOptionDisplayName(option)"
-              :value="option.value"
-            />
-          </el-select>
-          <span>的</span>
-          <el-select
-            v-model="draft.aggregation"
-            filterable
-            :teleported="false"
-            aria-label="分布属性聚合方式"
-          >
-            <el-option
-              v-for="option in aggregationOptions"
+              type="button"
+              class="distribution-menu-option"
+              :class="{ 'is-active': modelValue.kind === option.value }"
+              @click="choosePreset(option.value)"
+            >
+              <span>{{ option.label }}</span>
+            </button>
+          </div>
+
+          <div class="distribution-metric-group distribution-property-group">
+            <span class="distribution-option-heading">事件属性指标</span>
+            <button
+              v-for="option in filteredProperties"
               :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
-          </el-select>
-          <span>作为指标</span>
+              type="button"
+              class="distribution-menu-option"
+              :class="{ 'is-active': pendingProperty === option.value }"
+              @click="chooseProperty(option.value)"
+            >
+              <span>{{ fieldOptionDisplayName(option) }}</span>
+              <el-icon><ArrowRight /></el-icon>
+            </button>
+            <span v-if="loading" class="distribution-menu-empty">正在加载属性...</span>
+            <span v-else-if="!filteredProperties.length" class="distribution-menu-empty">暂无匹配属性</span>
+          </div>
         </div>
       </div>
-      <div class="distribution-metric-actions">
-        <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" :disabled="!draft.field" @click="applyPropertyMetric">应用</el-button>
+
+      <div v-if="pendingProperty" class="distribution-aggregation-panel">
+        <span class="distribution-option-heading">{{ fieldOptionDisplayName(pendingPropertyOption) }}</span>
+        <div class="distribution-aggregation-list">
+          <button
+            v-for="option in aggregationOptions"
+            :key="option.value"
+            type="button"
+            class="distribution-menu-option"
+            :class="{
+              'is-active': modelValue.kind === 'property'
+                && modelValue.field === pendingProperty
+                && modelValue.aggregation === option.value,
+            }"
+            @click="chooseAggregation(option.value)"
+          >
+            <span>{{ option.label }}</span>
+          </button>
+        </div>
       </div>
     </div>
   </el-popover>
@@ -179,14 +206,14 @@ function applyPropertyMetric() {
 
 <style scoped>
 .distribution-metric-trigger {
-  max-width: 260px;
+  max-width: 210px;
   min-height: 30px;
-  padding: 4px 10px;
+  padding: 3px 9px;
   overflow: hidden;
-  border: 1px solid #e1e4ea;
+  border: 1px solid #8aa0ff;
   border-radius: 6px;
-  color: #303643;
-  background: #f5f6f8;
+  color: #3154e8;
+  background: #fff;
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -196,85 +223,140 @@ function applyPropertyMetric() {
 .distribution-metric-trigger:hover,
 .distribution-metric-trigger:focus-visible {
   border-color: #3154e8;
-  background: #fff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(49 84 232 / 10%);
 }
 
 .distribution-metric-trigger:disabled {
-  opacity: 0.45;
+  opacity: .45;
   cursor: not-allowed;
 }
 
 .distribution-metric-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 250px;
   color: #303643;
+}
+
+.distribution-metric-panel.has-aggregation {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.distribution-metric-main {
+  min-width: 0;
+  padding: 10px 8px 8px;
 }
 
 .distribution-metric-sentence {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 4px 9px;
+  color: #4b515c;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
-.distribution-preset-list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+.distribution-metric-sentence strong {
+  max-width: 82px;
+  overflow: hidden;
+  color: #303643;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.distribution-metric-search :deep(.el-input__wrapper) {
+  min-height: 28px;
+  border-radius: 5px;
+  box-shadow: 0 0 0 1px #e1e4ea inset;
+}
+
+.distribution-metric-search :deep(.el-input__inner) {
+  font-size: 12px;
+}
+
+.distribution-metric-scroll {
+  max-height: 302px;
+  margin-top: 7px;
+  overflow-y: auto;
+}
+
+.distribution-metric-group {
+  display: flex;
+  flex-direction: column;
+  padding: 3px 0 6px;
+}
+
+.distribution-property-group {
+  margin-top: 3px;
+  padding-top: 9px;
+  border-top: 1px solid #edf0f5;
 }
 
 .distribution-option-heading {
-  grid-column: 1 / -1;
+  display: block;
+  padding: 4px 7px 5px;
+  overflow: hidden;
   color: #8a93a3;
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.distribution-preset-option {
-  min-height: 34px;
-  border: 1px solid #e1e4ea;
-  border-radius: 6px;
-  color: #505968;
-  background: #fff;
-  cursor: pointer;
-}
-
-.distribution-preset-option:hover,
-.distribution-preset-option.is-active {
-  border-color: #3154e8;
-  color: #3154e8;
-  background: #f4f6ff;
-}
-
-.distribution-property-metric {
+.distribution-menu-option {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.distribution-property-flow {
-  display: grid;
-  grid-template-columns: minmax(140px, 1.2fr) auto minmax(120px, 0.8fr) auto;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  font-size: 12px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 5px;
+  color: #303643;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
 }
 
-.distribution-metric-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
+.distribution-menu-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.distribution-menu-option:hover,
+.distribution-menu-option.is-active {
+  color: #3154e8;
+  background: #f0f2f8;
+}
+
+.distribution-menu-empty {
+  padding: 12px 8px;
+  color: #a0a7b2;
+  font-size: 12px;
+  text-align: center;
+}
+
+.distribution-aggregation-panel {
+  min-width: 0;
+  padding: 10px 8px 8px;
+  border-left: 1px solid #edf0f5;
+}
+
+.distribution-aggregation-list {
+  max-height: 344px;
+  overflow-y: auto;
 }
 
 :global(.distribution-metric-popper) {
   max-width: calc(100vw - 24px);
+  padding: 0 !important;
+  overflow: hidden;
 }
 
-@media (max-width: 520px) {
-  .distribution-property-flow {
-    grid-template-columns: 1fr;
-  }
-}
 </style>
