@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus-secondary'
+import FunnelWindowPicker from './FunnelWindowPicker.vue'
 import { REPORT_TYPES, createDefaultReportConfig, getReportType, type ReportTypeKey } from './reportTypes'
 
 const visible = ref(false)
@@ -140,8 +141,7 @@ defineExpose({ open })
             </label>
             <label v-if="isFunnel" class="window-row">
               <span>分析窗口期</span>
-              <el-input-number v-model="config.analysisWindowDays" :min="1" :max="365" controls-position="right" />
-              <span>天</span>
+              <FunnelWindowPicker v-model="config.analysisWindow" />
             </label>
           </div>
 

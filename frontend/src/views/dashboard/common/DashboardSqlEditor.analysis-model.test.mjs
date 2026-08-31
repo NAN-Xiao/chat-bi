@@ -15,6 +15,10 @@ const distributionIntervalSettingsSource = readFileSync(
   fileURLToPath(new URL('./DistributionIntervalSettings.vue', import.meta.url)),
   'utf8'
 )
+const funnelWindowPickerSource = readFileSync(
+  fileURLToPath(new URL('./FunnelWindowPicker.vue', import.meta.url)),
+  'utf8'
+)
 const intervalLimitPickerSource = readFileSync(
   fileURLToPath(new URL('./IntervalLimitPicker.vue', import.meta.url)),
   'utf8'
@@ -97,7 +101,9 @@ test('persists and restores retention configuration in the SQL builder', () => {
   assert.match(saveBody, /relatedProperty\.enabled && sqlBuilder\.retention\.relatedProperty\.asGroup/)
   assert.match(saveBody, /funnel:\s*sqlBuilder\.analysisModel === 'funnel'/)
   assert.match(saveBody, /sqlBuilder\.funnel\.steps\.map/)
-  assert.match(restoreBody, /sqlBuilder\.funnel\.windowDays/)
+  assert.match(saveBody, /window:\s*normalizeFunnelWindow\(sqlBuilder\.funnel\.window\)/)
+  assert.doesNotMatch(saveBody, /windowDays/, '新配置不能继续保存旧 windowDays 字段')
+  assert.match(restoreBody, /normalizeFunnelWindow\(funnel\.window, funnel\.windowDays\)/)
 })
 
 test('includes retention in AI context and preview signature', () => {
@@ -199,12 +205,20 @@ test('provides ordered funnel steps with window and related-property controls', 
   assert.match(source, /class="funnel-heading-row"/)
   assert.match(source, /class="funnel-step-list"/)
   assert.match(source, /v-for="\(step, index\) in sqlBuilder\.funnel\.steps"/)
-  assert.match(source, /sqlBuilder\.funnel\.windowDays/)
+  assert.match(source, /<FunnelWindowPicker v-model="sqlBuilder\.funnel\.window"/)
+  assert.match(source, /window:\s*normalizeFunnelWindow\(sqlBuilder\.funnel\.window\)/)
   assert.match(source, /sqlBuilder\.funnel\.relatedPropertyEnabled/)
   assert.match(source, /function addFunnelStep\(\)/)
   assert.match(source, /function removeFunnelStep\(index: number\)/)
   assert.match(source, /function funnelBlockingIssues\(\)/)
   assert.match(source, /step_field\s*\|\| resultConfig\.stepField \|\| 'step_name'/)
+  assert.match(funnelWindowPickerSource, />当天</)
+  assert.match(funnelWindowPickerSource, /天（即24小时）/)
+  assert.match(funnelWindowPickerSource, /label:\s*'小时'/)
+  assert.match(funnelWindowPickerSource, /label:\s*'分钟'/)
+  assert.match(funnelWindowPickerSource, /presets:[\s\S]*?day:\s*\[1, 7, 14\]/)
+  assert.match(funnelWindowPickerSource, /:teleported="false"/)
+  assert.doesNotMatch(funnelWindowPickerSource, /retention|distribution|interval|path/i)
 })
 
 test('keeps distribution analysis configuration and controls isolated from other models', () => {

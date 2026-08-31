@@ -1209,7 +1209,7 @@ def _funnel_request(**overrides):
     funnel = {
         "entityField": {"table": "event", "field": "user_id", "value": "event.user_id"},
         "steps": steps,
-        "windowDays": 1,
+        "window": {"mode": "duration", "value": 1, "unit": "day"},
         "relatedPropertyEnabled": False,
     }
     funnel.update(overrides)
@@ -1629,7 +1629,7 @@ def test_funnel_config_uses_ordered_steps_and_deterministic_validation() -> None
 def test_funnel_config_rejects_missing_step_and_invalid_chart() -> None:
     request = _funnel_request(
         steps=[{"event": None, "relatedProperty": None}],
-        windowDays=0,
+        window={"mode": "duration", "value": 0, "unit": "day"},
         relatedPropertyEnabled=True,
     )
     request.context["chart"] = {"type": "table"}
@@ -1645,8 +1645,64 @@ def test_funnel_config_rejects_missing_step_and_invalid_chart() -> None:
     assert "漏斗分析至少需要配置两个步骤。" in result.issues
     assert "漏斗步骤1请先选择事件。" in result.issues
     assert "使用关联属性时请选择漏斗步骤1关联属性。" in result.issues
-    assert "漏斗分析窗口期必须是 1 到 365 天。" in result.issues
+    assert "漏斗分析窗口期必须是正整数。" in result.issues
     assert "漏斗分析只能使用漏斗图结果。" in result.issues
+
+
+@pytest.mark.parametrize(
+    "window",
+    [
+        {"mode": "same_day", "value": 1, "unit": "day"},
+        {"mode": "duration", "value": 14, "unit": "day"},
+        {"mode": "duration", "value": 12, "unit": "hour"},
+        {"mode": "duration", "value": 30, "unit": "minute"},
+    ],
+)
+def test_funnel_config_accepts_supported_window_modes(window) -> None:
+    request = _funnel_request(window=window)
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+    )
+
+    assert normalized["funnel"]["window"] == window
+    assert result.success is True
+
+
+def test_funnel_config_migrates_legacy_window_days() -> None:
+    request = _funnel_request(window=None, windowDays=7)
+    normalized = ai_sql_generator._normalize_manual_config(request)
+
+    assert normalized["funnel"]["window"] == {"mode": "duration", "value": 7, "unit": "day"}
+    assert "windowDays" not in normalized["funnel"]
+
+
+@pytest.mark.parametrize(
+    ("window", "expected_issue"),
+    [
+        ({"mode": "calendar_week", "value": 1, "unit": "day"}, "模式必须是当天或时长"),
+        ({"mode": "duration", "value": 1, "unit": "second"}, "单位必须是天、小时或分钟"),
+        ({"mode": "duration", "value": 1.5, "unit": "hour"}, "必须是正整数"),
+        ({"mode": "duration", "value": 366, "unit": "day"}, "不能超过 365 天"),
+    ],
+)
+def test_funnel_config_rejects_invalid_window(window, expected_issue) -> None:
+    request = _funnel_request(window=window)
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+    )
+
+    assert result.success is False
+    assert any(expected_issue in issue for issue in result.issues)
 
 
 def test_funnel_prompt_and_result_validation_require_fixed_columns() -> None:
@@ -1668,9 +1724,24 @@ def test_funnel_prompt_and_result_validation_require_fixed_columns() -> None:
     )
 
     assert "按同一分析主体去重计数" in prompt
+    assert "funnel.window.mode=same_day" in prompt
+    assert "1 天：按精确经过时长计算" in prompt
     assert "step_conversion_rate" in prompt
     assert invalid and "step_order" in invalid[0]
     assert valid == []
+
+
+def test_funnel_same_day_prompt_does_not_convert_to_rolling_24_hours() -> None:
+    request = _funnel_request(window={"mode": "same_day", "value": 1, "unit": "day"})
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
+        "",
+        "",
+    )
+
+    assert "步骤 1 所在的同一个自然日" in prompt
+    assert "不等同于滚动 24 小时" in prompt
 
 
 def test_funnel_subject_and_step_fields_enforce_datasource_permissions() -> None:

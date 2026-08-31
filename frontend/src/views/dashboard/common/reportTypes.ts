@@ -114,7 +114,7 @@ export const createDefaultReportConfig = (type: ReportTypeKey) => {
     analysisUnit: '用户',
     useRelatedProperty: false,
     useIntervalDisplay: false,
-    analysisWindowDays: 1,
+    analysisWindow: { mode: 'duration', value: 1, unit: 'day' },
     globalFilters: [],
     groupItems: [],
   }

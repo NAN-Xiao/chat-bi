@@ -262,6 +262,12 @@ _SUPPORTED_DISTRIBUTION_PROPERTY_AGGREGATIONS = {
     "percentile_70", "percentile_60", "percentile_40", "percentile_30", "percentile_25",
     "percentile_20", "percentile_10", "percentile_05",
 }
+_FUNNEL_WINDOW_MAX_SECONDS = 365 * 24 * 60 * 60
+_FUNNEL_WINDOW_UNITS = {
+    "day": {"label": "天", "seconds": 24 * 60 * 60},
+    "hour": {"label": "小时", "seconds": 60 * 60},
+    "minute": {"label": "分钟", "seconds": 60},
+}
 _NUMERIC_TYPE_KEYWORDS = (
     "int", "float", "double", "decimal", "number", "numeric", "real",
     "数值", "数字", "整数", "小数",
@@ -288,6 +294,59 @@ def _list_dict_items(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, dict)]
+
+
+def _normalized_funnel_window(funnel: dict[str, Any]) -> dict[str, Any]:
+    window = funnel.get("window")
+    if isinstance(window, dict):
+        return copy.deepcopy(window)
+
+    # Known legacy migration: older dashboard configs stored only windowDays/window_days.
+    legacy_days = funnel.get("windowDays")
+    if legacy_days is None:
+        legacy_days = funnel.get("window_days")
+    if legacy_days is not None:
+        return {"mode": "duration", "value": legacy_days, "unit": "day"}
+    return {"mode": "duration", "value": 1, "unit": "day"}
+
+
+def _funnel_window_issues(funnel: dict[str, Any]) -> list[str]:
+    window = _normalized_funnel_window(funnel)
+    mode = str(window.get("mode") or "").strip().lower()
+    if mode == "same_day":
+        return []
+    if mode != "duration":
+        return ["漏斗分析窗口期模式必须是当天或时长。"]
+
+    unit = str(window.get("unit") or "").strip().lower()
+    unit_config = _FUNNEL_WINDOW_UNITS.get(unit)
+    if not unit_config:
+        return ["漏斗分析窗口期单位必须是天、小时或分钟。"]
+
+    value = window.get("value")
+    if isinstance(value, bool):
+        return ["漏斗分析窗口期必须是正整数。"]
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError):
+        return ["漏斗分析窗口期必须是正整数。"]
+    if not numeric_value.is_integer() or numeric_value < 1:
+        return ["漏斗分析窗口期必须是正整数。"]
+    if numeric_value * int(unit_config["seconds"]) > _FUNNEL_WINDOW_MAX_SECONDS:
+        return ["漏斗分析窗口期不能超过 365 天。"]
+    return []
+
+
+def _funnel_window_prompt_text(funnel: dict[str, Any]) -> str:
+    window = _normalized_funnel_window(funnel)
+    mode = str(window.get("mode") or "").strip().lower()
+    if mode == "same_day":
+        return "当天：全部步骤必须发生在步骤 1 所在的同一个自然日内，不等同于滚动 24 小时"
+    unit = str(window.get("unit") or "").strip().lower()
+    unit_config = _FUNNEL_WINDOW_UNITS.get(unit)
+    if not unit_config:
+        return _safe_json(window)
+    return f"{window.get('value')} {unit_config['label']}：按精确经过时长计算"
 
 
 def _formula_metric_items_from_context(context: dict[str, Any]) -> list[dict[str, Any]]:
@@ -670,6 +729,10 @@ def _normalize_manual_config(
         analysis_model = "event"
     retention = dict(context.get("retention") or {}) if isinstance(context.get("retention"), dict) else {}
     funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
+    if analysis_model == "funnel" or funnel:
+        funnel["window"] = _normalized_funnel_window(funnel)
+        funnel.pop("windowDays", None)
+        funnel.pop("window_days", None)
     distribution = dict(context.get("distribution") or {}) if isinstance(context.get("distribution"), dict) else {}
     interval = dict(context.get("interval") or {}) if isinstance(context.get("interval"), dict) else {}
     path = dict(context.get("path") or {}) if isinstance(context.get("path"), dict) else {}
@@ -1469,11 +1532,6 @@ def _deterministic_validate_manual_config(
         entity_field = funnel.get("entityField") or funnel.get("entity_field")
         steps = _list_dict_items(funnel.get("steps"))
         related_enabled = funnel.get("relatedPropertyEnabled") is True or funnel.get("related_property_enabled") is True
-        window_days = funnel.get("windowDays")
-        if window_days is None:
-            window_days = funnel.get("window_days")
-        if window_days is None:
-            window_days = 1
         if not _field_has_resolvable_reference(entity_field):
             issues.append("漏斗分析请先选择分析主体。")
         else:
@@ -1488,12 +1546,7 @@ def _deterministic_validate_manual_config(
             issues.append("漏斗分析最多支持十个步骤。")
         if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "funnel":
             issues.append("漏斗分析只能使用漏斗图结果。")
-        try:
-            normalized_window_days = int(window_days)
-        except (TypeError, ValueError):
-            normalized_window_days = 0
-        if normalized_window_days < 1 or normalized_window_days > 365:
-            issues.append("漏斗分析窗口期必须是 1 到 365 天。")
+        issues.extend(_funnel_window_issues(funnel))
         for index, step in enumerate(steps):
             label = f"漏斗步骤{index + 1}"
             event = step.get("event")
@@ -2044,19 +2097,25 @@ def _dashboard_config_prompt(
             sql_dialect,
             datasource,
         ))
-    funnel = context.get("funnel") if isinstance(context.get("funnel"), dict) else {}
+    funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
     funnel_rules: list[str] = []
     if analysis_model == "funnel":
+        funnel["window"] = _normalized_funnel_window(funnel)
+        funnel.pop("windowDays", None)
+        funnel.pop("window_days", None)
+        context["funnel"] = funnel
         steps = _list_dict_items(funnel.get("steps"))
+        funnel_window_text = _funnel_window_prompt_text(funnel)
         funnel_rules = [
             "当前 analysisModel=funnel，必须严格按 funnel.entityField、funnel.steps 的顺序生成用户漏斗查询。",
             "每个 steps[i].event 都必须使用字段对象中的 eventTable、eventNameField 和 eventName 定位事件，不得猜测事件名或用步骤序号替代事件条件。",
-            "漏斗按同一分析主体去重计数：步骤 1 是样本基数，后续步骤必须在前一步完成后发生，并且整个步骤链的时间差不超过 funnel.windowDays 天。",
+            "漏斗按同一分析主体去重计数：步骤 1 是样本基数，后续步骤必须在前一步完成后发生，并且整个步骤链必须满足 funnel.window。",
+            "funnel.window.mode=same_day 时，按步骤 1 时间所在自然日约束全部步骤，禁止改写成滚动 24 小时；mode=duration 时，最后一步与步骤 1 的精确经过时长不得超过 value 和 unit 指定的时长，天固定表示 24 小时。",
             "每个步骤的 filters.rules 只应用于该步骤事件明细；全局 filters 仍按全局配置应用，不得把步骤筛选互换或合并。",
             "funnel.relatedPropertyEnabled=true 时，必须使用每个步骤 relatedProperty 指定的属性值与前一步相等进行关联，不得根据字段名猜测关联属性。",
             "最终结果必须是一行一个漏斗步骤，并固定输出 step_order、step_name、step_count、step_rate、step_conversion_rate、step_dropoff_rate 六列；step_rate 以第一步为分母，step_conversion_rate 以相邻上一步为分母。",
             "step_order 必须按 steps 配置顺序为 1、2、3...，不能按用户数据量重新排序；step_name 使用步骤 alias（没有 alias 时使用事件展示名称）。",
-            f"当前配置的漏斗步骤数量：{len(steps)}，窗口期：{funnel.get('windowDays') or funnel.get('window_days') or 1} 天。",
+            f"当前配置的漏斗步骤数量：{len(steps)}，窗口期：{funnel_window_text}。",
             "最终返回 chart_type 必须为 funnel。",
         ]
     distribution = context.get("distribution") if isinstance(context.get("distribution"), dict) else {}

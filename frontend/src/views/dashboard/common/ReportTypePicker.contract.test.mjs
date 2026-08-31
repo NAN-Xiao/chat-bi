@@ -39,6 +39,11 @@ try {
     initialEvent: '',
     returnEvent: '',
   })
+  assert.deepEqual(createDefaultReportConfig('funnel').analysisWindow, {
+    mode: 'duration',
+    value: 1,
+    unit: 'day',
+  })
 
   const pickerSource = readFileSync(join(currentDir, 'ReportTypePicker.vue'), 'utf8')
   const resourceTreeSource = readFileSync(join(currentDir, 'ResourceTree.vue'), 'utf8')
@@ -46,6 +51,8 @@ try {
   const toolbarSource = readFileSync(join(currentDir, '..', 'editor', 'Toolbar.vue'), 'utf8')
 
   assert.match(pickerSource, /v-for="item in REPORT_TYPES"/)
+  assert.match(pickerSource, /<FunnelWindowPicker v-model="config\.analysisWindow"/)
+  assert.doesNotMatch(pickerSource, /analysisWindowDays/)
   assert.match(pickerSource, /reportMeta:\s*\{[\s\S]*?type:\s*selectedType\.value/)
   assert.match(resourceTreeSource, /dashboardStore\.setCanvasStyleData\(\{ reportMeta \}\)/)
   assert.match(resourceTreeSource, /<ReportTypePicker[^>]*@confirm="handleReportTypeConfirm"/)

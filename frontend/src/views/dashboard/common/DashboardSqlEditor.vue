@@ -13,6 +13,7 @@ import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
 import DistributionIntervalSettings from '@/views/dashboard/common/DistributionIntervalSettings.vue'
 import DistributionMetricPicker from '@/views/dashboard/common/DistributionMetricPicker.vue'
+import FunnelWindowPicker from '@/views/dashboard/common/FunnelWindowPicker.vue'
 import IntervalLimitPicker from '@/views/dashboard/common/IntervalLimitPicker.vue'
 import PathEventList from '@/views/dashboard/common/PathEventList.vue'
 import PathSessionGapPicker from '@/views/dashboard/common/PathSessionGapPicker.vue'
@@ -20,6 +21,12 @@ import type {
   DistributionIntervalConfig,
   DistributionMetricConfig,
 } from '@/views/dashboard/common/distributionAnalysis.ts'
+import {
+  DEFAULT_FUNNEL_WINDOW,
+  isValidFunnelWindow,
+  normalizeFunnelWindow,
+  type FunnelWindowConfig,
+} from '@/views/dashboard/common/funnelAnalysis.ts'
 import {
   DEFAULT_INTERVAL_LIMIT_SECONDS,
   INTERVAL_LIMIT_MAX_SECONDS,
@@ -205,7 +212,7 @@ type SqlBuilderRetentionConfig = {
 type SqlBuilderFunnelConfig = {
   entityField: string
   steps: SqlBuilderFunnelStep[]
-  windowDays: number
+  window: FunnelWindowConfig
   relatedPropertyEnabled: boolean
 }
 type SqlBuilderDistributionConfig = {
@@ -411,7 +418,7 @@ const sqlBuilder = reactive({
   funnel: {
     entityField: '',
     steps: [],
-    windowDays: 1,
+    window: { ...DEFAULT_FUNNEL_WINDOW },
     relatedPropertyEnabled: false,
   } as SqlBuilderFunnelConfig,
   distribution: {
@@ -2078,7 +2085,7 @@ function builderConfigForSave() {
     } : undefined,
     funnel: sqlBuilder.analysisModel === 'funnel' ? {
       entityField: sqlBuilder.funnel.entityField,
-      windowDays: sqlBuilder.funnel.windowDays,
+      window: normalizeFunnelWindow(sqlBuilder.funnel.window),
       relatedPropertyEnabled: sqlBuilder.funnel.relatedPropertyEnabled,
       steps: sqlBuilder.funnel.steps.map((step) => ({
         id: step.id,
@@ -2221,9 +2228,7 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.retention.relatedProperty.asGroup = sqlBuilder.retention.relatedProperty.enabled && relatedProperty.asGroup === true
   const funnel = value.funnel && typeof value.funnel === 'object' ? value.funnel : {}
   sqlBuilder.funnel.entityField = typeof funnel.entityField === 'string' ? funnel.entityField : ''
-  sqlBuilder.funnel.windowDays = Number.isFinite(Number(funnel.windowDays))
-    ? Math.min(365, Math.max(1, Number(funnel.windowDays)))
-    : 1
+  sqlBuilder.funnel.window = normalizeFunnelWindow(funnel.window, funnel.windowDays)
   sqlBuilder.funnel.relatedPropertyEnabled = funnel.relatedPropertyEnabled === true
   const restoredFunnelSteps = Array.isArray(funnel.steps)
     ? funnel.steps.map((step: any) => {
@@ -3036,7 +3041,7 @@ function createFunnelStep(): SqlBuilderFunnelStep {
 function resetFunnelConfig() {
   sqlBuilder.funnel.entityField = ''
   sqlBuilder.funnel.steps = [createFunnelStep(), createFunnelStep(), createFunnelStep()]
-  sqlBuilder.funnel.windowDays = 1
+  sqlBuilder.funnel.window = { ...DEFAULT_FUNNEL_WINDOW }
   sqlBuilder.funnel.relatedPropertyEnabled = false
   Object.keys(funnelFilterExpanded).forEach((key) => { delete funnelFilterExpanded[key] })
   Object.keys(funnelAliasEditing).forEach((key) => { delete funnelAliasEditing[key] })
@@ -3660,6 +3665,7 @@ function funnelBlockingIssues() {
   const issues: string[] = []
   if (!sqlBuilder.funnel.entityField) issues.push('漏斗分析请先选择分析主体。')
   if (!sqlBuilder.timeField) issues.push('漏斗分析请先选择时间字段。')
+  if (!isValidFunnelWindow(sqlBuilder.funnel.window)) issues.push('漏斗分析窗口期配置无效，请重新设置。')
   if (sqlBuilder.funnel.steps.length < 2) issues.push('漏斗分析至少需要配置两个步骤。')
   sqlBuilder.funnel.steps.forEach((step, index) => {
     if (!step.event) issues.push(`漏斗分析请先选择步骤${index + 1}事件。`)
@@ -3869,7 +3875,7 @@ function collectBuilderAiContext() {
     funnel: sqlBuilder.analysisModel === 'funnel' ? {
       content: '以同一分析主体按顺序完成多个事件步骤，查看各步骤用户数、转化率和流失情况',
       entityField: fieldOptionPayload(sqlBuilder.funnel.entityField),
-      windowDays: sqlBuilder.funnel.windowDays,
+      window: normalizeFunnelWindow(sqlBuilder.funnel.window),
       relatedPropertyEnabled: sqlBuilder.funnel.relatedPropertyEnabled,
       steps: sqlBuilder.funnel.steps.map((step, index) => ({
         order: index + 1,
@@ -7496,13 +7502,7 @@ function closeDrawer() {
                 </div>
                 <div class="funnel-option-row">
                   <span>分析窗口期</span>
-                  <el-input-number
-                    v-model="sqlBuilder.funnel.windowDays"
-                    :min="1"
-                    :max="365"
-                    controls-position="right"
-                  />
-                  <span>天</span>
+                  <FunnelWindowPicker v-model="sqlBuilder.funnel.window" />
                 </div>
               </div>
             </section>
