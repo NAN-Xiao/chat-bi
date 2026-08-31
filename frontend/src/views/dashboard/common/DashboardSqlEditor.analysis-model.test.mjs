@@ -31,6 +31,10 @@ const pathSessionGapPickerSource = readFileSync(
   fileURLToPath(new URL('./PathSessionGapPicker.vue', import.meta.url)),
   'utf8'
 )
+const attributionWindowPickerSource = readFileSync(
+  fileURLToPath(new URL('./AttributionWindowPicker.vue', import.meta.url)),
+  'utf8'
+)
 
 test('renders the analysis model selector before event metrics', () => {
   const modelIndex = source.indexOf('<span>分析模型</span>')
@@ -83,7 +87,7 @@ test('persists and restores retention configuration in the SQL builder', () => {
 
   assert.match(saveBody, /analysisModel:\s*sqlBuilder\.analysisModel/)
   assert.match(saveBody, /retention:\s*sqlBuilder\.analysisModel === 'retention'/)
-  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path'\]\.includes\(value\.analysisModel\)/)
+  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path', 'attribution'\]\.includes\(value\.analysisModel\)/)
   assert.match(restoreBody, /retention\.entityField/)
   assert.match(restoreBody, /retention\.initialEvent/)
   assert.match(restoreBody, /retention\.returnEvent/)
@@ -232,7 +236,7 @@ test('keeps distribution analysis configuration and controls isolated from other
   assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution'/)
   assert.match(source, /const isDistributionAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'distribution'\)/)
   assert.match(saveBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
-  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path'\]\.includes\(value\.analysisModel\)/)
+  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path', 'attribution'\]\.includes\(value\.analysisModel\)/)
   assert.match(contextBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
   assert.match(switchBody, /sqlBuilder\.analysisModel === 'distribution'/)
   assert.match(switchBody, /resetDistributionConfig\(\)/)
@@ -322,4 +326,31 @@ test('keeps path analysis isolated and exposes event split and session controls'
   assert.match(pathSessionGapPickerSource, /分钟/)
   assert.match(pathSessionGapPickerSource, /小时/)
   assert.match(pathSessionGapPickerSource, /path-session-gap-info/)
+})
+
+test('keeps attribution analysis isolated with target, touchpoint and window controls', () => {
+  const saveBody = source.match(/function builderConfigForSave\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const restoreBody = source.match(
+    /function restoreSqlBuilderState\(value: any\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction formulaTokensReferenceMetricIds/
+  )?.[1] || ''
+  const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+
+  assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution' \| 'interval' \| 'path' \| 'attribution'/)
+  assert.match(source, /const isAttributionAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'attribution'\)/)
+  assert.match(saveBody, /attribution:\s*sqlBuilder\.analysisModel === 'attribution'/)
+  assert.match(restoreBody, /sqlBuilder\.attribution\.targetEvent/)
+  assert.match(restoreBody, /normalizeAttributionWindow\(attribution\.window\)/)
+  assert.match(contextBody, /attribution:\s*sqlBuilder\.analysisModel === 'attribution'/)
+  assert.match(switchBody, /sqlBuilder\.analysisModel === 'attribution'/)
+  assert.match(switchBody, /resetAttributionConfig\(\)/)
+  assert.match(source, /<AttributionWindowPicker v-model="sqlBuilder\.attribution\.window"/)
+  assert.match(source, />归因方式</)
+  assert.match(attributionWindowPickerSource, /窗口期/)
+  assert.match(source, />目标事件</)
+  assert.match(source, /直接转化参与归因计算/)
+  assert.match(source, />归因事件</)
+  assert.match(source, /function attributionBlockingIssues\(\)/)
+  assert.match(source, /ATTRIBUTION_EVENT_LIMIT/)
+  assert.match(source, /form\.chartType = 'table'/)
 })

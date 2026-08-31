@@ -1668,10 +1668,121 @@ def test_funnel_config_accepts_supported_window_modes(window) -> None:
         allowed_tables=["event"],
         allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
     )
-
     assert normalized["funnel"]["window"] == window
     assert result.success is True
 
+
+def _attribution_request(**overrides):
+    login = {
+        "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+        "eventName": "login", "field": "event_name",
+    }
+    purchase = {
+        "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+        "eventName": "purchase", "field": "event_name",
+    }
+    attribution = {
+        "entityField": {"table": "event", "field": "user_id"},
+        "method": "linear",
+        "window": {"mode": "custom", "value": 7, "unit": "day"},
+        "targetEvent": purchase,
+        "targetEventFilters": {"logic": "and", "rules": []},
+        "targetMetric": {"aggregation": "count", "metricField": None},
+        "includeDirect": True,
+        "events": [
+            {"id": "touch-1", "event": login, "filters": {"logic": "and", "rules": []}},
+        ],
+    }
+    attribution.update(overrides)
+    return DashboardAiSqlGenerateRequest(
+        datasource=1,
+        chart_type="table",
+        context={
+            "analysisModel": "attribution",
+            "chart": {"type": "table"},
+            "time": {
+                "field": {"table": "event", "field": "dt"},
+                "dateParameterType": "yyyymmdd_number",
+                "dateExpression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+            },
+            "attribution": attribution,
+            "groups": [],
+            "filters": {},
+            "selectedFields": [],
+        },
+    )
+
+
+def test_attribution_config_has_independent_normalization_and_validation() -> None:
+    request = _attribution_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+    )
+
+    assert normalized["analysis_model"] == "attribution"
+    assert normalized["attribution"]["window"]["value"] == 7
+    assert normalized["retention"] == {}
+    assert normalized["funnel"] == {}
+    assert normalized["distribution"] == {}
+    assert normalized["interval"] == {}
+    assert normalized["path"] == {}
+    assert result.success is True
+    assert result.analysis_model == "attribution"
+    assert ai_sql_generator._config_reference_table_names(normalized, {}) == {"event"}
+
+
+def test_attribution_rejects_invalid_window_and_target_metric() -> None:
+    request = _attribution_request(
+        window={"mode": "custom", "value": 0, "unit": "day"},
+        targetMetric={"aggregation": "sum", "metricField": None},
+    )
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+    )
+
+    assert result.success is False
+    assert "归因分析窗口期必须在 1 分钟到 365 天之间。" in result.issues
+    assert "目标事件使用非次数聚合时，请选择计算字段。" in result.issues
+
+
+def test_attribution_prompt_plan_and_result_contract_keep_linear_semantics() -> None:
+    request = _attribution_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
+        "",
+        "",
+    ) + "\n" + ai_sql_generator._dashboard_sql_system_prompt("attribution")
+    plan = ai_sql_generator._build_sql_plan(normalized, ai_sql_generator._build_formula_ir(normalized))
+    valid_sql = (
+        "WITH matched AS (SELECT target_id, 1.0 / NULLIF(touch_count, 0) AS linear_weight FROM targets) "
+        "SELECT attribution_event, COUNT(DISTINCT target_id) AS target_count, "
+        "SUM(target_value * linear_weight) AS attributed_value, "
+        "SUM(target_value) * 100.0 / NULLIF(SUM(target_value), 0) AS contribution_rate FROM matched "
+        "GROUP BY attribution_event"
+    )
+
+    assert "只能使用 attribution 配置" in prompt
+    assert "线性归因" in prompt
+    assert plan["analysis_model"] == "attribution"
+    assert plan["result_contract"]["type"] == "attribution_table"
+    assert ai_sql_generator._attribution_sql_result_issues(valid_sql, normalized) == []
+    invalid = ai_sql_generator._attribution_sql_result_issues(
+        "SELECT attribution_event, COUNT(*) AS target_count FROM matched GROUP BY attribution_event",
+        normalized,
+    )
+    assert invalid
+    assert any("attributed_value" in issue for issue in invalid)
 
 def test_funnel_config_migrates_legacy_window_days() -> None:
     request = _funnel_request(window=None, windowDays=7)
