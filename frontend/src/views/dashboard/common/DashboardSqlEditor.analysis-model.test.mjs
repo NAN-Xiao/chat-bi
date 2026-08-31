@@ -83,7 +83,7 @@ test('persists and restores retention configuration in the SQL builder', () => {
 
   assert.match(saveBody, /analysisModel:\s*sqlBuilder\.analysisModel/)
   assert.match(saveBody, /retention:\s*sqlBuilder\.analysisModel === 'retention'/)
-  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path'\]\.includes\(value\.analysisModel\)/)
+  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue'\]\.includes\(value\.analysisModel\)/)
   assert.match(restoreBody, /retention\.entityField/)
   assert.match(restoreBody, /retention\.initialEvent/)
   assert.match(restoreBody, /retention\.returnEvent/)
@@ -232,7 +232,7 @@ test('keeps distribution analysis configuration and controls isolated from other
   assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution'/)
   assert.match(source, /const isDistributionAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'distribution'\)/)
   assert.match(saveBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
-  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path'\]\.includes\(value\.analysisModel\)/)
+  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue'\]\.includes\(value\.analysisModel\)/)
   assert.match(contextBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
   assert.match(switchBody, /sqlBuilder\.analysisModel === 'distribution'/)
   assert.match(switchBody, /resetDistributionConfig\(\)/)
@@ -322,4 +322,33 @@ test('keeps path analysis isolated and exposes event split and session controls'
   assert.match(pathSessionGapPickerSource, /分钟/)
   assert.match(pathSessionGapPickerSource, /小时/)
   assert.match(pathSessionGapPickerSource, /path-session-gap-info/)
+})
+
+test('keeps revenue analysis isolated with cohort, metric, cost, and observation controls', () => {
+  const saveBody = source.match(/function builderConfigForSave\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const restoreBody = source.match(
+    /function restoreSqlBuilderState\(value: any\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction formulaTokensReferenceMetricIds/
+  )?.[1] || ''
+  const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+
+  assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution' \| 'interval' \| 'path' \| 'revenue'/)
+  assert.match(source, /const isRevenueAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'revenue'\)/)
+  assert.match(saveBody, /revenue:\s*sqlBuilder\.analysisModel === 'revenue'/)
+  assert.match(restoreBody, /sqlBuilder\.revenue\.paymentEvent/)
+  assert.match(restoreBody, /sqlBuilder\.revenue\.observationDays = clampRevenueObservationDays/)
+  assert.match(contextBody, /revenue:\s*sqlBuilder\.analysisModel === 'revenue'/)
+  assert.match(switchBody, /sqlBuilder\.analysisModel === 'revenue'/)
+  assert.match(switchBody, /resetRevenueConfig\(\)/)
+  assert.match(source, /<RevenueMetricPicker[\s\S]*?@update:modelValue="updateRevenueMetric"/)
+  assert.match(source, />同期群</)
+  assert.match(source, />付费事件</)
+  assert.match(source, />收入口径</)
+  assert.match(source, />成本数据</)
+  assert.match(source, />观察时长</)
+  assert.match(source, /function revenueBlockingIssues\(\)/)
+  assert.match(source, /revenue_cohort_table|cohort_date_field/)
+  assert.match(source, /revenueMetricUsesProperty\(sqlBuilder\.revenue\.metric\.method\)/)
+  assert.match(source, /revenue-heading-row/)
+  assert.match(source, /revenue-subject-line/)
 })
