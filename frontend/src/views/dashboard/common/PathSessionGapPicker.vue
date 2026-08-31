@@ -68,7 +68,7 @@ function handleUnitChange(value: DurationUnit) {
       :max="maxInputValue"
       :precision="0"
       :disabled="disabled"
-      controls-position="right"
+      :controls="false"
       aria-label="会话间隔数值"
       @change="emitCurrentValue"
     />
@@ -96,19 +96,17 @@ function handleUnitChange(value: DurationUnit) {
 }
 
 .path-session-gap-value { width: 52px; }
-.path-session-gap-unit { width: 58px; }
+.path-session-gap-unit { width: 60px; }
 
 .path-session-gap-value :deep(.el-input__wrapper),
 .path-session-gap-unit :deep(.el-select__wrapper) {
   min-height: 28px;
   border-radius: 6px;
   box-shadow: none;
-  background: #f3f5fb;
+  background: #f0f2f6;
 }
 
 .path-session-gap-value :deep(.el-input__inner) { text-align: center; }
-.path-session-gap-value :deep(.el-input-number__decrease),
-.path-session-gap-value :deep(.el-input-number__increase) { display: none; }
 .path-session-gap-unit :deep(.el-select__selected-item) { color: #303643; }
 
 .path-session-gap-info {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CopyDocument, Delete, EditPen, Filter, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
+import { CopyDocument, Delete, EditPen, Filter, FolderOpened, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
 import { datasourceApi } from '@/api/datasource'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
@@ -7899,10 +7899,6 @@ function closeDrawer() {
 
               <div class="path-config-block">
                 <span class="path-config-label">参与分析的事件</span>
-                <div class="path-event-summary">
-                  <span class="path-event-summary-badge">事件({{ sqlBuilder.path.events.filter((item) => item.event).length }})</span>
-                  <span>最多选择 {{ PATH_EVENT_LIMIT }} 个事件，可按事件属性拆分节点</span>
-                </div>
                 <PathEventList
                   v-model="sqlBuilder.path.events"
                   :event-options="pathEventOptions"
@@ -7915,13 +7911,16 @@ function closeDrawer() {
               <div class="path-config-block path-initial-event-block">
                 <span class="path-config-label">分析路径仪</span>
                 <div class="path-initial-event-row">
-                  <BuilderFieldPicker
-                    v-model="sqlBuilder.path.initialEvent"
-                    :options="pathInitialEventOptions"
-                    :loading="schemaLoading"
-                    mode="tracking-event"
-                    placeholder="选择初始事件"
-                  />
+                  <span class="path-initial-event-tag">
+                    <el-icon><FolderOpened /></el-icon>
+                    <BuilderFieldPicker
+                      v-model="sqlBuilder.path.initialEvent"
+                      :options="pathInitialEventOptions"
+                      :loading="schemaLoading"
+                      mode="tracking-event"
+                      placeholder="选择初始事件"
+                    />
+                  </span>
                   <span>作为</span>
                   <span class="path-role-tag">初始事件</span>
                 </div>
@@ -9655,16 +9654,6 @@ function closeDrawer() {
   font-size: 12px;
 }
 
-.path-event-summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-  color: #8992a1;
-  font-size: 12px;
-}
-
-.path-event-summary-badge,
 .path-role-tag {
   display: inline-flex;
   align-items: center;
@@ -9677,24 +9666,48 @@ function closeDrawer() {
 }
 
 .path-initial-event-row {
-  display: grid;
-  grid-template-columns: minmax(170px, 260px) auto auto;
+  display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   color: #707988;
   font-size: 13px;
+}
+
+.path-initial-event-tag {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: #374151;
+  background: #f0f2f6;
+  line-height: 26px;
+}
+
+.path-initial-event-tag :deep(.builder-field-picker-trigger) {
+  min-height: 24px;
+  max-width: 180px;
+  padding: 0;
+  color: #374151;
+  background: transparent;
+  line-height: 24px;
+}
+
+.path-initial-event-tag :deep(.builder-field-picker-trigger:hover) {
+  background: transparent;
+}
+
+.path-initial-event-tag :deep(.builder-field-picker-arrow) {
+  display: none;
 }
 
 .path-session-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: #505968;
   font-size: 13px;
-}
-
-.path-session-row :deep(.el-input-number) {
-  width: 82px;
 }
 
 .path-info-icon {
@@ -10293,14 +10306,9 @@ function closeDrawer() {
     flex-direction: column;
   }
 
-  .path-event-summary {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 5px;
-  }
-
   .path-initial-event-row {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    max-width: 100%;
+    flex-wrap: wrap;
   }
 
   .path-session-row {
