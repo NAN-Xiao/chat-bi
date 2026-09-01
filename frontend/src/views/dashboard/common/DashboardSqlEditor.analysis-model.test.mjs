@@ -267,6 +267,19 @@ test('keeps distribution analysis configuration and controls isolated from other
   assert.match(distributionIntervalSettingsSource, /distribution-interval-popper[\s\S]*?max-width:\s*calc\(100vw - 24px\)/)
 })
 
+test('keeps distribution simultaneous event and aggregation on the same row', () => {
+  assert.match(
+    source,
+    /class="distribution-simultaneous-core-controls"[\s\S]*?v-model="sqlBuilder\.distribution\.simultaneous\.event"[\s\S]*?<span>的<\/span>[\s\S]*?v-model="sqlBuilder\.distribution\.simultaneous\.aggregation"/,
+    '同时展示的参与事件与聚合方式必须放在同一个不可拆分的控件组内'
+  )
+  assert.match(
+    source,
+    /\.distribution-simultaneous-core-controls\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*minmax\(160px, 280px\) auto 160px;/,
+    '同时展示的参与事件与聚合方式必须保持同行布局'
+  )
+})
+
 test('keeps interval analysis isolated and exposes the reference controls', () => {
   const saveBody = source.match(/function builderConfigForSave\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
   const restoreBody = source.match(

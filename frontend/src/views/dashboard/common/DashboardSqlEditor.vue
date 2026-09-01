@@ -8149,27 +8149,29 @@ function closeDrawer() {
                 </div>
                 <div v-if="sqlBuilder.distribution.simultaneous.enabled" class="distribution-simultaneous-flow">
                   <span>同时展示区间内主体参与</span>
-                  <BuilderFieldPicker
-                    v-model="sqlBuilder.distribution.simultaneous.event"
-                    :options="distributionEventOptions"
-                    :loading="schemaLoading"
-                    mode="tracking-event"
-                    placeholder="选择参与事件"
-                    @update:modelValue="syncDistributionSimultaneousMetricField"
-                  />
-                  <span>的</span>
-                  <el-select
-                    v-model="sqlBuilder.distribution.simultaneous.aggregation"
-                    size="small"
-                    @change="syncDistributionSimultaneousMetricField"
-                  >
-                    <el-option
-                      v-for="option in builderAggregationOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
+                  <div class="distribution-simultaneous-core-controls">
+                    <BuilderFieldPicker
+                      v-model="sqlBuilder.distribution.simultaneous.event"
+                      :options="distributionEventOptions"
+                      :loading="schemaLoading"
+                      mode="tracking-event"
+                      placeholder="选择参与事件"
+                      @update:modelValue="syncDistributionSimultaneousMetricField"
                     />
-                  </el-select>
+                    <span>的</span>
+                    <el-select
+                      v-model="sqlBuilder.distribution.simultaneous.aggregation"
+                      size="small"
+                      @change="syncDistributionSimultaneousMetricField"
+                    >
+                      <el-option
+                        v-for="option in builderAggregationOptions"
+                        :key="option.value"
+                        :label="option.label"
+                        :value="option.value"
+                      />
+                    </el-select>
+                  </div>
                   <BuilderFieldPicker
                     v-if="sqlBuilder.distribution.simultaneous.aggregation !== 'count'"
                     v-model="sqlBuilder.distribution.simultaneous.metricField"
@@ -10589,11 +10591,20 @@ function closeDrawer() {
   flex-wrap: wrap;
 }
 
-.distribution-simultaneous-flow :deep(.builder-field-picker-trigger) {
-  min-width: 160px;
+.distribution-simultaneous-core-controls {
+  min-width: 353px;
+  display: grid;
+  grid-template-columns: minmax(160px, 280px) auto 160px;
+  align-items: center;
+  gap: 10px;
 }
 
-.distribution-simultaneous-flow :deep(.el-select) {
+.distribution-simultaneous-core-controls :deep(.builder-field-picker-trigger) {
+  width: 100%;
+  min-width: 0;
+}
+
+.distribution-simultaneous-core-controls :deep(.el-select) {
   width: 160px;
 }
 
@@ -10859,6 +10870,17 @@ function closeDrawer() {
 
   .distribution-event-row {
     flex-wrap: wrap;
+  }
+
+  .distribution-simultaneous-core-controls {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 100%;
+    grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 160px);
+  }
+
+  .distribution-simultaneous-core-controls :deep(.el-select) {
+    width: 100%;
   }
 
   .ranking-metric-row,
