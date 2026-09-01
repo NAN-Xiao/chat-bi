@@ -242,6 +242,10 @@ test('keeps distribution analysis configuration and controls isolated from other
   assert.match(saveBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
   assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'\]\.includes\(value\.analysisModel\)/)
   assert.match(contextBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
+  assert.match(
+    source,
+    /content:\s*'一段时间内，指定用户参与某一事件的总完成次数或属性值按个人聚合后的全员分布情况'/
+  )
   assert.match(switchBody, /sqlBuilder\.analysisModel === 'distribution'/)
   assert.match(switchBody, /resetDistributionConfig\(\)/)
   assert.match(source, /<DistributionMetricPicker[\s\S]*?@update:modelValue="updateDistributionMetric"/)

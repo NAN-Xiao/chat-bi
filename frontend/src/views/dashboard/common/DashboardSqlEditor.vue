@@ -4627,7 +4627,7 @@ function collectBuilderAiContext() {
       simultaneousProperties: sqlBuilder.ranking.simultaneousProperties.map(fieldOptionPayload).filter(Boolean),
     } : null,
     distribution: sqlBuilder.analysisModel === 'distribution' ? {
-      content: '按每个分析主体参与事件后的个人聚合值划分区间，查看各区间主体数量、占比和可选同时展示指标',
+      content: '一段时间内，指定用户参与某一事件的总完成次数或属性值按个人聚合后的全员分布情况',
       entityField: fieldOptionPayload(sqlBuilder.distribution.entityField),
       event: fieldOptionPayload(sqlBuilder.distribution.event),
       eventFilters: {
