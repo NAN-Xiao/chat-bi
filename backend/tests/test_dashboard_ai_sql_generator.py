@@ -1784,6 +1784,130 @@ def test_attribution_prompt_plan_and_result_contract_keep_linear_semantics() -> 
     assert invalid
     assert any("attributed_value" in issue for issue in invalid)
 
+
+def _ranking_request(**overrides):
+    ranking = {
+        "entityField": {"table": "event", "field": "user_id", "value": "event.user_id"},
+        "metric": {
+            "event": {
+                "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+                "eventName": "login", "field": "event_name",
+            },
+            "alias": "登录次数",
+            "aggregation": "count",
+            "metricField": "",
+            "direction": "desc",
+        },
+        "tieHandling": "skip",
+        "simultaneousMetrics": [{
+            "id": "metric-1",
+            "event": {
+                "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+                "eventName": "purchase", "field": "event_name",
+            },
+            "alias": "购买次数",
+            "aggregation": "count",
+            "metricField": "",
+        }],
+        "simultaneousProperties": [{"table": "event", "field": "country", "value": "event.country"}],
+    }
+    ranking.update(overrides)
+    return DashboardAiSqlGenerateRequest(
+        datasource=1,
+        chart_type="table",
+        context={
+            "analysisModel": "ranking",
+            "chart": {"type": "table"},
+            "time": {
+                "field": {"table": "event", "field": "dt"},
+                "dateParameterType": "yyyymmdd_number",
+                "dateExpression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+            },
+            "ranking": ranking,
+            "groups": [],
+            "filters": {},
+            "selectedFields": [],
+        },
+    )
+
+
+def test_ranking_config_has_independent_normalization_and_validation() -> None:
+    request = _ranking_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt", "country"}},
+    )
+
+    assert normalized["analysis_model"] == "ranking"
+    assert normalized["ranking"]["tieHandling"] == "skip"
+    assert normalized["retention"] == {}
+    assert normalized["distribution"] == {}
+    assert normalized["path"] == {}
+    assert result.success is True
+    assert result.analysis_model == "ranking"
+
+
+def test_ranking_rejects_invalid_direction_and_metric_field() -> None:
+    request = _ranking_request(metric={
+        "event": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "login", "field": "event_name",
+        },
+        "aggregation": "sum",
+        "metricField": {"table": "event", "field": "country", "type": "string"},
+        "direction": "sideways",
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt", "country"}},
+    )
+
+    assert result.success is False
+    assert any("排序方向" in issue for issue in result.issues)
+    assert any("不是数值字段" in issue for issue in result.issues)
+
+
+def test_ranking_prompt_plan_and_result_contract_keep_rank_semantics() -> None:
+    request = _ranking_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
+        "",
+        "",
+    ) + "\n" + ai_sql_generator._dashboard_sql_system_prompt("ranking")
+    plan = ai_sql_generator._build_sql_plan(normalized, ai_sql_generator._build_formula_ir(normalized))
+    valid_sql = (
+        "WITH entity_values AS (SELECT user_id AS ranking_entity, COUNT(*) AS ranking_value FROM event GROUP BY user_id), "
+        "ranked AS (SELECT RANK() OVER (ORDER BY ranking_value DESC) AS rank, ranking_entity, ranking_value, "
+        "COUNT(*) AS simultaneous_metric_1, MAX(country) AS ranking_property_1 FROM entity_values GROUP BY ranking_entity, ranking_value) "
+        "SELECT rank, ranking_entity, ranking_value, simultaneous_metric_1, ranking_property_1 FROM ranked ORDER BY rank"
+    )
+
+    assert "只能使用 ranking 配置" in prompt
+    assert "attribution/ranking 字段信息" in prompt
+    assert "并列名次" in prompt
+    assert plan["analysis_model"] == "ranking"
+    assert plan["result_contract"]["type"] == "ranking_table"
+    assert plan["result_contract"]["required_columns"] == [
+        "rank", "ranking_entity", "ranking_value", "simultaneous_metric_1", "ranking_property_1",
+    ]
+    assert ai_sql_generator._ranking_sql_result_issues(valid_sql, normalized) == []
+    invalid = ai_sql_generator._ranking_sql_result_issues(
+        "SELECT ranking_entity, ranking_value FROM entity_values",
+        normalized,
+    )
+    assert invalid
+    assert any("rank" in issue for issue in invalid)
+
 def test_funnel_config_migrates_legacy_window_days() -> None:
     request = _funnel_request(window=None, windowDays=7)
     normalized = ai_sql_generator._normalize_manual_config(request)

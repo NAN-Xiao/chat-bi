@@ -87,7 +87,7 @@ test('persists and restores retention configuration in the SQL builder', () => {
 
   assert.match(saveBody, /analysisModel:\s*sqlBuilder\.analysisModel/)
   assert.match(saveBody, /retention:\s*sqlBuilder\.analysisModel === 'retention'/)
-  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution'\]\.includes\(value\.analysisModel\)/)
+  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'\]\.includes\(value\.analysisModel\)/)
   assert.match(restoreBody, /retention\.entityField/)
   assert.match(restoreBody, /retention\.initialEvent/)
   assert.match(restoreBody, /retention\.returnEvent/)
@@ -236,7 +236,7 @@ test('keeps distribution analysis configuration and controls isolated from other
   assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution'/)
   assert.match(source, /const isDistributionAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'distribution'\)/)
   assert.match(saveBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
-  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution'\]\.includes\(value\.analysisModel\)/)
+  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'\]\.includes\(value\.analysisModel\)/)
   assert.match(contextBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
   assert.match(switchBody, /sqlBuilder\.analysisModel === 'distribution'/)
   assert.match(switchBody, /resetDistributionConfig\(\)/)
@@ -374,5 +374,35 @@ test('keeps revenue analysis isolated with cohort, metric, cost, and observation
   assert.match(source, />归因事件</)
   assert.match(source, /function attributionBlockingIssues\(\)/)
   assert.match(source, /ATTRIBUTION_EVENT_LIMIT/)
+  assert.match(source, /form\.chartType = 'table'/)
+})
+
+test('keeps ranking analysis isolated with rank, tie, metric, and property controls', () => {
+  const saveBody = source.match(/function builderConfigForSave\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const restoreBody = source.match(
+    /function restoreSqlBuilderState\(value: any\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction formulaTokensReferenceMetricIds/
+  )?.[1] || ''
+  const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const signatureBody = source.match(/function currentPreviewSignature\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+
+  assert.match(source, /type AnalysisModel = .*'ranking'/)
+  assert.match(source, /const isRankingAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'ranking'\)/)
+  assert.match(source, /\{ label: '排行榜', value: 'ranking'/)
+  assert.match(saveBody, /ranking:\s*sqlBuilder\.analysisModel === 'ranking'/)
+  assert.match(restoreBody, /sqlBuilder\.ranking\.metric = restoreRankingMetric/)
+  assert.match(contextBody, /ranking: sqlBuilder\.analysisModel === 'ranking'/)
+  assert.match(signatureBody, /ranking: sqlBuilder\.analysisModel === 'ranking'/)
+  assert.match(switchBody, /sqlBuilder\.analysisModel === 'ranking'/)
+  assert.match(switchBody, /resetRankingConfig\(\)/)
+  assert.match(source, /class="ranking-heading-row"/)
+  assert.match(source, />按指标排名</)
+  assert.match(source, />并列名次</)
+  assert.match(source, />同时展示指标</)
+  assert.match(source, />同时展示属性</)
+  assert.match(source, /function rankingBlockingIssues\(\)/)
+  assert.match(source, /ranking_table|ranking_value/)
+  assert.match(source, /direction: 'asc' \| 'desc'/)
+  assert.match(source, /tieHandling: 'default' \| 'skip' \| 'dense'/)
   assert.match(source, /form\.chartType = 'table'/)
 })

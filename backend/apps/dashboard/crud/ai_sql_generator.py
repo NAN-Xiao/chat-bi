@@ -630,6 +630,15 @@ def _distribution_simultaneous_metric(distribution: dict[str, Any]) -> dict[str,
     }
 
 
+def _ranking_metric(metric: Any) -> dict[str, Any]:
+    source = metric if isinstance(metric, dict) else {}
+    return {
+        "field": source.get("event") or source.get("field"),
+        "metricField": source.get("metricField") or source.get("metric_field"),
+        "aggregation": source.get("aggregation") or "count",
+    }
+
+
 def _field_is_known_non_numeric(field: Any) -> bool:
     if not isinstance(field, dict):
         return False
@@ -745,7 +754,7 @@ def _normalize_manual_config(
     ).strip()
     time_config["date_expression"] = time_config.get("dateExpression") or time_config.get("date_expression")
     analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
-    if analysis_model not in {"event", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution"}:
+    if analysis_model not in {"event", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"}:
         analysis_model = "event"
     retention = dict(context.get("retention") or {}) if isinstance(context.get("retention"), dict) else {}
     funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
@@ -758,6 +767,7 @@ def _normalize_manual_config(
     path = dict(context.get("path") or {}) if isinstance(context.get("path"), dict) else {}
     revenue = dict(context.get("revenue") or {}) if isinstance(context.get("revenue"), dict) else {}
     attribution = dict(context.get("attribution") or {}) if isinstance(context.get("attribution"), dict) else {}
+    ranking = dict(context.get("ranking") or {}) if isinstance(context.get("ranking"), dict) else {}
     return {
         "analysis_model": analysis_model,
         "retention": retention,
@@ -767,6 +777,7 @@ def _normalize_manual_config(
         "path": path,
         "revenue": revenue,
         "attribution": attribution,
+        "ranking": ranking,
         "chart": context.get("chart") if isinstance(context.get("chart"), dict) else {
             "title": request.title,
             "type": request.chart_type,
@@ -1448,6 +1459,23 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
         table_name = _field_table_name(field)
         if table_name:
             tables.add(table_name)
+    ranking = normalized_config.get("ranking") if isinstance(normalized_config.get("ranking"), dict) else {}
+    ranking_metric = ranking.get("metric") if isinstance(ranking.get("metric"), dict) else {}
+    ranking_fields: list[Any] = [
+        ranking.get("entityField") or ranking.get("entity_field"),
+        ranking_metric.get("event") or ranking_metric.get("field"),
+        ranking_metric.get("metricField") or ranking_metric.get("metric_field"),
+    ]
+    for item in _list_dict_items(ranking.get("simultaneousMetrics") or ranking.get("simultaneous_metrics")):
+        ranking_fields.extend([
+            item.get("event") or item.get("field"),
+            item.get("metricField") or item.get("metric_field"),
+        ])
+    ranking_fields.extend(ranking.get("simultaneousProperties") or ranking.get("simultaneous_properties") or [])
+    for field in ranking_fields:
+        table_name = _field_table_name(field)
+        if table_name:
+            tables.add(table_name)
     return tables
 
 
@@ -1721,6 +1749,70 @@ def _deterministic_validate_manual_config(
             filter_event_name = _tracking_event_name_from_field(filter_field)
             if filter_event_name and event_name and filter_event_name != event_name:
                 issues.append(f"{label}不属于当前参与事件。")
+
+    if analysis_model == "ranking":
+        ranking = normalized_config.get("ranking") if isinstance(normalized_config.get("ranking"), dict) else {}
+        entity_field = ranking.get("entityField") or ranking.get("entity_field")
+        metric = ranking.get("metric") if isinstance(ranking.get("metric"), dict) else {}
+        simultaneous_metrics = _list_dict_items(
+            ranking.get("simultaneousMetrics") or ranking.get("simultaneous_metrics")
+        )
+        simultaneous_properties = ranking.get("simultaneousProperties") or ranking.get("simultaneous_properties") or []
+        tie_handling = str(ranking.get("tieHandling") or ranking.get("tie_handling") or "default").strip().lower()
+
+        if not _field_has_resolvable_reference(entity_field):
+            issues.append("排行榜请先选择排行主体。")
+        if not _field_has_resolvable_reference(time_config.get("field")):
+            issues.append("排行榜请先选择时间字段。")
+        if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "table":
+            issues.append("排行榜只能使用排行榜表结果。")
+        if tie_handling not in {"default", "skip", "dense"}:
+            issues.append("排行榜并列名次处理方式不受支持。")
+
+        ranking_metric = _ranking_metric(metric)
+        issues.extend(_validate_metric_item(ranking_metric, "排行榜主指标", require_aggregation=True))
+        issues.extend(_metric_permission_issues(
+            ranking_metric,
+            "排行榜主指标",
+            allowed_tables,
+            allowed_fields_by_table,
+        ))
+        metric_event_name = _tracking_event_name_from_field(ranking_metric.get("field"))
+        metric_field_event_name = _tracking_event_name_from_field(ranking_metric.get("metricField"))
+        if metric_event_name and metric_field_event_name and metric_event_name != metric_field_event_name:
+            issues.append("排行榜主指标计算字段不属于当前指标事件。")
+        direction = str(metric.get("direction") or "desc").strip().lower()
+        if direction not in {"asc", "desc"}:
+            issues.append("排行榜主指标排序方向不受支持。")
+
+        for index, item in enumerate(simultaneous_metrics):
+            simultaneous_metric = _ranking_metric(item)
+            label = f"排行榜同时展示指标{index + 1}"
+            issues.extend(_validate_metric_item(simultaneous_metric, label, require_aggregation=True))
+            issues.extend(_metric_permission_issues(
+                simultaneous_metric,
+                label,
+                allowed_tables,
+                allowed_fields_by_table,
+            ))
+            event_name = _tracking_event_name_from_field(simultaneous_metric.get("field"))
+            measure_event_name = _tracking_event_name_from_field(simultaneous_metric.get("metricField"))
+            if event_name and measure_event_name and event_name != measure_event_name:
+                issues.append(f"{label}计算字段不属于当前指标事件。")
+        if not isinstance(simultaneous_properties, list):
+            issues.append("排行榜同时展示属性配置必须是列表。")
+        else:
+            for index, property_field in enumerate(simultaneous_properties):
+                label = f"排行榜同时展示属性{index + 1}"
+                if not _field_has_resolvable_reference(property_field):
+                    issues.append(f"{label}配置不完整。")
+                issues.extend(_json_subfield_mapping_issues(property_field, label))
+                issues.extend(_field_table_permission_issues(property_field, label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(property_field, label, allowed_fields_by_table))
+        if entity_field:
+            issues.extend(_json_subfield_mapping_issues(entity_field, "排行榜排行主体"))
+            issues.extend(_field_table_permission_issues(entity_field, "排行榜排行主体", allowed_tables))
+            issues.extend(_field_schema_permission_issues(entity_field, "排行榜排行主体", allowed_fields_by_table))
 
     if analysis_model == "interval":
         interval = normalized_config.get("interval") if isinstance(normalized_config.get("interval"), dict) else {}
@@ -2057,7 +2149,7 @@ def _deterministic_validate_manual_config(
         issues=issues,
         warnings=warnings,
         suggestions=_unique_text_items(suggestions),
-        analysis_model=analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution"} else "event",
+        analysis_model=analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event",
     )
 
 
@@ -2120,6 +2212,29 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
                 "interval_label",
             ],
             "interval_mode": str((distribution.get("interval") or {}).get("mode") or "auto"),
+        }
+    elif analysis_model == "ranking":
+        ranking = normalized_config.get("ranking") if isinstance(normalized_config.get("ranking"), dict) else {}
+        simultaneous_metrics = _list_dict_items(
+            ranking.get("simultaneousMetrics") or ranking.get("simultaneous_metrics")
+        )
+        simultaneous_properties = ranking.get("simultaneousProperties") or ranking.get("simultaneous_properties") or []
+        required_columns = ["rank", "ranking_entity", "ranking_value"]
+        required_columns.extend(f"simultaneous_metric_{index + 1}" for index, _ in enumerate(simultaneous_metrics))
+        required_columns.extend(f"ranking_property_{index + 1}" for index, _ in enumerate(simultaneous_properties))
+        result_contract = {
+            "type": "ranking_table",
+            "required_columns": required_columns,
+            "rank_field": "rank",
+            "entity_field": "ranking_entity",
+            "metric_field": "ranking_value",
+            "simultaneous_metric_fields": [
+                f"simultaneous_metric_{index + 1}" for index, _ in enumerate(simultaneous_metrics)
+            ],
+            "property_fields": [
+                f"ranking_property_{index + 1}" for index, _ in enumerate(simultaneous_properties)
+            ],
+            "tie_handling": str(ranking.get("tieHandling") or ranking.get("tie_handling") or "default"),
         }
     elif analysis_model == "interval":
         result_contract = {
@@ -2407,6 +2522,27 @@ def _dashboard_config_prompt(
             f"当前同时展示配置：{_safe_json(simultaneous)}。",
             "最终返回 chart_type 必须为 table。",
         ]
+    ranking = context.get("ranking") if isinstance(context.get("ranking"), dict) else {}
+    ranking_rules: list[str] = []
+    if analysis_model == "ranking":
+        ranking_metric = ranking.get("metric") if isinstance(ranking.get("metric"), dict) else {}
+        simultaneous_metrics = _list_dict_items(
+            ranking.get("simultaneousMetrics") or ranking.get("simultaneous_metrics")
+        )
+        simultaneous_properties = ranking.get("simultaneousProperties") or ranking.get("simultaneous_properties") or []
+        tie_handling = str(ranking.get("tieHandling") or ranking.get("tie_handling") or "default")
+        ranking_rules = [
+            "当前 analysisModel=ranking，只能使用 ranking 配置生成排行榜查询；不得读取或套用分布、路径、漏斗或普通事件分析的结果语义。",
+            "先按 ranking.entityField 对分析主体聚合 ranking.metric.event 指定事件指标；主指标聚合方式和 metricField 必须严格来自配置，不能把排行主体当作事件或把首列当作主体。",
+            "最终结果必须一行一个排行主体，固定输出 rank、ranking_entity、ranking_value；ranking_entity 是配置主体值，ranking_value 是主指标结果。",
+            f"主指标排序方向为 {str(ranking_metric.get('direction') or 'desc')}；必须先按 ranking_value 排序，再使用窗口函数生成 rank，不能按主体名称排序后再编号。",
+            f"并列名次处理为 {tie_handling}：default 按稳定的主体值作为并列后的次级排序，skip 使用 RANK 语义跳过名次，dense 使用 DENSE_RANK 语义不跳过名次。",
+            "同时展示指标必须在同一主体聚合粒度上分别计算，并按 simultaneous_metric_1、simultaneous_metric_2 等固定别名输出；不能参与主指标排序或改变主体粒度。",
+            "同时展示属性必须按配置顺序输出 ranking_property_1、ranking_property_2 等字段，并使用主体同一聚合层的值；不得猜测或替换属性字段。",
+            "全局 filters 和 time 继续使用公共配置；不得把全局筛选改成某个排行事件的隐式筛选。",
+            f"当前同时展示指标数量：{len(simultaneous_metrics)}，同时展示属性数量：{len(simultaneous_properties)}。",
+            "最终返回 chart_type 必须为 table。",
+        ]
     path = context.get("path") if isinstance(context.get("path"), dict) else {}
     path_rules: list[str] = []
     if analysis_model == "path":
@@ -2496,10 +2632,11 @@ def _dashboard_config_prompt(
         "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段；必须使用字段对象的 expression，不得把用户属性改为 user 表或其他表的同名字段。",
         "字段对象包含 sourceField、jsonPath 和 expression 时，JSON 子字段必须使用 expression；不得自行改写 JSON 宿主列或路径。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
-         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention/funnel/distribution/interval/path/revenue/attribution 字段信息生成 SQL；不要编造未提供字段。",
+         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention/funnel/distribution/interval/path/revenue/attribution/ranking 字段信息生成 SQL；不要编造未提供字段。",
         *retention_rules,
         *funnel_rules,
         *distribution_rules,
+        *ranking_rules,
         *interval_rules,
         *path_rules,
         *revenue_rules,
@@ -2830,6 +2967,32 @@ def _attribution_sql_result_issues(
     return _unique_text_items(issues)
 
 
+def _ranking_sql_result_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+) -> list[str]:
+    if str(normalized_config.get("analysis_model") or "event") != "ranking":
+        return []
+    ranking = normalized_config.get("ranking") if isinstance(normalized_config.get("ranking"), dict) else {}
+    simultaneous_metrics = _list_dict_items(
+        ranking.get("simultaneousMetrics") or ranking.get("simultaneous_metrics")
+    )
+    simultaneous_properties = ranking.get("simultaneousProperties") or ranking.get("simultaneous_properties") or []
+    required_aliases = ["rank", "ranking_entity", "ranking_value"]
+    required_aliases.extend(f"simultaneous_metric_{index + 1}" for index, _ in enumerate(simultaneous_metrics))
+    required_aliases.extend(f"ranking_property_{index + 1}" for index, _ in enumerate(simultaneous_properties))
+    normalized_sql = str(sql or "").lower()
+    missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
+    issues = [f"排行榜 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    if not re.search(r"\bcount\s*\(", normalized_sql) and not re.search(r"\b(?:sum|avg|max|min)\s*\(", normalized_sql):
+        issues.append("排行榜 SQL 必须按排行主体聚合主指标。")
+    if not re.search(r"\b(?:rank|dense_rank)\s*\(", normalized_sql):
+        issues.append("排行榜 SQL 必须使用窗口函数生成名次。")
+    if not re.search(r"\bover\s*\(", normalized_sql):
+        issues.append("排行榜 SQL 的名次计算必须使用 OVER 窗口。")
+    return _unique_text_items(issues)
+
+
 def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
     common_prompt = (
         "你是 BI 手动看板 SQL 生成节点。确定性配置校验已经通过，你只负责根据当前配置、公式 IR 和 SQL plan 生成只读 SELECT SQL。\n"
@@ -2928,6 +3091,21 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "ORDER BY distribution_date, <groups>, interval_order。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；interval_order 只负责稳定排序，interval_label 是展示文本。\n"
             "主体必须先聚合再分桶，禁止直接按事件明细行分桶；entity_rate 分母只包含当期参与配置事件的主体。\n"
+        )
+    elif str(analysis_model or "event") == "ranking":
+        structure_prompt = (
+            "当前 SQL plan 的 analysis_model=ranking，必须使用排行榜专用的主体聚合、排序和并列名次结构；禁止改写为分布区间、路径桑基或普通事件趋势。\n"
+            "排行榜 SQL 结构范式：\n"
+            "WITH scoped_events AS (...按配置时间范围和事件对象只保留主指标及同时展示指标事件，应用公共全局筛选...),\n"
+            "entity_values AS (...按 ranking.entityField 对每个主体聚合主指标 ranking_value，同时计算配置的附加指标和属性...),\n"
+            "ranked AS (...先按 ranking.metric.direction 对 ranking_value 排序，再按 tie_handling 使用 RANK/DENSE_RANK 或稳定主体排序生成 rank...)\n"
+            "SELECT rank, ranking_entity, ranking_value,\n"
+            "       <simultaneous_metric_1> AS simultaneous_metric_1, ...,\n"
+            "       <ranking_property_1> AS ranking_property_1, ...\n"
+            "FROM ranked\n"
+            "ORDER BY rank, ranking_entity。\n"
+            "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。\n"
+            "主指标必须先按主体聚合再排名；同时展示指标和属性只丰富同一主体行，不得改变排名依据或主体粒度。\n"
         )
     elif str(analysis_model or "event") == "path":
         structure_prompt = (
@@ -3381,7 +3559,7 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
         SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ], node="generate_sql")
-    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution"} else "event"
+    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event"
     validation = state.get("validation_result")
     if validation:
         response.intent = response.intent or validation.intent
@@ -3523,6 +3701,14 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 未满足归因分析生成要求。"
         response.advice = "请按归因窗口、线性权重和固定结果列重新生成归因查询。"
         response.issues = _unique_text_items(list(response.issues or []) + attribution_issues)
+    elif ranking_issues := _ranking_sql_result_issues(
+        sql,
+        state.get("normalized_config") or {},
+    ):
+        response.success = False
+        response.message = "生成 SQL 未满足排行榜生成要求。"
+        response.advice = "请按排行主体聚合、排序方向、并列名次和固定结果列重新生成排行榜查询。"
+        response.issues = _unique_text_items(list(response.issues or []) + ranking_issues)
     elif json_issues := _json_subfield_sql_issues(
         sql,
         state.get("json_subfield_requirements") or [],
@@ -3595,7 +3781,7 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
     )
     normalized_config = state.get("normalized_config") or {}
     analysis_model = str(normalized_config.get("analysis_model") or "event")
-    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution"} else "event"
+    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event"
     if response.analysis_model == "retention":
         retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
@@ -3689,6 +3875,26 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "contribution_rate_field": "contribution_rate",
             "method": "linear",
             "include_direct": attribution.get("includeDirect") is True,
+        }
+    elif response.analysis_model == "ranking":
+        ranking = normalized_config.get("ranking") if isinstance(normalized_config.get("ranking"), dict) else {}
+        simultaneous_metrics = _list_dict_items(
+            ranking.get("simultaneousMetrics") or ranking.get("simultaneous_metrics")
+        )
+        simultaneous_properties = ranking.get("simultaneousProperties") or ranking.get("simultaneous_properties") or []
+        response.chart_type = "table"
+        response.result_config = {
+            "type": "ranking_table",
+            "rank_field": "rank",
+            "entity_field": "ranking_entity",
+            "metric_field": "ranking_value",
+            "simultaneous_metric_fields": [
+                f"simultaneous_metric_{index + 1}" for index, _ in enumerate(simultaneous_metrics)
+            ],
+            "property_fields": [
+                f"ranking_property_{index + 1}" for index, _ in enumerate(simultaneous_properties)
+            ],
+            "tie_handling": str(ranking.get("tieHandling") or ranking.get("tie_handling") or "default"),
         }
     return {
         "response": response,
