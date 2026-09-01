@@ -7962,26 +7962,19 @@ function closeDrawer() {
                       <el-option label="升序" value="asc" />
                     </el-select>
                   </div>
-                  <div class="ranking-alias-row">
-                    <span>指标名称</span>
-                    <el-input
-                      v-model="sqlBuilder.ranking.metric.alias"
-                      clearable
-                      maxlength="80"
-                      placeholder="使用默认名称"
-                      aria-label="重命名排行指标"
-                    />
-                  </div>
                 </div>
               </div>
 
-              <div class="ranking-tie-row">
-                <span class="ranking-config-label">并列名次</span>
-                <el-radio-group v-model="sqlBuilder.ranking.tieHandling">
-                  <el-radio value="default">按默认排序</el-radio>
-                  <el-radio value="skip">并列且跳过</el-radio>
-                  <el-radio value="dense">并列不跳过</el-radio>
-                </el-radio-group>
+              <div class="ranking-tie-block">
+                <span class="ranking-config-label">并列名次处理</span>
+                <div class="ranking-tie-row">
+                  <span>当出现相同值时，将</span>
+                  <el-select v-model="sqlBuilder.ranking.tieHandling" class="ranking-tie-select">
+                    <el-option label="按默认排序" value="default" />
+                    <el-option label="并列且跳过" value="skip" />
+                    <el-option label="并列不跳过" value="dense" />
+                  </el-select>
+                </div>
               </div>
 
               <div class="ranking-extra-block">
@@ -10027,31 +10020,20 @@ function closeDrawer() {
   flex: 0 0 92px;
 }
 
-.ranking-alias-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 420px;
-  color: #8a93a3;
-  font-size: 12px;
-}
-
-.ranking-alias-row .el-input {
-  flex: 1 1 auto;
+.ranking-tie-block {
+  margin-top: 22px;
 }
 
 .ranking-tie-row {
   display: flex;
   align-items: center;
-  gap: 18px;
-  margin-top: 22px;
+  gap: 8px;
   color: #505968;
   font-size: 13px;
 }
 
-.ranking-tie-row .ranking-config-label {
-  flex: 0 0 auto;
-  margin: 0;
+.ranking-tie-select {
+  width: 128px;
 }
 
 .ranking-extra-heading {
@@ -10864,13 +10846,6 @@ function closeDrawer() {
   .ranking-alias-input {
     flex-basis: min(100%, 280px);
   }
-
-  .ranking-tie-row {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-  }
-
 
   .interval-event-row,
   .interval-property-match {
