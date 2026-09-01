@@ -1497,6 +1497,9 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
 
     assert "只使用 distribution 配置" in prompt or "只能使用 distribution 配置" in prompt
     assert "主体必须先聚合再分桶" in prompt
+    assert "simultaneous_entity_value" in prompt
+    assert "显式 LEFT JOIN" in prompt
+    assert "禁止在 JOIN 条件中使用引用外层" in prompt
     assert normalized["analysis_model"] == "distribution"
     assert normalized["chart"]["type"] == "table"
     assert ai_sql_generator._distribution_sql_result_issues(valid_sql, normalized) == []
@@ -1507,6 +1510,63 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
     assert invalid
     assert any("distribution_date" in issue for issue in invalid)
     assert any("total_entities" in issue for issue in invalid)
+
+
+def test_distribution_sql_validation_rejects_adb_correlated_subquery_before_execution() -> None:
+    request = _distribution_request(simultaneous={
+        "enabled": True,
+        "event": {
+            "kind": "tracking-event",
+            "eventTable": "event",
+            "eventNameField": "event_name",
+            "eventName": "login",
+            "field": "event_name",
+        },
+        "aggregation": "count",
+        "metricField": None,
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    sql = """
+    WITH bucketed AS (
+        SELECT dt AS distribution_date, user_id AS entity_id, 1 AS interval_order FROM event
+    ),
+    intervals AS (
+        SELECT distribution_date, interval_order, '1' AS interval_label,
+               COUNT(DISTINCT entity_id) AS entity_count,
+               COUNT(DISTINCT entity_id) AS total_entities
+        FROM bucketed GROUP BY distribution_date, interval_order
+    ),
+    simultaneous_agg AS (
+        SELECT dt, user_id, COUNT(*) AS sim_value FROM event GROUP BY dt, user_id
+    )
+    SELECT i.distribution_date, i.total_entities, i.interval_order, i.interval_label,
+           i.entity_count,
+           i.entity_count * 100.0 / NULLIF(i.total_entities, 0) AS entity_rate,
+           COALESCE(SUM(sa.sim_value), 0) AS simultaneous_value
+    FROM intervals i
+    LEFT JOIN simultaneous_agg sa
+      ON i.distribution_date = sa.dt
+     AND EXISTS (
+         SELECT 1 FROM bucketed b
+         WHERE b.distribution_date = i.distribution_date
+           AND b.interval_order = i.interval_order
+           AND b.entity_id = sa.user_id
+     )
+    GROUP BY i.distribution_date, i.total_entities, i.interval_order, i.interval_label, i.entity_count
+    """
+
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(success=True, sql=sql, chart_type="table")
+    validated = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": normalized,
+        "datasource": SimpleNamespace(type="mysql"),
+        "sql_dialect": "mysql",
+        "graph_trace": [],
+    })["response"]
+
+    assert validated.success is False
+    assert "数据源方言" in validated.message
+    assert any("JOIN 条件不能使用引用外层列的关联子查询" in issue for issue in validated.issues)
 
 
 def test_interval_config_has_independent_normalization_and_validation() -> None:
@@ -2113,7 +2173,7 @@ def test_retention_system_prompt_uses_wide_result_without_changing_event_prompt(
     assert "留存专用 Cohort 宽表结构" not in event_prompt
 
 
-def test_sql_validation_routes_only_retention_failures_to_one_repair() -> None:
+def test_sql_validation_routes_retention_and_distribution_failures_to_one_repair() -> None:
     failed_response = ai_sql_generator.DashboardAiSqlGenerateResponse(
         success=False,
         sql="SELECT cohort_date FROM matched",
@@ -2139,6 +2199,16 @@ def test_sql_validation_routes_only_retention_failures_to_one_repair() -> None:
         "normalized_config": {"analysis_model": "funnel"},
         "response": failed_response,
         "sql_repair_attempts": 0,
+    }) == "explain_advice"
+    assert ai_sql_generator._route_after_sql_validate({
+        "normalized_config": {"analysis_model": "distribution"},
+        "response": failed_response,
+        "sql_repair_attempts": 0,
+    }) == "repair_distribution_sql"
+    assert ai_sql_generator._route_after_sql_validate({
+        "normalized_config": {"analysis_model": "distribution"},
+        "response": failed_response,
+        "sql_repair_attempts": 1,
     }) == "explain_advice"
 
 
@@ -2173,6 +2243,36 @@ def test_retention_repair_prompt_carries_contract_original_sql_and_issues() -> N
     assert issue in prompt
     assert '"type": "cohort_table"' in prompt
     assert "完整重写 SQL" in prompt
+
+
+def test_distribution_repair_prompt_carries_dialect_issue_and_explicit_join_contract() -> None:
+    request = _distribution_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    issue = "MySQL/AnalyticDB 的 JOIN 条件不能使用引用外层列的关联子查询。"
+    prompt = ai_sql_generator._dashboard_sql_repair_user_prompt({
+        "request": request,
+        "datasource": SimpleNamespace(name="测试", type="mysql", type_name="MySQL"),
+        "validation_result": ai_sql_generator.DashboardAiSqlGenerateResponse(
+            success=True,
+            analysis_model="distribution",
+        ),
+        "formula_ir": formula_ir,
+        "sql_plan": ai_sql_generator._build_sql_plan(normalized, formula_ir),
+        "normalized_config": normalized,
+        "response": ai_sql_generator.DashboardAiSqlGenerateResponse(
+            success=False,
+            sql="SELECT * FROM intervals i LEFT JOIN metrics m ON EXISTS (SELECT 1 FROM bucketed b WHERE b.dt = i.dt)",
+            issues=[issue],
+        ),
+        "data_skill": "",
+        "tracking_config": "",
+        "allowed_tables": ["event"],
+    })
+
+    assert "未通过分布 SQL 协议或方言校验" in prompt
+    assert issue in prompt
+    assert "显式 LEFT JOIN" in prompt
 
 
 def test_retention_prompt_requires_typed_yyyymmdd_date_operations() -> None:

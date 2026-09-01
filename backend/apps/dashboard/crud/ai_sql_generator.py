@@ -22,6 +22,7 @@ from sqlglot import exp
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
+from apps.chat.task.sql_repair import SqlStructureValidationError, validate_sql_for_datasource
 from apps.dashboard.crud.dashboard_date_filter import (
     dashboard_date_parameter_tokens,
     validate_dashboard_date_parameter_sql,
@@ -2516,7 +2517,8 @@ def _dashboard_config_prompt(
             "distribution.eventFilters 只应用于参与事件明细；全局筛选和分组项继续使用公共配置，不得互换筛选范围。",
             "distribution.interval.mode=discrete 时每个 distribution_value 单独成区间；mode=custom 时严格按 customBounds 生成小于首边界、相邻边界和大于等于末边界的完整互斥区间；mode=auto 时按数据最小最大值：差值小于 12 使用离散值，否则划分 12 个等宽区间。",
             "最终结果按日期、分组和区间输出固定长表列 distribution_date、interval_order、interval_label、entity_count、entity_rate；entity_rate 是当前日期及分组内区间主体数占参与事件主体总数的比例。",
-            "distribution.simultaneous.enabled=true 时，在区间主体集合上按 simultaneous.event、aggregation、metricField 计算事件分析指标并输出 simultaneous_value；不得把它用于划分主区间。",
+            "distribution.simultaneous.enabled=true 时，先按日期、主体和分组对 simultaneous.event、aggregation、metricField 计算 simultaneous_entity_value，再使用日期、主体和全部分组键把它显式 LEFT JOIN 到已保留 entity_id 的 bucketed 主体区间明细，最后按区间聚合为 simultaneous_value；不得把同时展示指标用于划分主区间。",
+            "MySQL/AnalyticDB 兼容数据源禁止在 JOIN 条件中使用引用外层日期、区间或主体列的 EXISTS、IN 或标量关联子查询；必须先把关联数据按连接粒度聚合为 CTE 或派生表，再通过显式 JOIN 连接。",
             f"当前分布指标配置：{_safe_json(metric)}。",
             f"当前分布区间配置：{_safe_json(interval)}。",
             f"当前同时展示配置：{_safe_json(simultaneous)}。",
@@ -3081,16 +3083,19 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "    GROUP BY distribution_date, entity_id, <groups>\n"
             "),\n"
             "bucketed AS (...按 distribution.interval 生成互斥且完整的 interval_order 与 interval_label...),\n"
-            "totals AS (...按 distribution_date 与 groups 统计参与事件的主体总数...)\n"
+            "totals AS (...按 distribution_date 与 groups 统计参与事件的主体总数...),\n"
+            "simultaneous_entity_values AS (...启用同时展示时，按 distribution_date、entity_id 与 groups 聚合 simultaneous_entity_value...),\n"
+            "bucketed_metrics AS (...bucketed 通过 distribution_date、entity_id 与全部 groups 显式 LEFT JOIN simultaneous_entity_values...)\n"
             "SELECT distribution_date, total_entities, interval_order, interval_label,\n"
             "       COUNT(DISTINCT entity_id) AS entity_count,\n"
             "       ROUND(COUNT(DISTINCT entity_id) * 100.0 / NULLIF(total_entities, 0), 2) AS entity_rate\n"
             "       <启用时输出 simultaneous_value>\n"
-            "FROM bucketed ...\n"
+            "FROM bucketed_metrics ...\n"
             "GROUP BY distribution_date, <groups>, interval_order, interval_label, total_entities\n"
             "ORDER BY distribution_date, <groups>, interval_order。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；interval_order 只负责稳定排序，interval_label 是展示文本。\n"
             "主体必须先聚合再分桶，禁止直接按事件明细行分桶；entity_rate 分母只包含当期参与配置事件的主体。\n"
+            "禁止在 JOIN 条件中使用引用外层 distribution_date、interval_order 或 entity_id 的 EXISTS、IN 或标量关联子查询；必须在聚合前按日期、主体和全部分组键显式 JOIN。\n"
         )
     elif str(analysis_model or "event") == "ranking":
         structure_prompt = (
@@ -3572,6 +3577,11 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
 
 def _dashboard_sql_repair_user_prompt(state: DashboardManualChartGraphState) -> str:
     response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
+    analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
+    analysis_label = {
+        "retention": "留存",
+        "distribution": "分布",
+    }.get(analysis_model, "分析")
     return "\n".join([
         _dashboard_sql_user_prompt(state),
         "",
@@ -3583,7 +3593,7 @@ def _dashboard_sql_repair_user_prompt(state: DashboardManualChartGraphState) -> 
         _safe_json(list(response.issues or [])),
         "</sql-validation-issues>",
         "",
-        "上一版 SQL 未通过留存协议校验。请根据 sql-plan.result_contract 和上述具体错误完整重写 SQL。",
+        f"上一版 SQL 未通过{analysis_label} SQL 协议或方言校验。请根据 sql-plan.result_contract 和上述具体错误完整重写 SQL。",
         "不得删除日期、权限、事件、筛选、关联属性或同时展示约束，不得通过改列名掩盖错误。",
     ])
 
@@ -3606,9 +3616,35 @@ async def _async_node_repair_retention_sql(state: DashboardManualChartGraphState
     }
 
 
+async def _async_node_repair_distribution_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
+    response = await _async_invoke_llm_json(llm, [
+        SystemMessage(content=(
+            _dashboard_sql_system_prompt("distribution")
+            + "\n你正在修复一条未通过分布 SQL 协议或方言校验的查询。必须完整重写 SQL，并逐项消除校验错误；不能放宽或绕过校验。"
+        )),
+        HumanMessage(content=_dashboard_sql_repair_user_prompt(state)),
+    ], node="repair_distribution_sql")
+    response.analysis_model = "distribution"
+    return {
+        "response": response,
+        "sql_repair_attempts": int(state.get("sql_repair_attempts") or 0) + 1,
+        "graph_trace": _append_trace(state, "repair_distribution_sql"),
+        "last_node": "repair_distribution_sql",
+    }
+
+
 def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
     sql = (response.sql or "").strip()
+    datasource = state.get("datasource")
+    datasource_type = getattr(datasource, "type", None) or state.get("sql_dialect")
+    dialect_issue: str | None = None
+    if sql and datasource_type:
+        try:
+            validate_sql_for_datasource(sql, datasource_type)
+        except SqlStructureValidationError as exc:
+            dialect_issue = str(exc)
 
     def _mark_sql_valid() -> None:
         response.success = True
@@ -3625,6 +3661,11 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "SQL 不是只读查询。"
         response.advice = "只能生成 SELECT/WITH 查询，请重新生成。"
         response.issues = list(response.issues or []) + ["生成 SQL 不是只读 SELECT/WITH 查询。"]
+    elif dialect_issue:
+        response.success = False
+        response.message = "生成 SQL 未满足当前数据源方言要求。"
+        response.advice = "请按当前数据源支持的查询结构重新生成 SQL。"
+        response.issues = _unique_text_items(list(response.issues or []) + [dialect_issue])
     elif isinstance(state.get("normalized_config"), dict) and _uses_dashboard_date_parameters(
         response.chart_type
         or ((state["normalized_config"].get("chart") or {}).get("type")),
@@ -3718,9 +3759,9 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 的 JSON 字段映射与当前配置不一致。"
         response.advice = "请重新选择事件参数后生成 SQL。"
         response.issues = _unique_text_items(list(response.issues or []) + json_issues)
-    elif state.get("datasource") is not None:
+    elif datasource is not None:
         try:
-            is_read, reason = check_sql_read(sql, state["datasource"])
+            is_read, reason = check_sql_read(sql, datasource)
         except Exception as exc:
             is_read, reason = False, str(exc)
         if not is_read:
@@ -3745,14 +3786,16 @@ def _route_after_sql_validate(state: DashboardManualChartGraphState) -> str:
     response = state.get("response")
     analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
     if (
-        analysis_model == "retention"
-        and response is not None
+        response is not None
         and response.success is False
         and bool(str(response.sql or "").strip())
         and bool(response.issues)
         and int(state.get("sql_repair_attempts") or 0) < 1
     ):
-        return "repair_retention_sql"
+        if analysis_model == "retention":
+            return "repair_retention_sql"
+        if analysis_model == "distribution":
+            return "repair_distribution_sql"
     return "explain_advice"
 
 
@@ -3916,6 +3959,10 @@ def _build_manual_chart_graph():
         "repair_retention_sql",
         _timed_node("repair_retention_sql", _async_node_repair_retention_sql),
     )
+    graph.add_node(
+        "repair_distribution_sql",
+        _timed_node("repair_distribution_sql", _async_node_repair_distribution_sql),
+    )
     graph.add_node("explain_advice", _timed_node("explain_advice", _node_explain_advice))
     graph.add_node("finalize_response", _timed_node("finalize_response", _node_finalize_response))
     graph.set_entry_point("collect_context")
@@ -3927,6 +3974,7 @@ def _build_manual_chart_graph():
     graph.add_edge("generate_sql", "validate_sql")
     graph.add_conditional_edges("validate_sql", _route_after_sql_validate)
     graph.add_edge("repair_retention_sql", "validate_sql")
+    graph.add_edge("repair_distribution_sql", "validate_sql")
     graph.add_edge("explain_advice", "finalize_response")
     graph.add_edge("finalize_response", END)
     return graph.compile()

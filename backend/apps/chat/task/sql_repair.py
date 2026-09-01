@@ -13,6 +13,7 @@ from typing import Any
 import sqlglot
 from sqlglot import exp
 from sqlglot.errors import ParseError, TokenError
+from sqlglot.optimizer.scope import traverse_scope
 
 from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
 from apps.datasource.crud.permission_errors import SqlSchemaScopeError
@@ -61,6 +62,7 @@ _GENERIC_PARSE_ERROR_PATTERN = re.compile(r"\bparse\s+error\b", re.IGNORECASE)
 _EXPLICIT_SQL_PARSE_ERROR_PATTERN = re.compile(r"\bsql\s+parse\s+error\b", re.IGNORECASE)
 _EXECUTE_SYNTAX_OR_DIALECT_PATTERNS = (
     re.compile(r"missing column aliases in recursive\s+with\s+query", re.IGNORECASE),
+    re.compile(r"\bcorrelated\s+subquery\b.{0,200}\b(?:unsupported|not supported|does not support)\b", re.IGNORECASE),
     re.compile(r"\bnot\s+support\b.{0,100}\binterval\b", re.IGNORECASE),
     re.compile(r"\b(?:unsupported|not supported|does not support)\b.{0,100}\bweek\b", re.IGNORECASE),
     re.compile(r"\b(?:unknown|unsupported|not supported|does not support)\b.{0,80}\bunsigned\b", re.IGNORECASE),
@@ -459,6 +461,24 @@ def _raw_fact_scaffold_joins(statement: exp.Expression) -> bool:
     return False
 
 
+def _join_correlated_subquery_columns(statement: exp.Expression) -> set[str]:
+    """识别 JOIN 条件或 JOIN 来源中引用外层查询列的子查询。"""
+    correlated_columns: set[str] = set()
+    for scope in traverse_scope(statement):
+        if not scope.is_subquery or not scope.external_columns:
+            continue
+        node = scope.expression.parent
+        while node is not None and not isinstance(node, exp.Select):
+            if isinstance(node, exp.Join):
+                correlated_columns.update(
+                    column.sql(dialect="mysql", normalize=True, pretty=False)
+                    for column in scope.external_columns
+                )
+                break
+            node = node.parent
+    return correlated_columns
+
+
 def validate_mysql_compatible_sql(sql: str) -> None:
     """在执行前拦截 AnalyticDB/MySQL 兼容源中可确定的方言和结构错误。"""
     source_sql = str(sql or "")
@@ -503,6 +523,14 @@ def validate_mysql_compatible_sql(sql: str) -> None:
             raise SqlStructureValidationError(
                 "时间骨架不得直接按范围 JOIN 物理事实表；请先在事实 CTE 中使用明确日期范围过滤，"
                 "按目标时间粒度聚合后，再将聚合结果 LEFT JOIN 到日期/小时/周骨架。"
+            )
+
+        correlated_columns = _join_correlated_subquery_columns(statement)
+        if correlated_columns:
+            names = "、".join(sorted(correlated_columns))
+            raise SqlStructureValidationError(
+                f"MySQL/AnalyticDB 的 JOIN 条件不能使用引用外层列的关联子查询（{names}）；"
+                "请先把子查询按连接粒度聚合为 CTE 或派生表，再使用显式 JOIN 连接。"
             )
 
         for date_expression in statement.find_all((exp.DateAdd, exp.DateSub)):
@@ -680,6 +708,11 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
             "JOIN 后的同名字段在 SELECT、GROUP BY、ORDER BY、HAVING 和连接条件中必须限定来源别名。",
             "周格式不要依赖 %v 或 %x；使用已验证的周起止日期表达式。",
         ]
+        if "correlated subquery" in dialect_text or "关联子查询" in dialect_text:
+            payload["repair_requirements"].extend([
+                "目标数据源不支持上一版 JOIN 条件中的关联子查询；禁止在 JOIN ON 中使用引用外层列的 EXISTS、IN 或标量子查询。",
+                "先把子查询按连接键和目标粒度聚合为 CTE 或派生表，再使用显式 JOIN；连接前后都要保持原有主体、日期和分组粒度。",
+            ])
         if "unsigned" in str(context.error_message or "").lower():
             payload["repair_requirements"].insert(
                 1,

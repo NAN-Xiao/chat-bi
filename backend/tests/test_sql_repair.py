@@ -614,6 +614,67 @@ def test_mysql_compatible_sql_rejects_known_adb_incompatibilities(sql: str) -> N
         validate_mysql_compatible_sql(sql)
 
 
+def test_mysql_compatible_sql_rejects_correlated_subquery_in_join_condition() -> None:
+    sql = """
+    WITH bucketed AS (
+        SELECT dt AS distribution_date, uid AS entity_id, 1 AS interval_order FROM event
+    ),
+    intervals AS (
+        SELECT distribution_date, interval_order FROM bucketed GROUP BY distribution_date, interval_order
+    ),
+    simultaneous_agg AS (
+        SELECT dt, uid, COUNT(*) AS sim_value FROM event GROUP BY dt, uid
+    )
+    SELECT i.distribution_date, i.interval_order, SUM(sa.sim_value) AS simultaneous_value
+    FROM intervals i
+    LEFT JOIN simultaneous_agg sa
+      ON i.distribution_date = sa.dt
+     AND EXISTS (
+         SELECT 1
+         FROM bucketed b
+         WHERE b.distribution_date = i.distribution_date
+           AND b.interval_order = i.interval_order
+           AND b.entity_id = sa.uid
+     )
+    GROUP BY i.distribution_date, i.interval_order
+    """
+
+    with pytest.raises(SqlStructureValidationError, match="JOIN 条件不能使用引用外层列的关联子查询"):
+        validate_mysql_compatible_sql(sql)
+
+
+def test_mysql_compatible_sql_allows_explicit_join_for_distribution_simultaneous_metric() -> None:
+    sql = """
+    WITH bucketed AS (
+        SELECT dt AS distribution_date, uid AS entity_id, 1 AS interval_order FROM event
+    ),
+    simultaneous_agg AS (
+        SELECT dt AS distribution_date, uid AS entity_id, COUNT(*) AS sim_value
+        FROM event
+        GROUP BY dt, uid
+    ),
+    bucketed_metrics AS (
+        SELECT b.distribution_date, b.entity_id, b.interval_order, sa.sim_value
+        FROM bucketed b
+        LEFT JOIN simultaneous_agg sa
+          ON sa.distribution_date = b.distribution_date
+         AND sa.entity_id = b.entity_id
+    )
+    SELECT distribution_date, interval_order, SUM(sim_value) AS simultaneous_value
+    FROM bucketed_metrics
+    GROUP BY distribution_date, interval_order
+    """
+
+    validate_mysql_compatible_sql(sql)
+
+
+def test_mysql_compatible_sql_keeps_correlated_where_exists_outside_join_validation() -> None:
+    validate_mysql_compatible_sql(
+        "SELECT e.uid FROM event e "
+        "WHERE EXISTS (SELECT 1 FROM account a WHERE a.uid = e.uid)"
+    )
+
+
 def test_mysql_compatible_sql_allows_unsigned_casts_supported_by_mysql() -> None:
     validate_mysql_compatible_sql(
         "SELECT CAST({{dashboard_start_yyyymmdd}} AS UNSIGNED) AS start_dt, "
@@ -740,6 +801,31 @@ def test_execute_sql_error_classifier_accepts_adb_dynamic_week_message() -> None
         classify_execute_sql_error(Exception("not support : INTERVAL w.offset_week WEEK"))
         is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
     )
+
+
+def test_execute_sql_error_classifier_accepts_adb_correlated_subquery_message() -> None:
+    error = _MysqlError(
+        "Given correlated subquery with correlation: [i.distribution_date, i.interval_order] is not supported",
+        1815,
+    )
+
+    assert classify_execute_sql_error(error) is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+
+
+def test_dialect_repair_requires_explicit_join_after_correlated_subquery_error() -> None:
+    context = SqlRepairContext(
+        reason=SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
+        dialect="mysql",
+        failed_sql="SELECT * FROM intervals i LEFT JOIN values v ON EXISTS (SELECT 1 FROM bucketed b WHERE b.dt = i.dt)",
+        error_message="Given correlated subquery with correlation: [i.dt] is not supported",
+        violation=None,
+        attempt=0,
+    )
+
+    message = build_sql_repair_message(context)
+
+    assert "禁止在 JOIN ON 中使用引用外层列的 EXISTS" in message
+    assert "再使用显式 JOIN" in message
 
 
 def test_mysql_compatible_sql_ignores_unsigned_inside_literal_or_comment() -> None:
