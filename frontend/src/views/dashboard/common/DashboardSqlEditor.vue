@@ -4588,7 +4588,7 @@ function collectBuilderAiContext() {
       },
     } : null,
     funnel: sqlBuilder.analysisModel === 'funnel' ? {
-      content: '以同一分析主体按顺序完成多个事件步骤，查看各步骤用户数、转化率和流失情况',
+      content: '以某段时间做过步骤1的用户为样本，查看窗口期内，指定步骤下用户的转化情况',
       entityField: fieldOptionPayload(sqlBuilder.funnel.entityField),
       window: normalizeFunnelWindow(sqlBuilder.funnel.window),
       relatedPropertyEnabled: sqlBuilder.funnel.relatedPropertyEnabled,

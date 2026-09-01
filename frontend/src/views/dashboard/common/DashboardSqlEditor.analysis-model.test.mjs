@@ -120,6 +120,10 @@ test('includes retention in AI context and preview signature', () => {
     source,
     /RETENTION_ANALYSIS_CONTEXT_CONTENT\s*=\s*'以某段时间做过初始事件的用户为样本，查看在指定日期后用户进行回访事件的留存情况'/
   )
+  assert.match(
+    source,
+    /content:\s*'以某段时间做过步骤1的用户为样本，查看窗口期内，指定步骤下用户的转化情况'/
+  )
   assert.match(contextBody, /entityField:\s*fieldOptionPayload/)
   assert.match(contextBody, /initialEventAlias:\s*sqlBuilder\.retention\.initialEventAlias\.trim\(\)/)
   assert.match(contextBody, /initialEventFilters:\s*\{[\s\S]*?filterContext\(sqlBuilder\.retention\.initialEventFilters\)/)
