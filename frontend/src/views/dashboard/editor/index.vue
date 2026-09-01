@@ -59,6 +59,10 @@ import {
   hasDashboardChartSnapshot,
   prepareDashboardChartRefreshState,
 } from '@/views/dashboard/utils/dashboardChartLifecycle'
+import {
+  shapeDistributionTableResult,
+  syncDistributionTableColumns,
+} from '@/views/dashboard/utils/distributionTable.ts'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -416,8 +420,9 @@ function applyChartResult(viewInfo: any, result: any) {
   if (!viewInfo) {
     return false
   }
-  const fields = getResultFields(result)
-  const data = Array.isArray(result?.data) ? result.data : []
+  const shapedResult = shapeDistributionTableResult(result, viewInfo)
+  const fields = getResultFields(shapedResult)
+  const data = Array.isArray(shapedResult?.data) ? shapedResult.data : []
   const previousData = Array.isArray(viewInfo?.data?.data) ? [...viewInfo.data.data] : []
   const previousDataFields = Array.isArray(viewInfo?.data?.fields) ? [...viewInfo.data.fields] : []
   const previousFields = Array.isArray(viewInfo?.fields) ? [...viewInfo.fields] : []
@@ -428,8 +433,9 @@ function applyChartResult(viewInfo: any, result: any) {
   viewInfo.data.fields = fields
   viewInfo.data.data = data
   viewInfo.fields = fields
-  viewInfo.status = result?.status || 'success'
-  viewInfo.message = result?.message || ''
+  syncDistributionTableColumns(viewInfo, fields)
+  viewInfo.status = shapedResult?.status || 'success'
+  viewInfo.message = shapedResult?.message || ''
   if (viewInfo.status === 'failed' && hasPreviousRows && !isPermissionDeniedResult(result)) {
     viewInfo.data.fields = previousDataFields
     viewInfo.data.data = previousData

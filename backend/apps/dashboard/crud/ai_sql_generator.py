@@ -764,6 +764,9 @@ def _normalize_manual_config(
         funnel.pop("windowDays", None)
         funnel.pop("window_days", None)
     distribution = dict(context.get("distribution") or {}) if isinstance(context.get("distribution"), dict) else {}
+    distribution_metric = distribution.get("metric") if isinstance(distribution.get("metric"), dict) else {}
+    if str(distribution_metric.get("kind") or "count").strip().lower() == "count":
+        distribution["interval"] = {"mode": "discrete", "customBounds": []}
     interval = dict(context.get("interval") or {}) if isinstance(context.get("interval"), dict) else {}
     path = dict(context.get("path") or {}) if isinstance(context.get("path"), dict) else {}
     revenue = dict(context.get("revenue") or {}) if isinstance(context.get("revenue"), dict) else {}
@@ -2515,7 +2518,8 @@ def _dashboard_config_prompt(
             "distribution.metric.kind=count 时 distribution_value 是主体当期事件次数；days 时是主体发生事件的去重自然日数；hours 时是主体发生事件的去重小时数；property 时必须按 metric.field 和 metric.aggregation 聚合。",
             "property 的 percentile_XX 表示对应百分位数，median 表示中位数，variance/stddev 表示方差/标准差；必须使用当前 SQL 方言支持的函数，不能降级成平均值或其他聚合。",
             "distribution.eventFilters 只应用于参与事件明细；全局筛选和分组项继续使用公共配置，不得互换筛选范围。",
-            "distribution.interval.mode=discrete 时每个 distribution_value 单独成区间；mode=custom 时严格按 customBounds 生成小于首边界、相邻边界和大于等于末边界的完整互斥区间；mode=auto 时按数据最小最大值：差值小于 12 使用离散值，否则划分 12 个等宽区间。",
+            "distribution.metric.kind=count 时必须按每个具体事件次数生成离散区间，不得再合并为等宽区间。其他指标按 distribution.interval 处理：mode=discrete 时每个 distribution_value 单独成区间；mode=custom 时严格按 customBounds 生成完整互斥区间；mode=auto 时差值小于 12 使用离散值，否则划分 12 个等宽区间。auto 的最小值、最大值和区间边界必须基于窗口期内全部 entity_values 统一计算，不得按日期或分组分别计算，保证同一 interval_order 在所有结果行中含义一致。",
+            "最终返回的 distribution_date 必须按当前 SQL 方言转换为 YYYY-MM-DD 日期值或文本，不得直接返回 YYYYMMDD 数字或文本分区值。",
             "最终结果按日期、分组和区间输出固定长表列 distribution_date、interval_order、interval_label、entity_count、entity_rate；entity_rate 是当前日期及分组内区间主体数占参与事件主体总数的比例。",
             "distribution.simultaneous.enabled=true 时，先按日期、主体和分组对 simultaneous.event、aggregation、metricField 计算 simultaneous_entity_value，再使用日期、主体和全部分组键把它显式 LEFT JOIN 到已保留 entity_id 的 bucketed 主体区间明细，最后按区间聚合为 simultaneous_value；不得把同时展示指标用于划分主区间。",
             "MySQL/AnalyticDB 兼容数据源禁止在 JOIN 条件中使用引用外层日期、区间或主体列的 EXISTS、IN 或标量关联子查询；必须先把关联数据按连接粒度聚合为 CTE 或派生表，再通过显式 JOIN 连接。",
@@ -3860,6 +3864,7 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "entity_count_field": "entity_count",
             "entity_rate_field": "entity_rate",
             "simultaneous_value_field": "simultaneous_value" if simultaneous.get("enabled") is True else "",
+            "metric_kind": str((distribution.get("metric") or {}).get("kind") or "count"),
         }
     elif response.analysis_model == "interval":
         interval = normalized_config.get("interval") if isinstance(normalized_config.get("interval"), dict) else {}

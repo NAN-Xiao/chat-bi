@@ -5,6 +5,7 @@ import {
   canShowDashboardDateFilter,
   getOrCreateDashboardDateFilterState,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import { shapeDistributionTableResult } from '@/views/dashboard/utils/distributionTable.ts'
 
 type ChartDataSourceType = 'sql' | 'external_mcp'
 
@@ -476,8 +477,9 @@ export async function refreshMixedChartData(viewInfo: any, options: MixedRefresh
     ...(options.forceRefresh ? { force_refresh: true } : {}),
   }
   const sqlResult = await dashboardApi.preview_sql(sqlRequest, options.requestConfig)
-  if (sqlResult?.status === 'failed') {
-    return sqlResult
+  const shapedSqlResult = shapeDistributionTableResult(sqlResult, viewInfo)
+  if (shapedSqlResult?.status === 'failed') {
+    return shapedSqlResult
   }
   let mcpResult: any = null
   if (options.cacheOnly) {
@@ -488,7 +490,7 @@ export async function refreshMixedChartData(viewInfo: any, options: MixedRefresh
   } else {
     mcpResult = await externalMcpApi.preview(mcp, options.requestConfig)
   }
-  const merged = mergeMixedChartResults(sqlResult, mcpResult, viewInfo?.sourceConfig?.merge)
+  const merged = mergeMixedChartResults(shapedSqlResult, mcpResult, viewInfo?.sourceConfig?.merge)
   const refreshedAt = Number(sqlResult?.refreshed_at || sqlResult?.cache_refreshed_at || 0)
   return {
     ...merged,

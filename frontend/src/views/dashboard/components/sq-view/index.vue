@@ -159,6 +159,12 @@ import {
   type TabInsightControlsVariant,
 } from './tabInsightLayout.ts'
 import type { DashboardLayoutSurface } from '@/views/dashboard/utils/dashboardLayoutSurface.ts'
+import {
+  normalizeDistributionTableViewInfo,
+  shapeDistributionTableResult,
+  syncDistributionTableColumns,
+} from '@/views/dashboard/utils/distributionTable.ts'
+normalizeDistributionTableViewInfo(props.viewInfo)
 const { t, locale } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
 const dashboardFilterControlsRef = ref<HTMLElement | null>(null)
@@ -1787,8 +1793,9 @@ async function refreshData(options: RefreshDataOptions = {}) {
       return false
     }
     normalizeDateFilterCapability(result)
-    const fields = getResultFields(result)
-    const data = Array.isArray(result?.data) ? result.data : []
+    const shapedResult = shapeDistributionTableResult(result, props.viewInfo)
+    const fields = getResultFields(shapedResult)
+    const data = Array.isArray(shapedResult?.data) ? shapedResult.data : []
     if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
       props.viewInfo.data = {}
     }
@@ -1803,10 +1810,11 @@ async function refreshData(options: RefreshDataOptions = {}) {
     props.viewInfo.data.fields = fields
     props.viewInfo.data.data = data
     props.viewInfo.fields = fields
+    syncDistributionTableColumns(props.viewInfo, fields)
     const hasPreviousShape =
       hasPreviousRows || previousDataFields.length > 0 || previousFields.length > 0 || hasChartShape(props.viewInfo)
-    props.viewInfo.status = result?.status || 'success'
-    props.viewInfo.message = result?.message || ''
+    props.viewInfo.status = shapedResult?.status || 'success'
+    props.viewInfo.message = shapedResult?.message || ''
     if (props.viewInfo.status === 'failed') {
       const queryBusyWithSnapshot = isDashboardQueryBusy(result) && hasPreviousShape
       if (!isPermissionDeniedResult(result) && (hasPreviousRows || queryBusyWithSnapshot)) {

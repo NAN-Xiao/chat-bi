@@ -1479,6 +1479,17 @@ def test_distribution_rejects_invalid_interval_metric_and_simultaneous_config() 
     assert "分布分析使用同时展示时请选择参与事件。" in result.issues
 
 
+def test_distribution_count_metric_always_uses_discrete_intervals() -> None:
+    request = _distribution_request(
+        metric={"kind": "count", "field": None, "aggregation": "sum"},
+        interval={"mode": "auto", "customBounds": [0, 10, 100]},
+    )
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+
+    assert normalized["distribution"]["interval"] == {"mode": "discrete", "customBounds": []}
+
+
 def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analysis() -> None:
     request = _distribution_request()
     normalized = ai_sql_generator._normalize_manual_config(request)
@@ -1497,6 +1508,8 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
 
     assert "只使用 distribution 配置" in prompt or "只能使用 distribution 配置" in prompt
     assert "主体必须先聚合再分桶" in prompt
+    assert "不得按日期或分组分别计算" in prompt
+    assert "YYYY-MM-DD" in prompt
     assert "simultaneous_entity_value" in prompt
     assert "显式 LEFT JOIN" in prompt
     assert "禁止在 JOIN 条件中使用引用外层" in prompt

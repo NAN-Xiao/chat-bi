@@ -107,6 +107,12 @@ import {
   withResolvedMetricSemantics,
 } from '@/views/dashboard/utils/metricSemantics.ts'
 import {
+  DISTRIBUTION_DATE_COLUMN,
+  DISTRIBUTION_TOTAL_COLUMN,
+  normalizeDistributionTableViewInfo,
+  shapeDistributionTableResult,
+} from '@/views/dashboard/utils/distributionTable.ts'
+import {
   inferPivotDimensions,
   isLikelyPivotDateField,
 } from '@/views/dashboard/utils/pivotDimensions.ts'
@@ -494,7 +500,7 @@ const sqlBuilder = reactive({
       aggregation: 'sum',
     },
     interval: {
-      mode: 'auto',
+      mode: 'discrete',
       customBounds: [],
     },
     simultaneous: {
@@ -2273,9 +2279,9 @@ function builderConfigForSave() {
         aggregation: sqlBuilder.distribution.metric.aggregation,
       },
       interval: {
-        mode: sqlBuilder.distribution.interval.mode,
-        customBounds: sqlBuilder.distribution.interval.mode === 'custom'
-          ? [...sqlBuilder.distribution.interval.customBounds]
+        mode: effectiveDistributionInterval().mode,
+        customBounds: effectiveDistributionInterval().mode === 'custom'
+          ? [...effectiveDistributionInterval().customBounds]
           : [],
       },
       simultaneous: {
@@ -2479,6 +2485,9 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.distribution.interval.customBounds = Array.isArray(distributionInterval.customBounds)
     ? distributionInterval.customBounds.map(Number).filter(Number.isFinite)
     : []
+  if (sqlBuilder.distribution.metric.kind === 'count') {
+    sqlBuilder.distribution.interval = { mode: 'discrete', customBounds: [] }
+  }
   const distributionSimultaneous = distribution.simultaneous && typeof distribution.simultaneous === 'object'
     ? distribution.simultaneous
     : {}
@@ -3373,7 +3382,7 @@ function resetDistributionConfig() {
   sqlBuilder.distribution.eventFilterLogic = 'and'
   sqlBuilder.distribution.eventFilters = []
   sqlBuilder.distribution.metric = { kind: 'count', field: '', aggregation: 'sum' }
-  sqlBuilder.distribution.interval = { mode: 'auto', customBounds: [] }
+  sqlBuilder.distribution.interval = { mode: 'discrete', customBounds: [] }
   sqlBuilder.distribution.simultaneous.enabled = false
   sqlBuilder.distribution.simultaneous.event = ''
   sqlBuilder.distribution.simultaneous.aggregation = 'count'
@@ -3671,7 +3680,23 @@ function handleDistributionEventChange(eventValue: string) {
 }
 
 function updateDistributionMetric(metric: DistributionMetricConfig) {
+  const previousKind = sqlBuilder.distribution.metric.kind
   sqlBuilder.distribution.metric = { ...metric }
+  if (metric.kind === 'count') {
+    sqlBuilder.distribution.interval = { mode: 'discrete', customBounds: [] }
+  } else if (previousKind === 'count') {
+    sqlBuilder.distribution.interval = { mode: 'auto', customBounds: [] }
+  }
+}
+
+function effectiveDistributionInterval(): DistributionIntervalConfig {
+  if (sqlBuilder.distribution.metric.kind === 'count') {
+    return { mode: 'discrete', customBounds: [] }
+  }
+  return {
+    mode: sqlBuilder.distribution.interval.mode,
+    customBounds: [...sqlBuilder.distribution.interval.customBounds],
+  }
 }
 
 function updateDistributionInterval(interval: DistributionIntervalConfig) {
@@ -4642,8 +4667,8 @@ function collectBuilderAiContext() {
         aggregation: sqlBuilder.distribution.metric.aggregation,
       },
       interval: {
-        mode: sqlBuilder.distribution.interval.mode,
-        customBounds: [...sqlBuilder.distribution.interval.customBounds],
+        mode: effectiveDistributionInterval().mode,
+        customBounds: [...effectiveDistributionInterval().customBounds],
       },
       simultaneous: {
         enabled: sqlBuilder.distribution.simultaneous.enabled,
@@ -5178,18 +5203,8 @@ async function generateBuilderAiSql() {
     form.y = [valueField]
   }
   if (sqlBuilder.analysisModel === 'distribution' || result.analysis_model === 'distribution') {
-    const resultConfig = result.result_config || result.resultConfig || {}
     form.chartType = 'table'
-    form.columns = [
-      String(resultConfig.date_field || resultConfig.dateField || 'distribution_date'),
-      String(resultConfig.total_entities_field || resultConfig.totalEntitiesField || 'total_entities'),
-      String(resultConfig.interval_field || resultConfig.intervalField || 'interval_label'),
-      String(resultConfig.entity_count_field || resultConfig.entityCountField || 'entity_count'),
-      String(resultConfig.entity_rate_field || resultConfig.entityRateField || 'entity_rate'),
-      ...(resultConfig.simultaneous_value_field || resultConfig.simultaneousValueField
-        ? [String(resultConfig.simultaneous_value_field || resultConfig.simultaneousValueField)]
-        : []),
-    ]
+    form.columns = [DISTRIBUTION_DATE_COLUMN, DISTRIBUTION_TOTAL_COLUMN]
   }
   if (sqlBuilder.analysisModel === 'interval' || result.analysis_model === 'interval') {
     const resultConfig = result.result_config || result.resultConfig || {}
@@ -6559,7 +6574,7 @@ function resetFieldSelections() {
     return
   }
   form.columns = form.columns.filter((field) => fields.includes(field))
-  if (isRetentionAnalysis.value) {
+  if (isRetentionAnalysis.value || isDistributionAnalysis.value) {
     form.columns = [...fields]
   } else if (form.columns.length === 0) {
     form.columns = fields.slice(0, 8)
@@ -6589,6 +6604,7 @@ function initEditor() {
   }
   resetSqlBuilderState()
   restoreSqlBuilderState(sourceConfig.sql?.builder || sourceConfig.builder)
+  normalizeDistributionTableViewInfo(viewInfo)
   const normalizedConfig = normalizeDashboardChartConfig(viewInfo)
   const pivotDateExpression = normalizeDashboardDateExpression(normalizedConfig.dateFilter?.expression)
   if (pivotDateExpression) {
@@ -6630,7 +6646,9 @@ function initEditor() {
   preview.status = 'success'
   preview.message = ''
   preview.raw = viewInfo.data?.raw
-  setSourceResult('sql', normalizePreviewResultSnapshot(sourceConfig.sql?.lastResult))
+  setSourceResult('sql', normalizePreviewResultSnapshot(
+    shapeDistributionTableResult(sourceConfig.sql?.lastResult || {}, sqlBuilder)
+  ))
   setSourceResult('external_mcp', normalizePreviewResultSnapshot(sourceConfig.mcp?.lastResult))
   setMergeState(
     Array.isArray(sourceConfig.merge?.joinFields) ? sourceConfig.merge.joinFields : [],
@@ -6899,7 +6917,7 @@ async function previewSqlSource() {
       pivot: sourcePreviewPivotPayload(),
       date_filter: dashboardDateFilterRequestPayload(),
     })
-    const sourceSnapshot = previewResultSnapshot(sourceResult)
+    const sourceSnapshot = previewResultSnapshot(shapeDistributionTableResult(sourceResult, sqlBuilder))
     setSourceResult('sql', sourceSnapshot)
     updateSourcePreviewResult(sourceSnapshot)
     resetFieldSelections()
@@ -6919,7 +6937,7 @@ async function previewSqlSource() {
     pivot: previewPivotPayload(),
     date_filter: dashboardDateFilterRequestPayload(),
   })
-  const snapshot = previewResultSnapshot(result)
+  const snapshot = previewResultSnapshot(shapeDistributionTableResult(result, sqlBuilder))
   setSourceResult('sql', snapshot)
   return snapshot
 }
@@ -8088,7 +8106,7 @@ function closeDrawer() {
                     />
                     <DistributionIntervalSettings
                       :model-value="sqlBuilder.distribution.interval"
-                      :disabled="!sqlBuilder.distribution.event"
+                      :disabled="!sqlBuilder.distribution.event || sqlBuilder.distribution.metric.kind === 'count'"
                       @update:modelValue="updateDistributionInterval"
                     />
                     <button

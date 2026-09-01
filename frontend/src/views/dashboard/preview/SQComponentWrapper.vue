@@ -59,6 +59,10 @@ import {
   DEFAULT_DASHBOARD_LAYOUT_SURFACE,
   type DashboardLayoutSurface,
 } from '@/views/dashboard/utils/dashboardLayoutSurface.ts'
+import {
+  shapeDistributionTableResult,
+  syncDistributionTableColumns,
+} from '@/views/dashboard/utils/distributionTable.ts'
 
 const componentWrapperInnerRef = ref(null)
 const { t } = useI18n()
@@ -1174,8 +1178,9 @@ async function refreshChartData() {
         }
         const result = await previewChartSql(viewInfo, undefined, true)
         applyDashboardDateFilterCapability(viewInfo, result)
-        const fields = getResultFields(result)
-        const data = Array.isArray(result?.data) ? result.data : []
+        const shapedResult = shapeDistributionTableResult(result, viewInfo)
+        const fields = getResultFields(shapedResult)
+        const data = Array.isArray(shapedResult?.data) ? shapedResult.data : []
         if (!viewInfo.data || typeof viewInfo.data !== 'object') {
           viewInfo.data = {}
         }
@@ -1185,8 +1190,9 @@ async function refreshChartData() {
           viewInfo.data.fields = fields
           viewInfo.data.data = data
           viewInfo.fields = fields
-          viewInfo.status = result?.status || 'success'
-          viewInfo.message = result?.message || ''
+          syncDistributionTableColumns(viewInfo, fields)
+          viewInfo.status = shapedResult?.status || 'success'
+          viewInfo.message = shapedResult?.message || ''
         }
         if (viewInfo.status === 'failed') {
           if (hasPreviousRows || (isDashboardQueryBusy(result) && hasPreviousShape)) {
