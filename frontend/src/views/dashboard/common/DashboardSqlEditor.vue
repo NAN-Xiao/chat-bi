@@ -8319,11 +8319,11 @@ function closeDrawer() {
               </div>
 
               <div class="interval-limit-row">
-                <div>
-                  <span class="interval-config-label">间隔上限</span>
+                <span class="interval-config-label">间隔上限</span>
+                <div class="interval-limit-content">
                   <p>起点事件到终点事件的间隔不超过</p>
+                  <IntervalLimitPicker v-model="sqlBuilder.interval.limitSeconds" />
                 </div>
-                <IntervalLimitPicker v-model="sqlBuilder.interval.limitSeconds" />
               </div>
             </section>
 
@@ -10177,9 +10177,6 @@ function closeDrawer() {
 }
 
 .interval-limit-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
   margin-top: 24px;
 }
 
@@ -10191,6 +10188,12 @@ function closeDrawer() {
   margin: 0;
   color: #4b5563;
   font-size: 13px;
+}
+
+.interval-limit-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .path-heading-row {
@@ -10879,8 +10882,11 @@ function closeDrawer() {
   }
 
   .interval-limit-row {
-    align-items: flex-start;
-    flex-direction: column;
+    width: 100%;
+  }
+
+  .interval-limit-content {
+    flex-wrap: wrap;
   }
 
   .path-initial-event-row {

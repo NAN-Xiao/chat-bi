@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ArrowRight, InfoFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus-secondary'
 import {
   DEFAULT_INTERVAL_LIMIT_SECONDS,
@@ -21,39 +22,41 @@ const emits = defineEmits<{
 type DurationUnit = 'day' | 'hour' | 'minute'
 
 const visible = ref(false)
-const draftUnit = ref<DurationUnit>('hour')
+const selectedUnit = ref<DurationUnit>('hour')
 const draftValue = ref(1)
-const presets = [
-  { label: '1小时', value: 3600 },
-  { label: '3小时', value: 10800 },
-  { label: '12小时', value: 43200 },
-]
 const unitOptions: Array<{ label: string; value: DurationUnit; seconds: number }> = [
   { label: '天（即24小时）', value: 'day', seconds: 86400 },
   { label: '小时', value: 'hour', seconds: 3600 },
   { label: '分钟', value: 'minute', seconds: 60 },
 ]
+const presets: Record<DurationUnit, number[]> = {
+  day: [1, 7, 14],
+  hour: [1, 3, 12],
+  minute: [1, 15, 30],
+}
 
-const activeLabel = computed(() => formatIntervalLimit(props.modelValue || DEFAULT_INTERVAL_LIMIT_SECONDS))
+const activeLabel = computed(() =>
+  formatIntervalLimit(props.modelValue || DEFAULT_INTERVAL_LIMIT_SECONDS)
+)
 const draftSeconds = computed(() => {
-  const unit = unitOptions.find((item) => item.value === draftUnit.value) || unitOptions[1]
+  const unit = unitOptions.find((item) => item.value === selectedUnit.value) || unitOptions[1]
   return Number(draftValue.value) * unit.seconds
 })
 const maxDraftValue = computed(() => {
-  const unit = unitOptions.find((item) => item.value === draftUnit.value) || unitOptions[1]
+  const unit = unitOptions.find((item) => item.value === selectedUnit.value) || unitOptions[1]
   return Math.floor(INTERVAL_LIMIT_MAX_SECONDS / unit.seconds)
 })
 
 function resetDraft() {
   const seconds = clampIntervalLimitSeconds(props.modelValue)
   if (seconds % 86400 === 0) {
-    draftUnit.value = 'day'
+    selectedUnit.value = 'day'
     draftValue.value = seconds / 86400
   } else if (seconds % 3600 === 0) {
-    draftUnit.value = 'hour'
+    selectedUnit.value = 'hour'
     draftValue.value = seconds / 3600
   } else {
-    draftUnit.value = 'minute'
+    selectedUnit.value = 'minute'
     draftValue.value = Math.max(1, Math.round(seconds / 60))
   }
 }
@@ -62,20 +65,38 @@ watch(visible, (next) => {
   if (next) resetDraft()
 })
 
+function selectUnit(unit: DurationUnit) {
+  selectedUnit.value = unit
+  const seconds = clampIntervalLimitSeconds(props.modelValue)
+  const unitSeconds = unitOptions.find((item) => item.value === unit)?.seconds || 3600
+  draftValue.value =
+    seconds % unitSeconds === 0
+      ? Math.min(seconds / unitSeconds, maxDraftValue.value)
+      : presets[unit][0]
+}
+
 function selectPreset(value: number) {
-  emits('update:modelValue', value)
+  const unitSeconds = unitOptions.find((item) => item.value === selectedUnit.value)?.seconds || 3600
+  emits('update:modelValue', value * unitSeconds)
   visible.value = false
 }
 
 function applyCustomLimit() {
-  if (!Number.isFinite(draftSeconds.value)
-    || draftSeconds.value < INTERVAL_LIMIT_MIN_SECONDS
-    || draftSeconds.value > INTERVAL_LIMIT_MAX_SECONDS) {
+  if (
+    !Number.isFinite(draftSeconds.value) ||
+    draftSeconds.value < INTERVAL_LIMIT_MIN_SECONDS ||
+    draftSeconds.value > INTERVAL_LIMIT_MAX_SECONDS
+  ) {
     ElMessage.warning('间隔上限必须在 1 分钟到 180 天之间。')
+    resetDraft()
     return
   }
   emits('update:modelValue', clampIntervalLimitSeconds(draftSeconds.value))
-  visible.value = false
+}
+
+function isPresetActive(value: number) {
+  const unitSeconds = unitOptions.find((item) => item.value === selectedUnit.value)?.seconds || 3600
+  return props.modelValue === value * unitSeconds
 }
 </script>
 
@@ -83,7 +104,7 @@ function applyCustomLimit() {
   <el-popover
     v-model:visible="visible"
     placement="bottom-start"
-    :width="360"
+    :width="304"
     trigger="click"
     popper-class="interval-limit-popper"
     :teleported="false"
@@ -101,41 +122,50 @@ function applyCustomLimit() {
     </template>
 
     <div class="interval-limit-panel">
-      <div class="interval-limit-title">间隔上限</div>
-      <div class="interval-limit-presets" aria-label="快捷间隔上限">
+      <div class="interval-limit-menu">
+        <div class="interval-limit-current">
+          <span>{{ activeLabel }}</span>
+          <el-tooltip content="限制起点事件到终点事件之间可参与统计的最长时间。" placement="top">
+            <el-icon aria-label="间隔上限说明"><InfoFilled /></el-icon>
+          </el-tooltip>
+        </div>
         <button
-          v-for="preset in presets"
-          :key="preset.value"
+          v-for="unit in unitOptions"
+          :key="unit.value"
           type="button"
-          :class="{ 'is-active': modelValue === preset.value }"
-          @click="selectPreset(preset.value)"
+          :class="{ 'is-active': selectedUnit === unit.value }"
+          @click="selectUnit(unit.value)"
         >
-          {{ preset.label }}
+          <span>{{ unit.label }}</span>
+          <el-icon><ArrowRight /></el-icon>
         </button>
       </div>
-      <div class="interval-limit-custom">
-        <el-input-number
-          v-model="draftValue"
-          :min="1"
-          :max="maxDraftValue"
-          :precision="0"
-          controls-position="right"
-          aria-label="自定义间隔数值"
-          @keydown.stop
-        />
-        <el-select v-model="draftUnit" aria-label="自定义间隔单位">
-          <el-option
-            v-for="unit in unitOptions"
-            :key="unit.value"
-            :label="unit.label"
-            :value="unit.value"
+
+      <div class="interval-limit-values" aria-label="快捷间隔上限">
+        <button
+          v-for="value in presets[selectedUnit]"
+          :key="value"
+          type="button"
+          :class="{ 'is-active': isPresetActive(value) }"
+          @click="selectPreset(value)"
+        >
+          {{ value }}{{ selectedUnit === 'day' ? '天' : selectedUnit === 'hour' ? '小时' : '分钟' }}
+        </button>
+        <div class="interval-limit-custom">
+          <el-input-number
+            v-model="draftValue"
+            :min="1"
+            :max="maxDraftValue"
+            :precision="0"
+            :controls="false"
+            aria-label="自定义间隔数值"
+            @change="applyCustomLimit"
+            @keydown.enter.stop="applyCustomLimit"
           />
-        </el-select>
-      </div>
-      <p>可设置 1 分钟到 180 天，超过上限的间隔不参与统计。</p>
-      <div class="interval-limit-actions">
-        <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" @click="applyCustomLimit">应用</el-button>
+          <span>{{
+            selectedUnit === 'day' ? '天' : selectedUnit === 'hour' ? '小时' : '分钟'
+          }}</span>
+        </div>
       </div>
     </div>
   </el-popover>
@@ -143,13 +173,13 @@ function applyCustomLimit() {
 
 <style scoped>
 .interval-limit-trigger {
-  min-width: 64px;
+  min-width: 58px;
   height: 30px;
-  padding: 0 10px;
-  border: 1px solid transparent;
+  padding: 0 9px;
+  border: 1px solid #8aa0ff;
   border-radius: 6px;
   color: #3154e8;
-  background: #f3f5fb;
+  background: #fff;
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
@@ -158,7 +188,7 @@ function applyCustomLimit() {
 .interval-limit-trigger:hover,
 .interval-limit-trigger:focus-visible {
   border-color: #3154e8;
-  background: #fff;
+  outline: none;
 }
 
 .interval-limit-trigger:disabled {
@@ -167,72 +197,98 @@ function applyCustomLimit() {
 }
 
 .interval-limit-panel {
+  display: grid;
+  grid-template-columns: 142px 1fr;
+  min-height: 170px;
   color: #303643;
 }
 
-.interval-limit-title {
-  margin-bottom: 12px;
-  font-size: 14px;
+.interval-limit-menu {
+  padding: 6px;
+  border-right: 1px solid #edf0f5;
+}
+
+.interval-limit-current {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 8px;
+  color: #3154e8;
   font-weight: 600;
 }
 
-.interval-limit-presets {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+.interval-limit-current .el-icon {
+  color: #6f7785;
+  cursor: help;
 }
 
-.interval-limit-presets button {
-  height: 32px;
-  border: 1px solid #e2e5ea;
+.interval-limit-menu button,
+.interval-limit-values button {
+  width: 100%;
+  height: 34px;
+  padding: 0 8px;
+  border: 0;
   border-radius: 5px;
-  color: #4b5563;
-  background: #fff;
+  color: #4b515c;
+  background: transparent;
   cursor: pointer;
+  font-size: 13px;
+  text-align: left;
 }
 
-.interval-limit-presets button:hover,
-.interval-limit-presets button.is-active {
+.interval-limit-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.interval-limit-menu button:hover,
+.interval-limit-menu button.is-active,
+.interval-limit-values button:hover,
+.interval-limit-values button.is-active {
   border-color: #3154e8;
   color: #3154e8;
-  background: #f5f7ff;
+  background: #f0f2f8;
+}
+
+.interval-limit-values {
+  padding: 38px 8px 8px;
 }
 
 .interval-limit-custom {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(130px, 1fr);
+  grid-template-columns: 64px auto;
+  align-items: center;
+  justify-content: start;
   gap: 8px;
-  margin-top: 14px;
+  margin: 5px 8px 0;
+  color: #4b515c;
+  font-size: 13px;
 }
 
-.interval-limit-custom :deep(.el-input-number),
-.interval-limit-custom :deep(.el-select) {
-  width: 100%;
+.interval-limit-custom :deep(.ed-input-number),
+.interval-limit-custom :deep(.el-input-number) {
+  width: 64px;
+  min-width: 0;
 }
 
-.interval-limit-panel p {
-  margin: 10px 0 0;
-  color: #8a93a3;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.interval-limit-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
+.interval-limit-custom :deep(.ed-input__wrapper),
+.interval-limit-custom :deep(.el-input__wrapper) {
+  min-height: 28px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #dfe3ea inset;
 }
 
 :global(.interval-limit-popper) {
   max-width: calc(100vw - 24px);
+  padding: 0 !important;
+  overflow: hidden;
 }
 
-@media (max-width: 480px) {
-  .interval-limit-custom {
-    grid-template-columns: 1fr;
+@media (max-width: 420px) {
+  .interval-limit-panel {
+    grid-template-columns: 132px minmax(120px, 1fr);
   }
 }
 </style>
