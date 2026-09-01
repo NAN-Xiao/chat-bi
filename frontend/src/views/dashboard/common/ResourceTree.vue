@@ -27,7 +27,6 @@ import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import ResourceGroupOpt from '@/views/dashboard/common/ResourceGroupOpt.vue'
 import { dashboardApi } from '@/api/dashboard.ts'
 import HandleMore from '@/views/dashboard/common/HandleMore.vue'
-import ReportTypePicker from '@/views/dashboard/common/ReportTypePicker.vue'
 import { useI18n } from 'vue-i18n'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useUserStore } from '@/stores/user'
@@ -46,8 +45,6 @@ const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
 const resourceGroupOptRef = ref(null)
-const reportTypePickerRef = ref(null)
-const pendingReportCreateParams = ref<any>(null)
 let treeRequestSeq = 0
 const workspaceContextSwitching = ref(false)
 
@@ -907,7 +904,7 @@ const canEditDashboardTree = computed<boolean>(
 
 function createNewObject() {
   if (!canOpenCreateDashboard.value) return
-  addOperation({ opt: 'newLeaf', type: 'dashboard', nodeType: 'leaf', pid: 'root' })
+  addOperation({ opt: 'newLeaf' })
 }
 
 function onClickSideBarBtn() {
@@ -963,43 +960,18 @@ const getDefaultExpandedKeys = () => {
   }
 }
 
-const openCreateDashboardDialog = (params: any = {}, reportMeta?: Record<string, any>) => {
+const openCreateDashboardDialog = (params: any = {}) => {
   dashboardStore.canvasDataInit()
-  if (reportMeta) {
-    dashboardStore.setCanvasStyleData({ reportMeta })
-  }
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   resourceGroupOptRef.value?.optInit({
     opt: 'newLeaf',
     type: 'dashboard',
     nodeType: 'leaf',
-    name: params.name || '',
+    name: '',
     placeholder: t('dashboard.add_dashboard_name_tips'),
     pid: params?.id || 'root',
     datasource: datasourceContext.datasourceId,
   })
-}
-
-const openReportTypePicker = (params: any = {}) => {
-  if (!canOpenCreateDashboard.value) return
-  if (props.defaultMode) {
-    openCreateDashboardDialog(params)
-    return
-  }
-  pendingReportCreateParams.value = params
-  // @ts-expect-error component expose is intentionally local to this flow
-  reportTypePickerRef.value?.open()
-}
-
-const handleReportTypeConfirm = (payload: { name: string; reportMeta: Record<string, any> }) => {
-  const params = pendingReportCreateParams.value || {
-    opt: 'newLeaf',
-    type: 'dashboard',
-    nodeType: 'leaf',
-    pid: 'root',
-  }
-  pendingReportCreateParams.value = null
-  openCreateDashboardDialog({ ...params, name: payload.name }, payload.reportMeta)
 }
 
 watch(filterText, (val) => {
@@ -1083,11 +1055,7 @@ const addOperation = (params: any) => {
     if (!folder || !canManageNode(folder)) return
   }
   if (params.opt === 'newLeaf') {
-    if (props.defaultMode || !canCreateDashboard.value) {
-      openCreateDashboardDialog(params)
-    } else {
-      openReportTypePicker(params)
-    }
+    openCreateDashboardDialog(params)
   } else {
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     resourceGroupOptRef.value?.optInit(params)
@@ -1557,7 +1525,6 @@ defineExpose({
       </el-tree>
     </el-scrollbar>
     <ResourceGroupOpt ref="resourceGroupOptRef" @finish="baseInfoChangeFinish"></ResourceGroupOpt>
-    <ReportTypePicker ref="reportTypePickerRef" @confirm="handleReportTypeConfirm" />
   </div>
 </template>
 <style lang="less" scoped>

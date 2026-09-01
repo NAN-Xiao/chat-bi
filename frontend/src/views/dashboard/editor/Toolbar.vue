@@ -211,9 +211,6 @@ const previewInner = () => {
       <span id="canvas-name" class="name-area" @dblclick="editCanvasName">
         {{ dashboardInfo.name }}
       </span>
-      <span v-if="baseParams?.reportMeta?.label" class="report-type-badge">
-        {{ baseParams.reportMeta.label }}
-      </span>
       <div class="opt-area">
         <el-tooltip effect="dark" :content="t('dashboard.undo')" placement="bottom">
           <el-icon
@@ -370,22 +367,6 @@ const previewInner = () => {
         padding-left: 4px;
         height: 100%;
       }
-    }
-
-    .report-type-badge {
-      align-self: flex-start;
-      max-width: 180px;
-      margin-top: 2px;
-      padding: 1px 7px;
-      border: 1px solid #d9e3ff;
-      border-radius: 4px;
-      color: #2f6bff;
-      background: #f1f5ff;
-      font-size: 11px;
-      line-height: 18px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
 
     .opt-area {
