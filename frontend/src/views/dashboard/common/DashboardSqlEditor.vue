@@ -10590,6 +10590,10 @@ function closeDrawer() {
   min-width: 160px;
 }
 
+.distribution-simultaneous-flow :deep(.el-select) {
+  width: 160px;
+}
+
 .funnel-heading-row .builder-section-head {
   flex: 0 0 96px;
   margin-bottom: 0;
