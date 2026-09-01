@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Check, FolderOpened, Operation, Search } from '@element-plus/icons-vue'
+import { computed, ref, watch } from 'vue'
+import { Check, Close, FolderOpened, Operation, Plus, Search } from '@element-plus/icons-vue'
+import BuilderFieldPicker from './BuilderFieldPicker.vue'
 import { fieldOptionDisplayName } from './builderFieldPickerOptions'
 import type { PathAnalysisEvent } from './pathAnalysis'
 
@@ -18,33 +19,44 @@ const emits = defineEmits<{
 
 const maxEvents = computed(() => props.maxEvents || 30)
 const eventPickerVisible = ref(false)
-const splitPickerVisible = ref(false)
+const draftSplitVisible = ref(false)
 const keyword = ref('')
 
-const selectedEventValues = computed(() => props.modelValue
-  .map((item) => item.event)
-  .filter(Boolean))
+const selectedEventValues = computed(() =>
+  props.modelValue.map((item) => item.event).filter(Boolean)
+)
 
 const selectedEventCount = computed(() => selectedEventValues.value.length)
 
-const selectedEvents = computed(() => props.modelValue.filter((item) => item.event))
+const splitItems = computed(() =>
+  props.modelValue.filter((item) => item.event && item.splitProperties.length > 0)
+)
+
+const configuredSplitEvents = computed(() => new Set(splitItems.value.map((item) => item.event)))
+
+const availableSplitEventOptions = computed(() =>
+  props.eventOptions.filter(
+    (option) =>
+      selectedEventValues.value.includes(option.value) &&
+      !configuredSplitEvents.value.has(option.value)
+  )
+)
 
 const filteredEventOptions = computed(() => {
   const query = keyword.value.trim().toLowerCase()
   if (!query) return props.eventOptions
-  return props.eventOptions.filter((option) => [
-    option.value,
-    option.field,
-    option.label,
-    option.displayName,
-    option.eventName,
-  ].some((value) => String(value || '').toLowerCase().includes(query)))
+  return props.eventOptions.filter((option) =>
+    [option.value, option.field, option.label, option.displayName, option.eventName].some((value) =>
+      String(value || '')
+        .toLowerCase()
+        .includes(query)
+    )
+  )
 })
 
-function eventLabel(value: string) {
-  const option = props.eventOptions.find((item) => item.value === value)
-  return fieldOptionDisplayName(option, value)
-}
+watch(availableSplitEventOptions, (options) => {
+  if (!options.length) draftSplitVisible.value = false
+})
 
 function isEventSelected(value: string) {
   return selectedEventValues.value.includes(value)
@@ -56,17 +68,17 @@ function emptyEvent(): PathAnalysisEvent {
 
 function updateSelectedEvents(values: string[]) {
   const previousByEvent = new Map(
-    props.modelValue
-      .filter((item) => item.event)
-      .map((item) => [item.event, item]),
+    props.modelValue.filter((item) => item.event).map((item) => [item.event, item])
   )
   const next = values.map((event, index) => {
     const previous = previousByEvent.get(event)
-    return previous || {
-      id: `path-event-${Date.now()}-${index}`,
-      event,
-      splitProperties: [],
-    }
+    return (
+      previous || {
+        id: `path-event-${Date.now()}-${index}`,
+        event,
+        splitProperties: [],
+      }
+    )
   })
   emits('update:modelValue', next.length ? next : [emptyEvent()])
 }
@@ -78,10 +90,51 @@ function toggleEvent(value: string) {
   updateSelectedEvents(nextValues)
 }
 
-function updateSplitProperties(event: string, values: string[]) {
-  emits('update:modelValue', props.modelValue.map((item) => item.event === event
-    ? { ...item, splitProperties: [...values] }
-    : item))
+function splitEventOptions(currentEvent: string) {
+  return props.eventOptions.filter(
+    (option) =>
+      selectedEventValues.value.includes(option.value) &&
+      (option.value === currentEvent || !configuredSplitEvents.value.has(option.value))
+  )
+}
+
+function addSplitEvent(event: string) {
+  if (!event || configuredSplitEvents.value.has(event)) return
+  emits(
+    'update:modelValue',
+    props.modelValue.map((item) =>
+      item.event === event ? { ...item, splitProperties: [''] } : item
+    )
+  )
+  draftSplitVisible.value = false
+}
+
+function updateSplitEvent(currentEvent: string, nextEvent: string) {
+  if (!nextEvent || nextEvent === currentEvent || configuredSplitEvents.value.has(nextEvent)) return
+  emits(
+    'update:modelValue',
+    props.modelValue.map((item) => {
+      if (item.event === currentEvent) return { ...item, splitProperties: [] }
+      if (item.event === nextEvent) return { ...item, splitProperties: [''] }
+      return item
+    })
+  )
+}
+
+function updateSplitProperty(event: string, value: string) {
+  emits(
+    'update:modelValue',
+    props.modelValue.map((item) =>
+      item.event === event ? { ...item, splitProperties: [value] } : item
+    )
+  )
+}
+
+function removeSplitItem(event: string) {
+  emits(
+    'update:modelValue',
+    props.modelValue.map((item) => (item.event === event ? { ...item, splitProperties: [] } : item))
+  )
 }
 </script>
 
@@ -113,7 +166,9 @@ function updateSplitProperties(event: string, values: string[]) {
           <input v-model="keyword" placeholder="搜索事件" />
         </div>
         <div v-if="loading" class="path-event-picker-empty">加载中...</div>
-        <div v-else-if="filteredEventOptions.length === 0" class="path-event-picker-empty">暂无事件</div>
+        <div v-else-if="filteredEventOptions.length === 0" class="path-event-picker-empty">
+          暂无事件
+        </div>
         <div v-else class="path-event-picker-options">
           <button
             v-for="option in filteredEventOptions"
@@ -123,7 +178,10 @@ function updateSplitProperties(event: string, values: string[]) {
             :disabled="!isEventSelected(option.value) && selectedEventCount >= maxEvents"
             @click="toggleEvent(option.value)"
           >
-            <span class="path-event-picker-check" :class="{ 'is-selected': isEventSelected(option.value) }">
+            <span
+              class="path-event-picker-check"
+              :class="{ 'is-selected': isEventSelected(option.value) }"
+            >
               <el-icon v-if="isEventSelected(option.value)"><Check /></el-icon>
             </span>
             <span class="path-event-picker-option-text">
@@ -138,73 +196,95 @@ function updateSplitProperties(event: string, values: string[]) {
       </div>
     </el-popover>
 
-    <el-popover
-      v-model:visible="splitPickerVisible"
-      width="440"
-      trigger="click"
-      placement="bottom-start"
-      popper-class="path-event-split-popper"
-      :popper-style="{ zIndex: 5001 }"
-    >
-      <template #reference>
+    <div v-if="splitItems.length || draftSplitVisible" class="path-split-list">
+      <div v-for="item in splitItems" :key="item.id" class="path-split-row">
+        <span class="path-split-picker path-split-event-picker">
+          <el-icon><FolderOpened /></el-icon>
+          <BuilderFieldPicker
+            :model-value="item.event"
+            :options="splitEventOptions(item.event)"
+            :loading="loading"
+            mode="tracking-event"
+            placeholder="选择事件"
+            @update:model-value="updateSplitEvent(item.event, $event)"
+          />
+        </span>
+        <span class="path-split-word">按</span>
+        <span class="path-split-picker path-split-property-picker">
+          <el-icon><Operation /></el-icon>
+          <BuilderFieldPicker
+            :model-value="item.splitProperties[0] || ''"
+            :options="propertyOptions(item.event)"
+            :loading="loading"
+            mode="property"
+            placeholder="选择属性"
+            @update:model-value="updateSplitProperty(item.event, $event)"
+          />
+        </span>
+        <span class="path-split-word">拆分</span>
         <button
           type="button"
-          class="path-split-trigger"
-          :class="{ 'is-active': splitPickerVisible }"
-          :aria-expanded="splitPickerVisible"
-          aria-label="设置事件拆分"
+          class="path-split-remove"
+          title="删除拆分项"
+          aria-label="删除拆分项"
+          @click="removeSplitItem(item.event)"
         >
-          <el-icon><Operation /></el-icon>
-          <span>事件拆分</span>
+          <el-icon><Close /></el-icon>
         </button>
-      </template>
-
-      <div class="path-event-split-picker">
-        <div v-if="selectedEvents.length === 0" class="path-event-picker-empty">
-          请先选择参与分析的事件
-        </div>
-        <div v-for="item in selectedEvents" :key="item.id" class="path-event-split-row">
-          <span class="path-event-split-event">
-            <el-icon><FolderOpened /></el-icon>
-            <span>{{ eventLabel(item.event) }}</span>
-          </span>
-          <span class="path-event-split-word">按</span>
-          <el-select
-            :model-value="item.splitProperties"
-            multiple
-            filterable
-            collapse-tags
-            collapse-tags-tooltip
-            clearable
-            class="path-event-property-select"
-            :disabled="!propertyOptions(item.event).length"
-            :placeholder="propertyOptions(item.event).length ? '选择属性' : '暂无属性'"
-            @update:modelValue="updateSplitProperties(item.event, $event)"
-          >
-            <el-option
-              v-for="option in propertyOptions(item.event)"
-              :key="option.value"
-              :label="option.label || option.displayName || option.field"
-              :value="option.value"
-            />
-          </el-select>
-        </div>
       </div>
-    </el-popover>
+
+      <div v-if="draftSplitVisible" class="path-split-row path-split-draft-row">
+        <span class="path-split-picker path-split-event-picker">
+          <el-icon><FolderOpened /></el-icon>
+          <BuilderFieldPicker
+            model-value=""
+            :options="availableSplitEventOptions"
+            :loading="loading"
+            mode="tracking-event"
+            placeholder="选择事件"
+            @update:model-value="addSplitEvent"
+          />
+        </span>
+        <span class="path-split-word">按</span>
+        <span class="path-split-picker path-split-property-picker is-disabled">
+          <el-icon><Operation /></el-icon>
+          <span>选择属性</span>
+        </span>
+        <span class="path-split-word">拆分</span>
+        <button
+          type="button"
+          class="path-split-remove"
+          title="取消新增拆分项"
+          aria-label="取消新增拆分项"
+          @click="draftSplitVisible = false"
+        >
+          <el-icon><Close /></el-icon>
+        </button>
+      </div>
+    </div>
+
+    <button
+      type="button"
+      class="path-add-split"
+      :disabled="!availableSplitEventOptions.length || draftSplitVisible"
+      @click="draftSplitVisible = true"
+    >
+      <el-icon><Plus /></el-icon>
+      <span>拆分项</span>
+    </button>
   </div>
 </template>
 
 <style scoped>
 .path-event-list {
-  display: inline-flex;
-  align-items: center;
-  flex-direction: column;
-  gap: 10px;
+  display: flex;
   min-width: 0;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.path-event-trigger,
-.path-split-trigger {
+.path-event-trigger {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -221,21 +301,12 @@ function updateSplitProperties(event: string, values: string[]) {
 }
 
 .path-event-trigger:hover,
-.path-event-trigger[aria-expanded='true'],
-.path-split-trigger:hover,
-.path-split-trigger.is-active {
+.path-event-trigger[aria-expanded='true'] {
   color: #315cff;
   background: #eef3ff;
 }
 
-.path-split-trigger {
-  padding: 0 4px;
-  color: #315cff;
-  background: transparent;
-}
-
-.path-event-picker,
-.path-event-split-picker {
+.path-event-picker {
   color: #1f2633;
   font-size: 12px;
 }
@@ -339,68 +410,120 @@ function updateSplitProperties(event: string, values: string[]) {
   font-size: 12px;
 }
 
-.path-event-split-picker {
+.path-split-list {
   display: grid;
-  gap: 8px;
-  max-height: 320px;
-  overflow-y: auto;
-  padding: 2px;
+  gap: 7px;
+  max-width: 100%;
+  margin-left: 12px;
+  padding-left: 10px;
+  border-left: 1px solid #e4e8f0;
 }
 
-.path-event-split-row {
+.path-split-row {
   display: grid;
-  grid-template-columns: minmax(100px, 1fr) auto minmax(150px, 1.4fr);
+  grid-template-columns: minmax(110px, 160px) auto minmax(120px, 180px) auto 24px;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
-.path-event-split-event {
-  display: inline-flex;
+.path-split-picker {
+  display: flex;
   min-width: 0;
-  align-items: center;
-  gap: 5px;
-  padding: 0 8px;
-  color: #374151;
-  background: #f4f6fa;
-  border-radius: 6px;
-  line-height: 26px;
-}
-
-.path-event-split-event span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.path-event-split-word {
-  color: #8a93a3;
-  white-space: nowrap;
-}
-
-.path-event-property-select {
-  min-width: 0;
-}
-
-.path-event-property-select :deep(.el-select__wrapper) {
   min-height: 26px;
+  align-items: center;
+  gap: 4px;
+  padding-left: 7px;
   border-radius: 6px;
-  box-shadow: none;
+  color: #4d5666;
   background: #f3f5fa;
 }
 
+.path-split-picker > .el-icon {
+  flex: 0 0 14px;
+}
+
+.path-split-picker :deep(.builder-field-picker) {
+  min-width: 0;
+}
+
+.path-split-picker :deep(.builder-field-picker-trigger) {
+  width: 100%;
+  min-width: 0;
+  padding-left: 0;
+}
+
+.path-split-picker.is-disabled {
+  padding-right: 8px;
+  color: #a6adba;
+  font-size: 12px;
+}
+
+.path-split-word {
+  color: #8a93a3;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.path-split-remove {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: #a2a9b5;
+  background: transparent;
+  cursor: pointer;
+}
+
+.path-split-remove:hover {
+  color: #d14343;
+  background: #fff0f0;
+}
+
+.path-add-split {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  border: 0;
+  color: #315cff;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.path-add-split:hover:not(:disabled) {
+  color: #244de0;
+}
+
+.path-add-split:disabled {
+  color: #b2b8c3;
+  cursor: not-allowed;
+}
+
 @media (max-width: 720px) {
-  .path-event-list {
-    align-items: flex-start;
-    flex-wrap: wrap;
+  .path-split-row {
+    grid-template-columns: minmax(0, 1fr) auto 24px;
   }
 
-  .path-event-split-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .path-split-property-picker {
+    grid-column: 1;
+    grid-row: 2;
   }
 
-  .path-event-property-select {
-    grid-column: 1 / -1;
+  .path-split-row > .path-split-word:nth-of-type(2) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .path-split-remove {
+    grid-column: 3;
+    grid-row: 1 / span 2;
   }
 }
 </style>

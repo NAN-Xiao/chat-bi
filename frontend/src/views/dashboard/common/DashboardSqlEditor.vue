@@ -3963,6 +3963,13 @@ function pathBlockingIssues() {
   if (path.initialEvent && !selectedEvents.some((item) => item.event === path.initialEvent)) {
     issues.push('路径分析初始事件必须来自参与分析的事件。')
   }
+  selectedEvents.forEach((item) => {
+    if (item.splitProperties.length > 1) {
+      issues.push('路径分析每个参与事件只能选择一个拆分属性。')
+    } else if (item.splitProperties.length === 1 && !item.splitProperties[0]) {
+      issues.push('路径分析拆分项请选择拆分属性。')
+    }
+  })
   if (path.sessionGapSeconds < PATH_SESSION_GAP_MIN_SECONDS || path.sessionGapSeconds > PATH_SESSION_GAP_MAX_SECONDS) {
     issues.push('路径分析会话间隔必须在 1 秒到 24 小时之间。')
   }
@@ -8351,7 +8358,7 @@ function closeDrawer() {
               </div>
 
               <div class="path-config-block path-initial-event-block">
-                <span class="path-config-label">分析路径仪</span>
+                <span class="path-config-label">分析路径以</span>
                 <div class="path-initial-event-row">
                   <span class="path-initial-event-tag">
                     <el-icon><FolderOpened /></el-icon>

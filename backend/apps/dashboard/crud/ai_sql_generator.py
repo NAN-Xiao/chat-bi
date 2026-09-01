@@ -1946,6 +1946,8 @@ def _deterministic_validate_manual_config(
                 issues.extend(_field_schema_permission_issues(event, label, allowed_fields_by_table))
             event_name = _tracking_event_name_from_field(event)
             split_properties = event_item.get("splitProperties") or event_item.get("split_properties") or []
+            if len(split_properties) > 1:
+                issues.append(f"{label}只能选择一个拆分属性。")
             for split_index, property_field in enumerate(split_properties):
                 property_label = f"{label}拆分属性{split_index + 1}"
                 if not _field_has_resolvable_reference(property_field):
@@ -2556,7 +2558,7 @@ def _dashboard_config_prompt(
         path_rules = [
             "当前 analysisModel=path，只能使用 path 配置生成路径查询；不得读取或套用留存、漏斗、分布、间隔模型的指标语义。",
             "路径分析以同一分析主体的会话为基础，从 path.initialEvent 开始向后寻找后续节点；相邻事件时间间隔超过 sessionGapSeconds 时必须结束当前会话。",
-            "参与分析事件最多 30 个，事件本身不支持事件筛选；每个事件的 splitProperties 是该事件节点身份的一部分，同一事件不同属性值必须作为不同节点。",
+            "参与分析事件最多 30 个，事件本身不支持事件筛选；每个事件最多配置一个 splitProperties 拆分属性，该属性是事件节点身份的一部分，同一事件不同属性值必须作为不同节点。",
             "必须按同一主体和事件时间排序，先切分会话，再从初始事件开始为相邻节点生成 source/target 边；不要把路径分析实现成漏斗步骤计数，也不要按固定步骤直接聚合事件次数。",
             "最多展示 10 个路径步骤；每一步按节点流量聚合，但最终边结果必须固定输出 path_source、path_target、path_value、path_step，并可额外输出 session_count。path_value 是边的会话数。",
             f"当前路径参与事件数量：{len(path_events)}；初始事件：{_safe_json(path.get('initialEvent') or path.get('initial_event'))}；会话间隔：{path.get('sessionGapSeconds') or path.get('session_gap_seconds') or 1800} 秒。",

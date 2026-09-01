@@ -1406,6 +1406,24 @@ def test_path_rejects_invalid_initial_event_split_property_and_session_gap() -> 
     assert "路径参与事件1拆分属性1不属于当前参与事件。" in result.issues
 
 
+def test_path_rejects_multiple_split_properties_for_one_event() -> None:
+    request = _path_request()
+    request.context["path"]["events"][0]["splitProperties"].append({
+        "kind": "tracking-property", "table": "event", "field": "country",
+        "eventName": "login", "propertyType": "string",
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "platform", "country", "dt"}},
+    )
+
+    assert "路径参与事件1只能选择一个拆分属性。" in result.issues
+
+
 def test_path_prompt_sql_plan_and_result_contract_keep_sankey_semantics() -> None:
     request = _path_request()
     normalized = ai_sql_generator._normalize_manual_config(request)
