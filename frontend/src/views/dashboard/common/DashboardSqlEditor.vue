@@ -190,7 +190,7 @@ type SqlBuilderMetricItem = {
   filterLogic: SqlBuilderFilterLogic
   filters: SqlBuilderFilter[]
 }
-type AnalysisModel = 'event' | 'retention' | 'funnel' | 'distribution' | 'interval' | 'path' | 'revenue' | 'attribution'
+type AnalysisModel = 'event' | 'retention' | 'funnel' | 'distribution' | 'interval' | 'path' | 'revenue' | 'attribution' | 'ranking'
 type RetentionEventTarget = 'initial' | 'return'
 type IntervalEventTarget = 'start' | 'end'
 type SqlBuilderFunnelStep = {
@@ -295,6 +295,21 @@ type SqlBuilderAttributionConfig = {
   }
   includeDirect: boolean
   events: SqlBuilderAttributionEvent[]
+}
+type SqlBuilderRankingMetric = {
+  id: string
+  event: string
+  alias: string
+  aggregation: SqlBuilderAggregation
+  metricField: string
+  direction: 'asc' | 'desc'
+}
+type SqlBuilderRankingConfig = {
+  entityField: string
+  metric: SqlBuilderRankingMetric
+  tieHandling: 'default' | 'skip' | 'dense'
+  simultaneousMetrics: SqlBuilderRankingMetric[]
+  simultaneousProperties: string[]
 }
 type SqlBuilderCalculatedMetricItem = {
   id: string
@@ -532,6 +547,20 @@ const sqlBuilder = reactive({
     includeDirect: true,
     events: [],
   } as SqlBuilderAttributionConfig,
+  ranking: {
+    entityField: '',
+    metric: {
+      id: 'ranking-primary-metric',
+      event: '',
+      alias: '',
+      aggregation: 'count',
+      metricField: '',
+      direction: 'desc',
+    },
+    tieHandling: 'default',
+    simultaneousMetrics: [],
+    simultaneousProperties: [],
+  } as SqlBuilderRankingConfig,
 })
 const retentionFilterExpanded = reactive<Record<RetentionEventTarget, boolean>>({
   initial: false,
@@ -1002,6 +1031,7 @@ const analysisModelOptions = [
   { label: '路径分析', value: 'path' as AnalysisModel },
   { label: '收入分析', value: 'revenue' as AnalysisModel },
   { label: '归因分析', value: 'attribution' as AnalysisModel },
+  { label: '排行榜', value: 'ranking' as AnalysisModel },
 ]
 const isRetentionAnalysis = computed(() => sqlBuilder.analysisModel === 'retention')
 const isFunnelAnalysis = computed(() => sqlBuilder.analysisModel === 'funnel')
@@ -1010,6 +1040,7 @@ const isIntervalAnalysis = computed(() => sqlBuilder.analysisModel === 'interval
 const isPathAnalysis = computed(() => sqlBuilder.analysisModel === 'path')
 const isRevenueAnalysis = computed(() => sqlBuilder.analysisModel === 'revenue')
 const isAttributionAnalysis = computed(() => sqlBuilder.analysisModel === 'attribution')
+const isRankingAnalysis = computed(() => sqlBuilder.analysisModel === 'ranking')
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
 const funnelEntityFieldOptions = computed(() => builderFieldOptions.value)
@@ -1055,6 +1086,12 @@ const attributionTargetMetricFieldOptions = computed(() => metricMeasureFieldOpt
   field: sqlBuilder.attribution.targetEvent,
   aggregation: sqlBuilder.attribution.targetMetric.aggregation,
 }))
+const rankingEntityFieldOptions = computed(() => builderFieldOptions.value)
+const rankingEventOptions = computed(() => trackingEventCatalogOptions.value)
+const rankingMetricFieldOptions = (metric: SqlBuilderRankingMetric) => metricMeasureFieldOptions({
+  field: metric.event,
+  aggregation: metric.aggregation,
+})
 const builderMetricOptions = computed(() =>
   sqlBuilder.metricItems.map((item, index) => ({
     label: metricOutputAlias(item, index),
@@ -1412,6 +1449,44 @@ function emptyMetricItem(): SqlBuilderMetricItem {
     filterLogic: 'and',
     filters: [],
   }
+}
+
+function createRankingMetric(id = nodeId('ranking-metric')): SqlBuilderRankingMetric {
+  return {
+    id,
+    event: '',
+    alias: '',
+    aggregation: 'count',
+    metricField: '',
+    direction: 'desc',
+  }
+}
+
+function serializeRankingMetric(metric: SqlBuilderRankingMetric) {
+  return {
+    id: metric.id,
+    event: metric.event,
+    alias: metric.alias.trim(),
+    aggregation: metric.aggregation,
+    metricField: metric.aggregation === 'count' ? '' : metric.metricField,
+    direction: metric.direction,
+  }
+}
+
+function restoreRankingMetric(value: any, fallbackId: string) {
+  const metric = createRankingMetric(
+    typeof value?.id === 'string' && value.id ? value.id : fallbackId,
+  )
+  metric.event = typeof value?.event === 'string' ? value.event : ''
+  metric.alias = typeof value?.alias === 'string' ? value.alias : ''
+  metric.aggregation = builderAggregationOptions.some((option) => option.value === value?.aggregation)
+    ? value.aggregation
+    : 'count'
+  metric.metricField = metric.aggregation === 'count'
+    ? ''
+    : typeof value?.metricField === 'string' ? value.metricField : ''
+  metric.direction = value?.direction === 'asc' ? 'asc' : 'desc'
+  return metric
 }
 
 function emptyCalculatedMetricItem(): SqlBuilderCalculatedMetricItem {
@@ -2282,6 +2357,13 @@ function builderConfigForSave() {
         },
       })),
     } : undefined,
+    ranking: sqlBuilder.analysisModel === 'ranking' ? {
+      entityField: sqlBuilder.ranking.entityField,
+      metric: serializeRankingMetric(sqlBuilder.ranking.metric),
+      tieHandling: sqlBuilder.ranking.tieHandling,
+      simultaneousMetrics: sqlBuilder.ranking.simultaneousMetrics.map(serializeRankingMetric),
+      simultaneousProperties: [...sqlBuilder.ranking.simultaneousProperties],
+    } : undefined,
     timeField: SQL_EDITOR_TIME_FIELD,
     timeGrain: SQL_EDITOR_TIME_GRAIN,
     timeRange: 'expression',
@@ -2308,7 +2390,7 @@ function restoreSqlBuilderState(value: any) {
   if (!value || typeof value !== 'object') {
     return
   }
-  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution'].includes(value.analysisModel)
+  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'].includes(value.analysisModel)
     ? value.analysisModel
     : 'event'
   const retention = value.retention && typeof value.retention === 'object' ? value.retention : {}
@@ -2509,6 +2591,18 @@ function restoreSqlBuilderState(value: any) {
   Object.keys(attributionEventFilterExpanded).forEach((key) => { delete attributionEventFilterExpanded[key] })
   sqlBuilder.attribution.events.forEach((item) => { attributionEventFilterExpanded[item.id] = false })
   attributionTargetFilterExpanded.value = false
+  const ranking = value.ranking && typeof value.ranking === 'object' ? value.ranking : {}
+  sqlBuilder.ranking.entityField = typeof ranking.entityField === 'string' ? ranking.entityField : ''
+  sqlBuilder.ranking.metric = restoreRankingMetric(ranking.metric, 'ranking-primary-metric')
+  sqlBuilder.ranking.tieHandling = ['default', 'skip', 'dense'].includes(ranking.tieHandling)
+    ? ranking.tieHandling
+    : 'default'
+  sqlBuilder.ranking.simultaneousMetrics = Array.isArray(ranking.simultaneousMetrics)
+    ? ranking.simultaneousMetrics.map((item: any, index: number) => restoreRankingMetric(item, `ranking-metric-${index}`))
+    : []
+  sqlBuilder.ranking.simultaneousProperties = Array.isArray(ranking.simultaneousProperties)
+    ? ranking.simultaneousProperties.filter((item: any) => typeof item === 'string')
+    : []
   sqlBuilder.dateExpressionPickerEnabled = true
   sqlBuilder.metricDateExpressionEnabled = value.metricDateExpressionEnabled === true
   const timeExpression = normalizeDashboardDateExpression(value.timeExpression)
@@ -3086,6 +3180,18 @@ function builderEventScopeIssues() {
       appendEventScopeFilterIssues(item.filters, `attribution.events[${index}].filter`, issues)
     })
   }
+  if (isRankingAnalysis.value) {
+    appendEventScopeFieldIssue(sqlBuilder.ranking.metric.event, 'ranking.metric.event', issues)
+    if (sqlBuilder.ranking.metric.aggregation !== 'count') {
+      appendEventScopeFieldIssue(sqlBuilder.ranking.metric.metricField, 'ranking.metric.metricField', issues)
+    }
+    sqlBuilder.ranking.simultaneousMetrics.forEach((item, index) => {
+      appendEventScopeFieldIssue(item.event, `ranking.simultaneousMetrics[${index}].event`, issues)
+      if (item.aggregation !== 'count') {
+        appendEventScopeFieldIssue(item.metricField, `ranking.simultaneousMetrics[${index}].metricField`, issues)
+      }
+    })
+  }
   sqlBuilder.groups.forEach((field, index) => appendEventScopeFieldIssue(field, `group[${index}]`, issues))
   appendEventScopeFilterIssues(sqlBuilder.globalFilters, 'global_filter', issues)
   return unique(issues)
@@ -3332,8 +3438,40 @@ function resetAttributionConfig() {
   sqlBuilder.attribution.events.forEach((item) => { attributionEventFilterExpanded[item.id] = false })
 }
 
+function resetRankingConfig() {
+  sqlBuilder.ranking.entityField = ''
+  sqlBuilder.ranking.metric = createRankingMetric('ranking-primary-metric')
+  sqlBuilder.ranking.tieHandling = 'default'
+  sqlBuilder.ranking.simultaneousMetrics = []
+  sqlBuilder.ranking.simultaneousProperties = []
+}
+
+function handleRankingMetricChange(metric: SqlBuilderRankingMetric, eventValue: string) {
+  if (metric.event === eventValue) return
+  metric.event = eventValue
+  metric.metricField = ''
+}
+
+function syncRankingMetricField(metric: SqlBuilderRankingMetric) {
+  if (metric.aggregation === 'count') {
+    metric.metricField = ''
+    return
+  }
+  if (!optionExists(metric.metricField, rankingMetricFieldOptions(metric))) {
+    metric.metricField = ''
+  }
+}
+
+function addRankingMetric() {
+  sqlBuilder.ranking.simultaneousMetrics.push(createRankingMetric())
+}
+
+function removeRankingMetric(index: number) {
+  sqlBuilder.ranking.simultaneousMetrics.splice(index, 1)
+}
+
 function handleAnalysisModelChange(model: AnalysisModel) {
-  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution'].includes(model) ? model : 'event'
+  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'].includes(model) ? model : 'event'
   if (sqlBuilder.analysisModel === 'retention') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3346,6 +3484,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetPathConfig()
     resetRevenueConfig()
     resetAttributionConfig()
+    resetRankingConfig()
   } else if (sqlBuilder.analysisModel === 'funnel') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3358,6 +3497,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetPathConfig()
     resetRevenueConfig()
     resetAttributionConfig()
+    resetRankingConfig()
   } else if (sqlBuilder.analysisModel === 'distribution') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3370,6 +3510,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetPathConfig()
     resetRevenueConfig()
     resetAttributionConfig()
+    resetRankingConfig()
   } else if (sqlBuilder.analysisModel === 'interval') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3382,6 +3523,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetPathConfig()
     resetRevenueConfig()
     resetAttributionConfig()
+    resetRankingConfig()
   } else if (sqlBuilder.analysisModel === 'path') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3394,6 +3536,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetPathConfig()
     resetRevenueConfig()
     resetAttributionConfig()
+    resetRankingConfig()
   } else if (sqlBuilder.analysisModel === 'revenue') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3406,6 +3549,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetPathConfig()
     resetRevenueConfig()
     resetAttributionConfig()
+    resetRankingConfig()
   } else if (sqlBuilder.analysisModel === 'attribution') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
@@ -3418,6 +3562,20 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetPathConfig()
     resetRevenueConfig()
     resetAttributionConfig()
+    resetRankingConfig()
+  } else if (sqlBuilder.analysisModel === 'ranking') {
+    sqlBuilder.metricItems = []
+    sqlBuilder.calculatedMetrics = []
+    activeFormulaMetricId.value = ''
+    form.chartType = 'table'
+    resetRetentionConfig()
+    resetFunnelConfig()
+    resetDistributionConfig()
+    resetIntervalConfig()
+    resetPathConfig()
+    resetRevenueConfig()
+    resetAttributionConfig()
+    resetRankingConfig()
   } else {
     resetRetentionConfig()
     resetFunnelConfig()
@@ -3426,6 +3584,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetPathConfig()
     resetRevenueConfig()
     resetAttributionConfig()
+    resetRankingConfig()
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
     addMetricItem()
@@ -3906,6 +4065,74 @@ function sanitizeAttributionConfig() {
   if (cleared.length) ElMessage.warning(`${unique(cleared).join('、')}在当前数据源中无效，已清除，请重新选择。`)
 }
 
+function sanitizeRankingConfig() {
+  if (!isRankingAnalysis.value) return
+  const ranking = sqlBuilder.ranking
+  const cleared: string[] = []
+  if (ranking.entityField && !optionExists(ranking.entityField, rankingEntityFieldOptions.value)) {
+    ranking.entityField = ''
+    cleared.push('分析主体')
+  }
+  const sanitizeMetric = (metric: SqlBuilderRankingMetric, label: string) => {
+    if (metric.event && !optionExists(metric.event, rankingEventOptions.value)) {
+      metric.event = ''
+      metric.metricField = ''
+      cleared.push(label)
+    }
+    if (metric.metricField && !optionExists(metric.metricField, rankingMetricFieldOptions(metric))) {
+      metric.metricField = ''
+      cleared.push(`${label}计算字段`)
+    }
+    if (metric.aggregation === 'count') metric.metricField = ''
+    if (metric.direction !== 'asc' && metric.direction !== 'desc') metric.direction = 'desc'
+  }
+  sanitizeMetric(ranking.metric, '排行指标')
+  ranking.simultaneousMetrics = ranking.simultaneousMetrics.map((metric) => {
+    sanitizeMetric(metric, '同时展示指标')
+    return metric
+  })
+  ranking.simultaneousProperties = ranking.simultaneousProperties.filter((field) => {
+    const valid = optionExists(field, rankingEntityFieldOptions.value)
+    if (!valid) cleared.push('同时展示属性')
+    return valid
+  })
+  if (!['default', 'skip', 'dense'].includes(ranking.tieHandling)) ranking.tieHandling = 'default'
+  if (cleared.length) ElMessage.warning(`${unique(cleared).join('、')}在当前数据源中无效，已清除，请重新选择。`)
+}
+
+function rankingBlockingIssues() {
+  if (!isRankingAnalysis.value) return []
+  const issues: string[] = []
+  const ranking = sqlBuilder.ranking
+  if (!ranking.entityField) issues.push('排行榜请先选择排行主体。')
+  if (!ranking.metric.event) issues.push('排行榜请先选择排行指标。')
+  if (ranking.metric.aggregation !== 'count' && !ranking.metric.metricField) {
+    issues.push('排行指标使用非次数聚合时，请选择计算字段。')
+  }
+  const primaryMetricField = fieldOptionByValue(ranking.metric.metricField)
+  if (['sum', 'avg'].includes(ranking.metric.aggregation)
+    && ranking.metric.metricField
+    && primaryMetricField
+    && !isNumericFieldOption(primaryMetricField)) {
+    issues.push('排行指标使用求和或平均值时，计算字段必须是数值字段。')
+  }
+  ranking.simultaneousMetrics.forEach((metric, index) => {
+    if (!metric.event) issues.push(`同时展示指标${index + 1}请先选择指标。`)
+    if (metric.aggregation !== 'count' && !metric.metricField) {
+      issues.push(`同时展示指标${index + 1}使用非次数聚合时，请选择计算字段。`)
+    }
+    const metricField = fieldOptionByValue(metric.metricField)
+    if (['sum', 'avg'].includes(metric.aggregation)
+      && metric.metricField
+      && metricField
+      && !isNumericFieldOption(metricField)) {
+      issues.push(`同时展示指标${index + 1}使用求和或平均值时，计算字段必须是数值字段。`)
+    }
+  })
+  if (!['default', 'skip', 'dense'].includes(ranking.tieHandling)) issues.push('排行榜并列名次处理方式无效。')
+  return issues
+}
+
 function sanitizeRetentionConfig() {
   if (!isRetentionAnalysis.value) return
   const cleared: string[] = []
@@ -4294,6 +4521,13 @@ function selectedBuilderFieldValues() {
       ...filterFieldValues(sqlBuilder.attribution.targetEventFilters),
       ...sqlBuilder.attribution.events.flatMap((item) => [item.event, ...filterFieldValues(item.filters)]),
     ] : []),
+    ...(sqlBuilder.analysisModel === 'ranking' ? [
+      sqlBuilder.ranking.entityField,
+      sqlBuilder.ranking.metric.event,
+      sqlBuilder.ranking.metric.metricField,
+      ...sqlBuilder.ranking.simultaneousMetrics.flatMap((item) => [item.event, item.metricField]),
+      ...sqlBuilder.ranking.simultaneousProperties,
+    ] : []),
     ...sqlBuilder.metricItems.flatMap((item) => [item.field, item.metric]),
     ...sqlBuilder.calculatedMetrics.flatMap((item) => [item.pendingEventField, item.pendingMetricField]),
     ...formulaFields,
@@ -4370,6 +4604,27 @@ function collectBuilderAiContext() {
           ? fieldOptionPayload(step.relatedProperty)
           : null,
       })),
+    } : null,
+    ranking: sqlBuilder.analysisModel === 'ranking' ? {
+      content: '按排行主体聚合主排行指标并生成名次，同时展示附加指标和属性；并列名次严格使用配置规则',
+      entityField: fieldOptionPayload(sqlBuilder.ranking.entityField),
+      metric: {
+        event: fieldOptionPayload(sqlBuilder.ranking.metric.event),
+        alias: sqlBuilder.ranking.metric.alias.trim(),
+        aggregation: sqlBuilder.ranking.metric.aggregation,
+        metricField: sqlBuilder.ranking.metric.aggregation === 'count'
+          ? null
+          : fieldOptionPayload(sqlBuilder.ranking.metric.metricField),
+        direction: sqlBuilder.ranking.metric.direction,
+      },
+      tieHandling: sqlBuilder.ranking.tieHandling,
+      simultaneousMetrics: sqlBuilder.ranking.simultaneousMetrics.map((item) => ({
+        event: fieldOptionPayload(item.event),
+        alias: item.alias.trim(),
+        aggregation: item.aggregation,
+        metricField: item.aggregation === 'count' ? null : fieldOptionPayload(item.metricField),
+      })),
+      simultaneousProperties: sqlBuilder.ranking.simultaneousProperties.map(fieldOptionPayload).filter(Boolean),
     } : null,
     distribution: sqlBuilder.analysisModel === 'distribution' ? {
       content: '按每个分析主体参与事件后的个人聚合值划分区间，查看各区间主体数量、占比和可选同时展示指标',
@@ -4574,6 +4829,7 @@ function collectLocalBuilderConfigIssues() {
   const pathIssues = pathBlockingIssues()
   const revenueIssues = revenueBlockingIssues()
   const attributionIssues = attributionBlockingIssues()
+  const rankingIssues = rankingBlockingIssues()
   const issues: string[] = [
     ...eventScopeIssues,
     ...retentionIssues,
@@ -4583,6 +4839,7 @@ function collectLocalBuilderConfigIssues() {
     ...pathIssues,
     ...revenueIssues,
     ...attributionIssues,
+    ...rankingIssues,
   ]
   const suggestions: string[] = []
   if (eventScopeIssues.length && eventFieldScope.value.defaultEventTable) {
@@ -4774,7 +5031,8 @@ async function generateBuilderAiSql() {
   const intervalIssues = intervalBlockingIssues()
   const pathIssues = pathBlockingIssues()
   const attributionIssues = attributionBlockingIssues()
-  if (retentionIssues.length || funnelIssues.length || distributionIssues.length || intervalIssues.length || pathIssues.length || attributionIssues.length) {
+  const rankingIssues = rankingBlockingIssues()
+  if (retentionIssues.length || funnelIssues.length || distributionIssues.length || intervalIssues.length || pathIssues.length || attributionIssues.length || rankingIssues.length) {
     const localAdvice = collectLocalBuilderConfigIssues()
     const analysisIssues = retentionIssues.length
       ? retentionIssues
@@ -4784,9 +5042,11 @@ async function generateBuilderAiSql() {
           ? distributionIssues
           : intervalIssues.length
             ? intervalIssues
-            : pathIssues.length
-              ? pathIssues
-              : attributionIssues
+              : pathIssues.length
+                ? pathIssues
+              : attributionIssues.length
+                ? attributionIssues
+                : rankingIssues
     const analysisLabel = retentionIssues.length
       ? '留存'
       : funnelIssues.length
@@ -4797,7 +5057,9 @@ async function generateBuilderAiSql() {
             ? '间隔'
             : pathIssues.length
               ? '路径'
-              : '归因'
+              : attributionIssues.length
+                ? '归因'
+                : '排行榜'
     setBuilderAgentAdvice({
       severity: 'warning',
       intent: inferBuilderIntentText(),
@@ -4985,6 +5247,21 @@ async function generateBuilderAiSql() {
       String(resultConfig.contribution_rate_field || resultConfig.contributionRateField || 'contribution_rate'),
     ]
   }
+  if (sqlBuilder.analysisModel === 'ranking' || result.analysis_model === 'ranking') {
+    const resultConfig = result.result_config || result.resultConfig || {}
+    form.chartType = 'table'
+    form.columns = [
+      String(resultConfig.rank_field || resultConfig.rankField || 'rank'),
+      String(resultConfig.entity_field || resultConfig.entityField || 'ranking_entity'),
+      String(resultConfig.metric_field || resultConfig.metricField || 'ranking_value'),
+      ...(Array.isArray(resultConfig.simultaneous_metric_fields || resultConfig.simultaneousMetricFields)
+        ? (resultConfig.simultaneous_metric_fields || resultConfig.simultaneousMetricFields).map(String)
+        : []),
+      ...(Array.isArray(resultConfig.property_fields || resultConfig.propertyFields)
+        ? (resultConfig.property_fields || resultConfig.propertyFields).map(String)
+        : []),
+    ]
+  }
   syncDashboardDateParameterUsage()
   if (result.success) {
     ElMessage.success('已生成 SQL')
@@ -5103,6 +5380,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
     sanitizePathConfig()
     sanitizeRevenueConfig()
     sanitizeAttributionConfig()
+    sanitizeRankingConfig()
     if (sqlBuilder.analysisModel === 'event') {
       if (!sqlBuilder.metricItems.length && !sqlBuilder.calculatedMetrics.length) {
         addMetricItem()
@@ -5527,6 +5805,7 @@ function currentPreviewSignature() {
     path: sqlBuilder.analysisModel === 'path' ? sqlBuilder.path : null,
     revenue: sqlBuilder.analysisModel === 'revenue' ? sqlBuilder.revenue : null,
     attribution: sqlBuilder.analysisModel === 'attribution' ? sqlBuilder.attribution : null,
+    ranking: sqlBuilder.analysisModel === 'ranking' ? sqlBuilder.ranking : null,
     sources: [...form.sourceTypes],
     sql: hasSqlSource.value
       ? {
@@ -6332,6 +6611,8 @@ function initEditor() {
       : isPathAnalysis.value
         ? 'sankey'
       : isAttributionAnalysis.value
+        ? 'table'
+      : isRankingAnalysis.value
         ? 'table'
       : (chart.sourceType || chart.type || 'table')
   form.columns = axisValues(chart.columns)
@@ -7286,7 +7567,7 @@ function closeDrawer() {
               </div>
             </section>
 
-            <section v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis" class="builder-section">
+            <section v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
                   <BuilderSectionIcon class="builder-section-icon" />
@@ -7619,6 +7900,154 @@ function closeDrawer() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </section>
+
+            <section v-else-if="isRankingAnalysis" class="builder-section ranking-builder-section">
+              <div class="ranking-heading-row">
+                <div class="builder-section-head">
+                  <div class="builder-section-title">
+                    <BuilderSectionIcon class="builder-section-icon" />
+                    <span>排行榜</span>
+                  </div>
+                </div>
+                <div class="ranking-subject-line">
+                  <span>对</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.ranking.entityField"
+                    :options="rankingEntityFieldOptions"
+                    :loading="schemaLoading"
+                    mode="property"
+                    placeholder="选择排行主体"
+                  />
+                  <span>进行排名</span>
+                </div>
+              </div>
+
+              <div class="ranking-metric-block">
+                <span class="ranking-config-label">按指标排名</span>
+                <div class="ranking-metric-editor">
+                  <div class="ranking-metric-row">
+                    <BuilderFieldPicker
+                      :model-value="sqlBuilder.ranking.metric.event"
+                      :options="rankingEventOptions"
+                      :loading="schemaLoading"
+                      mode="tracking-event"
+                      placeholder="选择排名指标"
+                      @update:modelValue="handleRankingMetricChange(sqlBuilder.ranking.metric, $event)"
+                    />
+                    <span>的</span>
+                    <el-select
+                      v-model="sqlBuilder.ranking.metric.aggregation"
+                      class="ranking-aggregation-select"
+                      @change="syncRankingMetricField(sqlBuilder.ranking.metric)"
+                    >
+                      <el-option
+                        v-for="option in builderAggregationOptions"
+                        :key="option.value"
+                        :label="option.label"
+                        :value="option.value"
+                      />
+                    </el-select>
+                    <BuilderFieldPicker
+                      v-if="sqlBuilder.ranking.metric.aggregation !== 'count'"
+                      v-model="sqlBuilder.ranking.metric.metricField"
+                      :options="rankingMetricFieldOptions(sqlBuilder.ranking.metric)"
+                      :loading="schemaLoading"
+                      mode="metric"
+                      placeholder="计算字段"
+                    />
+                    <el-select v-model="sqlBuilder.ranking.metric.direction" class="ranking-direction-select">
+                      <el-option label="降序" value="desc" />
+                      <el-option label="升序" value="asc" />
+                    </el-select>
+                  </div>
+                  <div class="ranking-alias-row">
+                    <span>指标名称</span>
+                    <el-input
+                      v-model="sqlBuilder.ranking.metric.alias"
+                      clearable
+                      maxlength="80"
+                      placeholder="使用默认名称"
+                      aria-label="重命名排行指标"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div class="ranking-tie-row">
+                <span class="ranking-config-label">并列名次</span>
+                <el-radio-group v-model="sqlBuilder.ranking.tieHandling">
+                  <el-radio value="default">按默认排序</el-radio>
+                  <el-radio value="skip">并列且跳过</el-radio>
+                  <el-radio value="dense">并列不跳过</el-radio>
+                </el-radio-group>
+              </div>
+
+              <div class="ranking-extra-block">
+                <div class="ranking-extra-heading">
+                  <span class="ranking-config-label">同时展示指标</span>
+                  <button type="button" class="builder-add-link" @click="addRankingMetric">
+                    <el-icon><Plus /></el-icon>
+                    <span>指标</span>
+                  </button>
+                </div>
+                <div v-for="(metric, index) in sqlBuilder.ranking.simultaneousMetrics" :key="metric.id" class="ranking-extra-row">
+                  <span class="ranking-extra-index">{{ index + 1 }}</span>
+                  <el-input v-model="metric.alias" class="ranking-alias-input" clearable maxlength="80" placeholder="指标名称" />
+                  <BuilderFieldPicker
+                    :model-value="metric.event"
+                    :options="rankingEventOptions"
+                    :loading="schemaLoading"
+                    mode="tracking-event"
+                    placeholder="选择指标"
+                    @update:modelValue="handleRankingMetricChange(metric, $event)"
+                  />
+                  <el-select v-model="metric.aggregation" class="ranking-aggregation-select" @change="syncRankingMetricField(metric)">
+                    <el-option
+                      v-for="option in builderAggregationOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                  <BuilderFieldPicker
+                    v-if="metric.aggregation !== 'count'"
+                    v-model="metric.metricField"
+                    :options="rankingMetricFieldOptions(metric)"
+                    :loading="schemaLoading"
+                    mode="metric"
+                    placeholder="计算字段"
+                  />
+                  <button type="button" class="builder-icon-button danger" :title="`删除同时展示指标${index + 1}`" @click="removeRankingMetric(index)">
+                    <el-icon><Delete /></el-icon>
+                  </button>
+                </div>
+                <div v-if="!sqlBuilder.ranking.simultaneousMetrics.length" class="builder-empty">暂无同时展示指标</div>
+              </div>
+
+              <div class="ranking-extra-block">
+                <div class="ranking-extra-heading">
+                  <span class="ranking-config-label">同时展示属性</span>
+                  <button type="button" class="builder-add-link" @click="sqlBuilder.ranking.simultaneousProperties.push('')">
+                    <el-icon><Plus /></el-icon>
+                    <span>属性</span>
+                  </button>
+                </div>
+                <div v-for="(_, index) in sqlBuilder.ranking.simultaneousProperties" :key="index" class="ranking-extra-row ranking-property-row">
+                  <span class="ranking-extra-index">{{ index + 1 }}</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.ranking.simultaneousProperties[index]"
+                    :options="rankingEntityFieldOptions"
+                    :loading="schemaLoading"
+                    mode="property"
+                    placeholder="选择展示属性"
+                  />
+                  <button type="button" class="builder-icon-button danger" :title="`删除同时展示属性${index + 1}`" @click="sqlBuilder.ranking.simultaneousProperties.splice(index, 1)">
+                    <el-icon><Delete /></el-icon>
+                  </button>
+                </div>
+                <div v-if="!sqlBuilder.ranking.simultaneousProperties.length" class="builder-empty">暂无同时展示属性</div>
               </div>
             </section>
 
@@ -8697,7 +9126,7 @@ function closeDrawer() {
           </div>
           <div class="builder-bottom-bar">
             <div class="builder-bottom-options">
-              <el-checkbox v-if="sqlBuilder.activeTab === 'builder' && !isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isAttributionAnalysis" v-model="sqlBuilder.approximate">
+              <el-checkbox v-if="sqlBuilder.activeTab === 'builder' && !isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isAttributionAnalysis && !isRankingAnalysis" v-model="sqlBuilder.approximate">
                 近似计算
               </el-checkbox>
             </div>
@@ -8943,7 +9372,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
+            <el-select v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -8951,10 +9380,10 @@ function closeDrawer() {
                 :value="item.value"
               />
             </el-select>
-            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : isDistributionAnalysis ? '分布表' : isIntervalAnalysis ? '间隔表' : isPathAnalysis ? '桑基图' : isRevenueAnalysis ? '收入表' : isAttributionAnalysis ? '归因表' : '留存表'" disabled />
+            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : isDistributionAnalysis ? '分布表' : isIntervalAnalysis ? '间隔表' : isPathAnalysis ? '桑基图' : isRevenueAnalysis ? '收入表' : isAttributionAnalysis ? '归因表' : isRankingAnalysis ? '排行榜' : '留存表'" disabled />
           </el-form-item>
         </div>
-        <el-form-item v-if="form.chartType === 'table' && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis" :label="t('dashboard.sql_editor_columns')">
+        <el-form-item v-if="form.chartType === 'table' && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" :label="t('dashboard.sql_editor_columns')">
           <el-select v-model="form.columns" multiple filterable>
             <el-option
               v-for="field in fieldOptions"
@@ -9524,6 +9953,134 @@ function closeDrawer() {
   align-items: center;
   gap: 20px;
   margin-bottom: 24px;
+}
+
+.ranking-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.ranking-heading-row .builder-section-head {
+  flex: 0 0 96px;
+  margin-bottom: 0;
+}
+
+.ranking-subject-line {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: auto minmax(160px, 280px) auto;
+  align-items: center;
+  justify-content: start;
+  gap: 10px;
+  min-width: 0;
+  color: #505968;
+  font-size: 13px;
+}
+
+.ranking-subject-line :deep(.builder-field-picker-trigger) {
+  width: 100%;
+}
+
+.ranking-config-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #8a93a3;
+  font-size: 12px;
+}
+
+.ranking-metric-block,
+.ranking-extra-block {
+  margin-top: 20px;
+}
+
+.ranking-metric-editor {
+  display: grid;
+  gap: 10px;
+  max-width: 980px;
+}
+
+.ranking-metric-row,
+.ranking-extra-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #505968;
+  font-size: 13px;
+}
+
+.ranking-metric-row :deep(.builder-field-picker),
+.ranking-extra-row :deep(.builder-field-picker) {
+  min-width: 150px;
+  flex: 1 1 190px;
+}
+
+.ranking-aggregation-select {
+  width: 120px;
+  flex: 0 0 120px;
+}
+
+.ranking-direction-select {
+  width: 92px;
+  flex: 0 0 92px;
+}
+
+.ranking-alias-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+  color: #8a93a3;
+  font-size: 12px;
+}
+
+.ranking-alias-row .el-input {
+  flex: 1 1 auto;
+}
+
+.ranking-tie-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 22px;
+  color: #505968;
+  font-size: 13px;
+}
+
+.ranking-tie-row .ranking-config-label {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.ranking-extra-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ranking-extra-heading .ranking-config-label {
+  margin: 0;
+}
+
+.ranking-extra-row {
+  margin-top: 10px;
+}
+
+.ranking-extra-index {
+  flex: 0 0 20px;
+  color: #8a93a3;
+  text-align: center;
+}
+
+.ranking-alias-input {
+  width: 150px;
+  flex: 0 1 150px;
+}
+
+.ranking-property-row :deep(.builder-field-picker) {
+  max-width: 360px;
 }
 
 .interval-heading-row {
@@ -10229,7 +10786,8 @@ function closeDrawer() {
   .funnel-heading-row,
   .distribution-heading-row,
   .interval-heading-row,
-  .revenue-heading-row {
+  .revenue-heading-row,
+  .ranking-heading-row {
     flex-wrap: wrap;
     gap: 10px;
   }
@@ -10281,6 +10839,11 @@ function closeDrawer() {
     grid-template-columns: auto minmax(160px, 1fr) auto;
   }
 
+  .ranking-heading-row .ranking-subject-line {
+    flex-basis: 100%;
+    grid-template-columns: auto minmax(160px, 1fr) auto;
+  }
+
   .revenue-event-flow,
   .revenue-metric-flow,
   .revenue-cost-field-row {
@@ -10289,6 +10852,23 @@ function closeDrawer() {
 
   .distribution-event-row {
     flex-wrap: wrap;
+  }
+
+  .ranking-metric-row,
+  .ranking-extra-row {
+    flex-wrap: wrap;
+  }
+
+  .ranking-metric-row :deep(.builder-field-picker),
+  .ranking-extra-row :deep(.builder-field-picker),
+  .ranking-alias-input {
+    flex-basis: min(100%, 280px);
+  }
+
+  .ranking-tie-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
   }
 
 
