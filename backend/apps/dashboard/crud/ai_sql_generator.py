@@ -755,8 +755,13 @@ def _normalize_manual_config(
     ).strip()
     time_config["date_expression"] = time_config.get("dateExpression") or time_config.get("date_expression")
     analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
-    if analysis_model not in {"event", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"}:
+    if analysis_model not in {"event", "property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"}:
         analysis_model = "event"
+    property_config = dict(context.get("property") or {}) if isinstance(context.get("property"), dict) else {}
+    property_group_mode = str(
+        property_config.get("groupMode") or property_config.get("group_mode") or "property"
+    ).strip().lower()
+    property_config["groupMode"] = property_group_mode if property_group_mode in {"property", "audience"} else "property"
     retention = dict(context.get("retention") or {}) if isinstance(context.get("retention"), dict) else {}
     funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
     if analysis_model == "funnel" or funnel:
@@ -771,6 +776,7 @@ def _normalize_manual_config(
     ranking = dict(context.get("ranking") or {}) if isinstance(context.get("ranking"), dict) else {}
     return {
         "analysis_model": analysis_model,
+        "property": property_config,
         "retention": retention,
         "funnel": funnel,
         "distribution": distribution,
@@ -1520,6 +1526,22 @@ def _deterministic_validate_manual_config(
     if analysis_model == "event" and not metrics and not formula_metrics:
         issues.append("至少需要配置一个分析指标或公式指标。")
 
+    if analysis_model == "property":
+        property_config = normalized_config.get("property") if isinstance(normalized_config.get("property"), dict) else {}
+        if str(property_config.get("groupMode") or "property").strip().lower() == "audience":
+            issues.append("当前工作空间暂未配置可用人群，暂不能按人群分组统计，请切换为属性。")
+        if not metrics:
+            issues.append("属性分析至少需要配置一个分析指标。")
+        for index, metric in enumerate(metrics):
+            label = str(metric.get("alias") or metric.get("label") or f"属性指标{index + 1}").strip()
+            field = metric.get("field")
+            metric_field = _metric_measure_field(metric)
+            if _tracking_event_name_from_field(field) or _tracking_event_name_from_field(metric_field):
+                issues.append(f"{label} 必须选择属性字段，不能选择事件。")
+        for index, group in enumerate(_list_dict_items(normalized_config.get("groups"))):
+            if _tracking_event_name_from_field(group):
+                issues.append(f"属性分析分组{index + 1}必须选择属性字段，不能选择事件。")
+
     if analysis_model == "retention":
         retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
         entity_field = retention.get("entityField") or retention.get("entity_field")
@@ -2152,7 +2174,7 @@ def _deterministic_validate_manual_config(
         issues=issues,
         warnings=warnings,
         suggestions=_unique_text_items(suggestions),
-        analysis_model=analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event",
+        analysis_model=analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event",
     )
 
 
@@ -2168,12 +2190,32 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
         time_config,
     )
     analysis_model = str(normalized_config.get("analysis_model") or "event")
+    property_config = normalized_config.get("property") if isinstance(normalized_config.get("property"), dict) else {}
     retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
     interval = normalized_config.get("interval") if isinstance(normalized_config.get("interval"), dict) else {}
     revenue = normalized_config.get("revenue") if isinstance(normalized_config.get("revenue"), dict) else {}
     attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
     result_contract: dict[str, Any] = {}
-    if analysis_model == "retention":
+    if analysis_model == "property":
+        required_columns = ["property_date"]
+        required_columns.extend(f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or []))
+        required_columns.extend(f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or []))
+        result_contract = {
+            "type": "property_table",
+            "required_columns": required_columns,
+            "date_field": "property_date",
+            "group_fields": [
+                f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])
+            ],
+            "metric_fields": [
+                f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or [])
+            ],
+            "final_grain": [
+                "property_date",
+                *[f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])],
+            ],
+        }
+    elif analysis_model == "retention":
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
         related_property = retention.get("relatedProperty") if isinstance(retention.get("relatedProperty"), dict) else {}
         required_columns = ["cohort_date", "cohort_size"]
@@ -2312,6 +2354,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
         }
     return {
         "analysis_model": analysis_model,
+        "property": property_config,
         "retention": retention,
         "funnel": normalized_config.get("funnel") or {},
         "distribution": normalized_config.get("distribution") or {},
@@ -2485,6 +2528,17 @@ def _dashboard_config_prompt(
                 "PostgreSQL/Redshift/Kingbase：YYYYMMDD 转 DATE 必须使用 TO_DATE(CAST(<time_field> AS TEXT), 'YYYYMMDD')。"
             )
     analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
+    property_rules: list[str] = []
+    if analysis_model == "property":
+        property_rules = [
+            "当前 analysisModel=property，只能使用 metrics、groups、filters、time 和 property 配置生成属性分析；不得读取或套用事件、留存、漏斗等模型语义。",
+            "property.groupMode=property 时，groups 只能表示属性字段；property.groupMode=audience 时，当前工作空间没有可执行的人群资产，必须提示切换为属性，不得虚构人群表、分群 ID 或筛选条件。",
+            "metrics[i].field 和 metricField 都是属性字段，不是事件；禁止根据字段名猜测事件条件或补充未配置事件。",
+            "聚合规则必须严格按 metrics 顺序执行：count=COUNT(field)，count_distinct=COUNT(DISTINCT metricField)，sum/avg/max/min 分别使用对应 SQL 聚合函数。",
+            "最终按当前时间粒度和 groups 聚合，固定输出 property_date、group_1...group_N、property_metric_1...property_metric_N；无 groups 时不得虚构分组列。",
+            "filters 只作为全局属性筛选应用；属性分析不得扫描当前配置之外的表或字段。",
+            "最终返回 chart_type 必须为 table。",
+        ]
     retention = context.get("retention") if isinstance(context.get("retention"), dict) else {}
     retention_rules: list[str] = []
     if analysis_model == "retention":
@@ -2678,7 +2732,8 @@ def _dashboard_config_prompt(
         "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段；必须使用字段对象的 expression，不得把用户属性改为 user 表或其他表的同名字段。",
         "字段对象包含 sourceField、jsonPath 和 expression 时，JSON 子字段必须使用 expression；不得自行改写 JSON 宿主列或路径。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
-         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/retention/funnel/distribution/interval/path/revenue/attribution/ranking 字段信息生成 SQL；不要编造未提供字段。",
+         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/property/retention/funnel/distribution/interval/path/revenue/attribution/ranking 字段信息生成 SQL；不要编造未提供字段。",
+        *property_rules,
         *retention_rules,
         *funnel_rules,
         *distribution_rules,
@@ -2853,6 +2908,35 @@ def _retention_simultaneous_aggregation_issues(
         "留存 SQL 的 simultaneous_value 未按同时展示配置使用 "
         f"{aggregation_labels[aggregation]} 聚合。"
     ]
+
+
+def _property_sql_result_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+) -> list[str]:
+    if str(normalized_config.get("analysis_model") or "event") != "property":
+        return []
+    required_aliases = ["property_date"]
+    required_aliases.extend(
+        f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])
+    )
+    required_aliases.extend(
+        f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or [])
+    )
+    normalized_sql = str(sql or "").lower()
+    missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
+    issues = [f"属性分析 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    for index, metric in enumerate(_list_dict_items(normalized_config.get("metrics"))):
+        aggregation = str(metric.get("aggregation") or "count").strip().lower()
+        if aggregation == "count_distinct" and not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
+            issues.append(f"属性指标{index + 1}必须使用 COUNT(DISTINCT ...) 聚合。")
+        elif aggregation in {"sum", "avg", "max", "min"} and not re.search(
+            rf"\b{aggregation}\s*\(", normalized_sql
+        ):
+            issues.append(f"属性指标{index + 1}必须使用 {aggregation.upper()} 聚合。")
+        elif aggregation == "count" and not re.search(r"\bcount\s*\(", normalized_sql):
+            issues.append(f"属性指标{index + 1}必须使用 COUNT 聚合。")
+    return _unique_text_items(issues)
 
 
 def _retention_sql_result_issues(
@@ -3116,7 +3200,24 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
         "- 仅当当前图表配置要求可变时间范围时，日期边界必须使用当前配置提供的看板日期参数占位符，不能使用数据库当前日期函数。\n"
         "- 具体日期格式和分区字段类型必须服从当前 SQL 方言与配置的日期参数类型。\n"
     )
-    if str(analysis_model or "event") == "retention":
+    if str(analysis_model or "event") == "property":
+        structure_prompt = (
+            "当前 SQL plan 的 analysis_model=property，必须使用属性分析专用的属性筛选和聚合结构；禁止改写为事件次数趋势或其他分析模型。\n"
+            "属性分析 SQL 结构范式：\n"
+            "WITH scoped_properties AS (...仅保留配置时间范围、filters、metrics 属性和 groups 属性...),\n"
+            "aggregated AS (\n"
+            "    SELECT <configured_time_grain> AS property_date,\n"
+            "           <configured_group_1> AS group_1, ...,\n"
+            "           <configured_metric_1_aggregation> AS property_metric_1, ...\n"
+            "    FROM scoped_properties\n"
+            "    GROUP BY property_date, <configured_groups>\n"
+            ")\n"
+            "SELECT property_date, <group_1...group_N>, <property_metric_1...property_metric_N>\n"
+            "FROM aggregated ORDER BY property_date, <groups>。\n"
+            "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。\n"
+            "属性字段对象提供 expression 时必须使用该 expression；禁止把 JSON 子属性替换为宿主 JSON 列，禁止补充任何事件名条件。\n"
+        )
+    elif str(analysis_model or "event") == "retention":
         structure_prompt = (
             "当前 SQL plan 的 analysis_model=retention，必须使用留存专用 Cohort 宽表结构；禁止把最终结果生成为按 period_offset 展开的长表。\n"
             "留存 SQL 结构范式：\n"
@@ -3670,7 +3771,7 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
         SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ], node="generate_sql")
-    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event"
+    response.analysis_model = analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event"
     validation = state.get("validation_result")
     if validation:
         response.intent = response.intent or validation.intent
@@ -3810,7 +3911,12 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.advice = "请使用当前图表配置的起止日期参数重新生成。"
         model_issues: list[str] = []
         normalized_config = state.get("normalized_config") or {}
-        if str(normalized_config.get("analysis_model") or "event") == "retention":
+        if str(normalized_config.get("analysis_model") or "event") == "property":
+            model_issues = _property_sql_result_issues(
+                sql,
+                normalized_config,
+            )
+        elif str(normalized_config.get("analysis_model") or "event") == "retention":
             model_issues = _retention_sql_result_issues(
                 sql,
                 normalized_config,
@@ -3971,8 +4077,19 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
     )
     normalized_config = state.get("normalized_config") or {}
     analysis_model = str(normalized_config.get("analysis_model") or "event")
-    response.analysis_model = analysis_model if analysis_model in {"retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event"
-    if response.analysis_model == "retention":
+    response.analysis_model = analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event"
+    if response.analysis_model == "property":
+        groups = normalized_config.get("groups") or []
+        metrics = normalized_config.get("metrics") or []
+        response.chart_type = "table"
+        response.result_config = {
+            "type": "property_table",
+            "group_mode": str((normalized_config.get("property") or {}).get("groupMode") or "property"),
+            "date_field": "property_date",
+            "group_fields": [f"group_{index + 1}" for index, _ in enumerate(groups)],
+            "metric_fields": [f"property_metric_{index + 1}" for index, _ in enumerate(metrics)],
+        }
+    elif response.analysis_model == "retention":
         retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}
         related_property = retention.get("relatedProperty") if isinstance(retention.get("relatedProperty"), dict) else {}
