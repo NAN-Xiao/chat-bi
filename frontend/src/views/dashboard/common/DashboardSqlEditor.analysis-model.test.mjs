@@ -192,12 +192,37 @@ test('retention defaults to a table but permits a user-selected chart type', () 
   assert.match(switchBody, /resetFunnelConfig\(\)/)
   assert.match(
     source,
-    /<el-select v-if="!isPropertyAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" v-model="form\.chartType"/,
+    /<el-select v-if="!isFunnelAnalysis && !isPathAnalysis" v-model="form\.chartType"/,
     '留存分析应复用可选图表类型下拉框'
   )
   assert.doesNotMatch(source, /<el-select v-if="!isRetentionAnalysis/)
   assert.doesNotMatch(initBody, /form\.chartType = isRetentionAnalysis\.value/)
-  assert.match(initBody, /\(chart\.sourceType \|\| chart\.type \|\| 'table'\)/)
+  assert.match(initBody, /const persistedChartType = chart\.sourceType \|\| chart\.type/)
+})
+
+test('table analysis models use the selectable detail table chart type', () => {
+  const initBody = source.match(/function initEditor\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+
+  assert.doesNotMatch(initBody, /isRetentionAnalysis\.value\s*\n\s*\?\s*'table'/)
+  assert.doesNotMatch(initBody, /isDistributionAnalysis\.value\s*\n\s*\?\s*'table'/)
+  assert.doesNotMatch(initBody, /isIntervalAnalysis\.value\s*\n\s*\?\s*'table'/)
+  assert.doesNotMatch(initBody, /isRevenueAnalysis\.value\s*\n\s*\?\s*'table'/)
+  assert.doesNotMatch(initBody, /isAttributionAnalysis\.value\s*\n\s*\?\s*'table'/)
+  assert.doesNotMatch(initBody, /isRankingAnalysis\.value\s*\n\s*\?\s*'table'/)
+  assert.match(
+    source,
+    /<el-select v-if="!isFunnelAnalysis && !isPathAnalysis" v-model="form\.chartType"/,
+    '表格类分析应使用图表类型选择器'
+  )
+  assert.doesNotMatch(source, /isDistributionAnalysis \? '分布表'/)
+  assert.doesNotMatch(source, /isIntervalAnalysis \? '间隔表'/)
+  assert.doesNotMatch(source, /isRevenueAnalysis \? '收入表'/)
+  assert.doesNotMatch(source, /isAttributionAnalysis \? '归因表'/)
+  assert.doesNotMatch(source, /isRankingAnalysis \? '排行榜'/)
+  assert.doesNotMatch(source, /: '留存表'/)
+  assert.match(initBody, /const persistedChartType = chart\.sourceType \|\| chart\.type/)
+  assert.match(initBody, /chartTypes\.some\(\(item\) => item\.value === persistedChartType\)/)
+  assert.match(source, /\{ label: 'table', value: 'table' \}/)
 })
 
 test('allows the same event for initial and return retention roles', () => {
