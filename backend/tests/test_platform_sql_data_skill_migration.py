@@ -437,6 +437,15 @@ def test_mysql_unsigned_runtime_capability_followup_removes_global_ban(
     assert downgrade_params["new_guidance"] == migration.OLD_GUIDANCE
 
 
+def test_mysql_signed_generation_policy_updates_platform_skill() -> None:
+    migration = _load_migration("165_platform_mysql_signed_generation.py")
+
+    assert migration.down_revision == "164platformhistoricalhourly"
+    assert "mysql-signed-generation:v3" in migration.NEW_MARKER
+    assert "统一使用 `CAST(... AS SIGNED)`" in migration.NEW_GUIDANCE
+    assert "禁止生成 `CAST(... AS UNSIGNED)`" in migration.NEW_GUIDANCE
+
+
 def test_time_scaffold_performance_followup_updates_platform_skill(monkeypatch: pytest.MonkeyPatch) -> None:
     migration = _load_migration("157_platform_time_scaffold_performance_data_skill.py")
 

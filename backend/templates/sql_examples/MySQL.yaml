@@ -34,6 +34,7 @@ template:
     <rule>函数字段必须加别名</rule>
     <rule>百分比显示为：CONCAT(ROUND(x*100,2),'%')</rule>
     <rule>避免与MySQL关键字冲突（如`order`/`group`/`desc`）</rule>
+    <rule priority="critical">MySQL/AnalyticDB 兼容数据源生成 SQL 时统一使用 CAST(... AS SIGNED)；禁止生成 CAST(... AS UNSIGNED) 或 AS UNSIGNED，以兼容实际执行引擎</rule>
     <rule priority="critical">
       MySQL/AnalyticDB 查询中，SELECT 的非聚合 DATE_FORMAT 投影必须能由同一查询块的分组键确定：
       可以在 GROUP BY 中重复完全相同的表达式，也可以直接分组该投影依赖的全部原始字段。

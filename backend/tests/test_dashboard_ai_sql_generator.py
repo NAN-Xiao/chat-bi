@@ -232,9 +232,9 @@ def test_dashboard_prompt_for_mysql_forbids_full_outer_join() -> None:
     assert "条件聚合" in prompt
 
 
-def test_dashboard_prompt_for_mysql_does_not_globally_forbid_unsigned_casts() -> None:
+def test_dashboard_prompt_for_mysql_requires_signed_casts() -> None:
     """
-    是什么：MySQL 数据源下手动图表 SQL 生成提示词不能错误禁止标准方言支持的 UNSIGNED。
+    是什么：MySQL 数据源下手动图表 SQL 生成提示词统一要求使用 SIGNED，避免兼容引擎执行失败。
     """
     prompt = ai_sql_generator._dashboard_config_prompt(
         DashboardAiSqlGenerateRequest(
@@ -255,7 +255,8 @@ def test_dashboard_prompt_for_mysql_does_not_globally_forbid_unsigned_casts() ->
         sql_dialect="mysql",
     )
 
-    assert "不能使用 CAST(... AS UNSIGNED)" not in prompt
+    assert "统一使用 CAST(... AS SIGNED)" in prompt
+    assert "禁止生成 CAST(... AS UNSIGNED)" in prompt
 
 
 def test_dashboard_prompt_requires_tracking_event_prefilter_for_multiple_event_metrics() -> None:
@@ -2671,7 +2672,7 @@ def test_validate_sql_node_rejects_current_date_function_and_missing_date_tokens
     assert "看板日期参数" in result.message
 
 
-def test_validate_sql_node_allows_mysql_unsigned_cast() -> None:
+def test_validate_sql_node_rejects_generated_mysql_unsigned_cast() -> None:
     response = ai_sql_generator.DashboardAiSqlGenerateResponse(
         success=True,
         sql="SELECT CAST(DATE_FORMAT(NOW(), '%Y%m%d') AS UNSIGNED) AS dt",
@@ -2683,8 +2684,9 @@ def test_validate_sql_node_allows_mysql_unsigned_cast() -> None:
         "graph_trace": [],
     })["response"]
 
-    assert result.success is True
-    assert not result.issues
+    assert result.success is False
+    assert any("AS UNSIGNED" in issue for issue in (result.issues or []))
+    assert "AS SIGNED" in " ".join(result.issues or [])
 
 
 def test_metric_chart_can_use_dashboard_date_parameters() -> None:

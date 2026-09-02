@@ -62,6 +62,7 @@ from apps.chat.task.sql_repair import (
     SqlStructureValidationError,
     build_sql_repair_message,
     validate_sql_for_datasource,
+    validate_sql_for_generation,
 )
 from apps.datasource.crud.datasource import get_datasource_list
 from apps.datasource.crud.permission_errors import (
@@ -2588,7 +2589,7 @@ class LLMService:
             else:
                 sql = rewritten_sql
 
-        validate_sql_for_datasource(sql, getattr(getattr(self, "ds", None), "type", None))
+        validate_sql_for_generation(sql, getattr(getattr(self, "ds", None), "type", None))
 
         violation = _data_skill_sql_validation_violation(
             self.chat_question.question or "",

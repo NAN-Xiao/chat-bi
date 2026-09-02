@@ -44,6 +44,16 @@ def test_alias_integrity_rule_is_in_first_generation_prompt() -> None:
     assert "MySQL/AnalyticDB 兼容数据源默认禁止 WITH RECURSIVE" in rules
 
 
+def test_mysql_first_generation_prompt_requires_signed_casts() -> None:
+    rules = AiModelQuestion(
+        engine="MySQL 8.0",
+        db_schema="【DB_ID】 test\n【Schema】",
+    ).sql_sys_question("mysql")["rules"]
+
+    assert "统一使用 CAST(... AS SIGNED)" in rules
+    assert "禁止生成 CAST(... AS UNSIGNED)" in rules
+
+
 def test_mysql_first_generation_prompt_requires_matching_date_group_expression() -> None:
     rules = AiModelQuestion(
         engine="MySQL 8.0",

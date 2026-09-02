@@ -572,6 +572,19 @@ def validate_sql_for_datasource(sql: str, datasource_type: Any) -> None:
     validate_mysql_date_format_grouping(sql)
 
 
+def validate_sql_for_generation(sql: str, datasource_type: Any) -> None:
+    """校验 AI 生成 SQL 的方言约束；生成阶段统一避免兼容引擎不支持的 UNSIGNED。"""
+    validate_sql_for_datasource(sql, datasource_type)
+    if str(datasource_type or "").strip().lower() not in {"mysql", "mariadb", "analyticdb", "doris", "starrocks"}:
+        return
+    tokens = sqlglot.Tokenizer(dialect="mysql").tokenize(str(sql or ""))
+    for index, token in enumerate(tokens):
+        if token.text.lower() == "unsigned" and index > 0 and tokens[index - 1].text.lower() == "as":
+            raise SqlStructureValidationError(
+                "生成 SQL 禁止使用 CAST(... AS UNSIGNED)；请统一改用 CAST(... AS SIGNED)。"
+            )
+
+
 def _candidate_sqlstates(error: Any) -> set[str]:
     sqlstates: set[str] = set()
     for item in _walk_error_chain(error):
@@ -708,6 +721,11 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
             "JOIN 后的同名字段在 SELECT、GROUP BY、ORDER BY、HAVING 和连接条件中必须限定来源别名。",
             "周格式不要依赖 %v 或 %x；使用已验证的周起止日期表达式。",
         ]
+        if any(name in dialect_text for name in ("mysql", "mariadb", "doris", "starrocks", "analyticdb")):
+            payload["repair_requirements"].insert(
+                1,
+                "生成 SQL 时统一使用 CAST(... AS SIGNED)；禁止生成 CAST(... AS UNSIGNED) 或 AS UNSIGNED。",
+            )
         if "correlated subquery" in dialect_text or "关联子查询" in dialect_text:
             payload["repair_requirements"].extend([
                 "目标数据源不支持上一版 JOIN 条件中的关联子查询；禁止在 JOIN ON 中使用引用外层列的 EXISTS、IN 或标量子查询。",

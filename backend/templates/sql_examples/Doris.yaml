@@ -21,6 +21,7 @@ template:
 
   other_rule: |
     <rule>必须为每个表生成别名（不加AS）</rule>
+    <rule priority="critical">生成 SQL 时统一使用 CAST(... AS SIGNED)；禁止生成 CAST(... AS UNSIGNED) 或 AS UNSIGNED</rule>
     {multi_table_condition}
     <rule>禁止使用星号(*)，必须明确字段名</rule>
     <rule>输出列必须添加面向用户的可读展示别名；别名可使用用户语言，含中文/特殊字符时按当前数据库引擎规则加引号</rule>

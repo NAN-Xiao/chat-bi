@@ -22,7 +22,7 @@ from sqlglot import exp
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
-from apps.chat.task.sql_repair import SqlStructureValidationError, validate_sql_for_datasource
+from apps.chat.task.sql_repair import SqlStructureValidationError, validate_sql_for_generation
 from apps.dashboard.crud.dashboard_date_filter import (
     dashboard_date_parameter_tokens,
     validate_dashboard_date_parameter_sql,
@@ -2369,9 +2369,10 @@ def _dashboard_sql_dialect_text(sql_dialect: str | None, datasource: CoreDatasou
 
 def _dashboard_sql_dialect_rules(sql_dialect: str | None, datasource: CoreDatasource | None) -> list[str]:
     dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
-    if "mysql" in dialect_text or "mariadb" in dialect_text:
+    if any(name in dialect_text for name in ("mysql", "mariadb", "doris", "starrocks", "analyticdb")):
         return [
             "MySQL/MariaDB 方言约束：不能使用 FULL OUTER JOIN；MySQL 不支持该语法。",
+            "MySQL/AnalyticDB 兼容数据源生成 SQL 时统一使用 CAST(... AS SIGNED)；禁止生成 CAST(... AS UNSIGNED) 或 AS UNSIGNED，以兼容实际执行引擎。",
             "如果需要合并两个按日期/维度聚合的结果集，优先用一个 key_set CTE 通过 UNION/UNION ALL 去重收集日期或维度键，再分别 LEFT JOIN 各聚合结果；也可以在同一事实表中用 SUM/COUNT(DISTINCT CASE WHEN ...) 做条件聚合。",
         ]
     return []
@@ -3645,7 +3646,7 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     dialect_issue: str | None = None
     if sql and datasource_type:
         try:
-            validate_sql_for_datasource(sql, datasource_type)
+            validate_sql_for_generation(sql, datasource_type)
         except SqlStructureValidationError as exc:
             dialect_issue = str(exc)
 

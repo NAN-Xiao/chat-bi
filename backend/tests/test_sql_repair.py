@@ -26,6 +26,7 @@ from apps.chat.task.sql_repair import (
     sql_repair_fingerprint,
     validate_mysql_compatible_sql,
     validate_sql_for_datasource,
+    validate_sql_for_generation,
     validate_mysql_date_format_grouping,
 )
 from apps.datasource.crud.permission_errors import SqlSchemaScopeError
@@ -681,6 +682,21 @@ def test_mysql_compatible_sql_allows_unsigned_casts_supported_by_mysql() -> None
         "CAST({{dashboard_end_yyyymmdd}} AS UNSIGNED) AS end_dt"
     )
     validate_sql_for_datasource("SELECT CAST(1 AS UNSIGNED) AS value", "mysql")
+
+
+def test_generated_mysql_sql_rejects_unsigned_cast_and_requires_signed() -> None:
+    with pytest.raises(SqlStructureValidationError, match=r"AS SIGNED"):
+        validate_sql_for_generation("SELECT CAST(1 AS UNSIGNED) AS value", "mysql")
+
+    validate_sql_for_generation("SELECT CAST(1 AS SIGNED) AS value", "mysql")
+
+
+def test_generated_mysql_sql_ignores_unsigned_text_in_strings_and_comments() -> None:
+    validate_sql_for_generation(
+        "SELECT 'CAST(value AS UNSIGNED)' AS example_text "
+        "FROM event /* AS UNSIGNED is documentation */",
+        "mysql",
+    )
 
 
 def test_mysql_compatible_sql_requires_recursive_cte_column_aliases() -> None:
