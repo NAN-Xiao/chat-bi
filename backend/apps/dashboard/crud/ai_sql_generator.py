@@ -1954,6 +1954,23 @@ def _deterministic_validate_manual_config(
             issues.append("热力地图使用非次数聚合时，请选择计算字段。")
         if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "heatmap":
             issues.append("热力地图分析只能使用热力图结果。")
+        map_file = heatmap.get("mapFile") or heatmap.get("map_file")
+        map_coordinates = heatmap.get("mapCoordinates") or heatmap.get("map_coordinates")
+        if map_file:
+            if not isinstance(map_coordinates, dict):
+                issues.append("热力地图已选择地图文件，请补全左下角和右上角坐标。")
+            else:
+                left_bottom = map_coordinates.get("leftBottom") or map_coordinates.get("left_bottom") or {}
+                right_top = map_coordinates.get("rightTop") or map_coordinates.get("right_top") or {}
+                try:
+                    left_x = float(left_bottom.get("x"))
+                    left_y = float(left_bottom.get("y"))
+                    right_x = float(right_top.get("x"))
+                    right_y = float(right_top.get("y"))
+                    if right_x <= left_x or right_y <= left_y:
+                        issues.append("热力地图右上角坐标必须大于左下角坐标。")
+                except (TypeError, ValueError):
+                    issues.append("热力地图已选择地图文件，请补全左下角和右上角坐标。")
         for field, label in ((event, "热力地图事件"), (x_field, "热力地图 X 轴属性"), (y_field, "热力地图 Y 轴属性"), (metric_field if aggregation != "count" else None, "热力地图计算字段")):
             if not field:
                 continue
@@ -2430,6 +2447,10 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "value_field": "heatmap_value",
             "final_grain": ["heatmap_x", "heatmap_y"],
             "map_file": (normalized_config.get("heatmap") or {}).get("mapFile") or (normalized_config.get("heatmap") or {}).get("map_file") or None,
+            "map_file_name": (normalized_config.get("heatmap") or {}).get("mapFileName") or (normalized_config.get("heatmap") or {}).get("map_file_name") or None,
+            "map_width": (normalized_config.get("heatmap") or {}).get("mapWidth") or (normalized_config.get("heatmap") or {}).get("map_width") or None,
+            "map_height": (normalized_config.get("heatmap") or {}).get("mapHeight") or (normalized_config.get("heatmap") or {}).get("map_height") or None,
+            "map_coordinates": (normalized_config.get("heatmap") or {}).get("mapCoordinates") or (normalized_config.get("heatmap") or {}).get("map_coordinates") or None,
         }
     elif analysis_model == "interval":
         result_contract = {
@@ -4444,6 +4465,10 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "y_field": "heatmap_y",
             "value_field": "heatmap_value",
             "map_file": heatmap.get("mapFile") or heatmap.get("map_file") or "",
+            "map_file_name": heatmap.get("mapFileName") or heatmap.get("map_file_name") or "",
+            "map_width": heatmap.get("mapWidth") or heatmap.get("map_width") or 0,
+            "map_height": heatmap.get("mapHeight") or heatmap.get("map_height") or 0,
+            "map_coordinates": heatmap.get("mapCoordinates") or heatmap.get("map_coordinates") or {},
         }
     return {
         "response": response,

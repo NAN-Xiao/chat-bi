@@ -329,6 +329,12 @@ type SqlBuilderHeatmapConfig = {
   }
   mapFile: string
   mapFileName?: string
+  mapWidth?: number
+  mapHeight?: number
+  mapCoordinates?: {
+    leftBottom: { x: string; y: string }
+    rightTop: { x: string; y: string }
+  }
 }
 type SqlBuilderPropertyConfig = {
   groupMode: 'property' | 'audience'
@@ -607,6 +613,13 @@ const sqlBuilder = reactive({
     yField: '',
     metric: { aggregation: 'count', field: '' },
     mapFile: '',
+    mapFileName: '',
+    mapWidth: 0,
+    mapHeight: 0,
+    mapCoordinates: {
+      leftBottom: { x: '', y: '' },
+      rightTop: { x: '', y: '' },
+    },
   } as SqlBuilderHeatmapConfig,
 })
 const retentionFilterExpanded = reactive<Record<RetentionEventTarget, boolean>>({
@@ -637,6 +650,39 @@ const intervalFilterExpanded = reactive<Record<IntervalEventTarget, boolean>>({
 const attributionTargetFilterExpanded = ref(false)
 const heatmapFilterExpanded = ref(false)
 const heatmapMapFileName = ref('')
+const heatmapMapDialogVisible = ref(false)
+const heatmapMapStep = ref(1)
+const heatmapMapDraft = reactive({
+  file: '',
+  fileName: '',
+  width: 0,
+  height: 0,
+  leftBottomX: '',
+  leftBottomY: '',
+  rightTopX: '',
+  rightTopY: '',
+})
+const heatmapMapImageStyle = computed(() => ({
+  maxWidth: '100%',
+  maxHeight: '100%',
+}))
+const heatmapMapCoordinatesValid = computed(() => {
+  const rawValues = [
+    heatmapMapDraft.leftBottomX,
+    heatmapMapDraft.leftBottomY,
+    heatmapMapDraft.rightTopX,
+    heatmapMapDraft.rightTopY,
+  ]
+  if (rawValues.some((value) => !String(value).trim())) return false
+  const values = rawValues.map((value) => Number(value))
+  if (!values.every(Number.isFinite)) return false
+  return values[2] > values[0] && values[3] > values[1]
+})
+const heatmapMapCanNext = computed(() => {
+  if (heatmapMapStep.value === 1) return Boolean(heatmapMapDraft.file)
+  if (heatmapMapStep.value === 2) return heatmapMapCoordinatesValid.value
+  return true
+})
 const attributionEventFilterExpanded = reactive<Record<string, boolean>>({})
 const builderAgentAdvice = reactive({
   visible: false,
@@ -2538,6 +2584,9 @@ function builderConfigForSave() {
       },
       mapFile: sqlBuilder.heatmap.mapFile,
       mapFileName: heatmapMapFileName.value,
+      mapWidth: sqlBuilder.heatmap.mapWidth || 0,
+      mapHeight: sqlBuilder.heatmap.mapHeight || 0,
+      mapCoordinates: sqlBuilder.heatmap.mapCoordinates,
     } : undefined,
     timeField: SQL_EDITOR_TIME_FIELD,
     timeGrain: SQL_EDITOR_TIME_GRAIN,
@@ -2823,6 +2872,19 @@ function restoreSqlBuilderState(value: any) {
     && typeof heatmapMetric.field === 'string' ? heatmapMetric.field : ''
   sqlBuilder.heatmap.mapFile = typeof heatmap.mapFile === 'string' ? heatmap.mapFile : ''
   heatmapMapFileName.value = typeof heatmap.mapFileName === 'string' ? heatmap.mapFileName : ''
+  sqlBuilder.heatmap.mapWidth = Number.isFinite(Number(heatmap.mapWidth)) ? Number(heatmap.mapWidth) : 0
+  sqlBuilder.heatmap.mapHeight = Number.isFinite(Number(heatmap.mapHeight)) ? Number(heatmap.mapHeight) : 0
+  const mapCoordinates = heatmap.mapCoordinates || heatmap.coordinates || {}
+  sqlBuilder.heatmap.mapCoordinates = {
+    leftBottom: {
+      x: typeof mapCoordinates.leftBottom?.x === 'string' ? mapCoordinates.leftBottom.x : '',
+      y: typeof mapCoordinates.leftBottom?.y === 'string' ? mapCoordinates.leftBottom.y : '',
+    },
+    rightTop: {
+      x: typeof mapCoordinates.rightTop?.x === 'string' ? mapCoordinates.rightTop.x : '',
+      y: typeof mapCoordinates.rightTop?.y === 'string' ? mapCoordinates.rightTop.y : '',
+    },
+  }
   heatmapFilterExpanded.value = false
   sqlBuilder.dateExpressionPickerEnabled = true
   sqlBuilder.metricDateExpressionEnabled = value.metricDateExpressionEnabled === true
@@ -3689,8 +3751,39 @@ function resetHeatmapConfig() {
   sqlBuilder.heatmap.yField = ''
   sqlBuilder.heatmap.metric = { aggregation: 'count', field: '' }
   sqlBuilder.heatmap.mapFile = ''
+  sqlBuilder.heatmap.mapFileName = ''
+  sqlBuilder.heatmap.mapWidth = 0
+  sqlBuilder.heatmap.mapHeight = 0
+  sqlBuilder.heatmap.mapCoordinates = {
+    leftBottom: { x: '', y: '' },
+    rightTop: { x: '', y: '' },
+  }
   heatmapMapFileName.value = ''
+  heatmapMapDialogVisible.value = false
+  heatmapMapStep.value = 1
+  resetHeatmapMapDraft()
   heatmapFilterExpanded.value = false
+}
+
+function resetHeatmapMapDraft() {
+  heatmapMapDraft.file = sqlBuilder.heatmap.mapFile || ''
+  heatmapMapDraft.fileName = heatmapMapFileName.value || sqlBuilder.heatmap.mapFileName || ''
+  heatmapMapDraft.width = Number(sqlBuilder.heatmap.mapWidth) || 0
+  heatmapMapDraft.height = Number(sqlBuilder.heatmap.mapHeight) || 0
+  heatmapMapDraft.leftBottomX = sqlBuilder.heatmap.mapCoordinates?.leftBottom?.x || ''
+  heatmapMapDraft.leftBottomY = sqlBuilder.heatmap.mapCoordinates?.leftBottom?.y || ''
+  heatmapMapDraft.rightTopX = sqlBuilder.heatmap.mapCoordinates?.rightTop?.x || ''
+  heatmapMapDraft.rightTopY = sqlBuilder.heatmap.mapCoordinates?.rightTop?.y || ''
+}
+
+function openHeatmapMapDialog() {
+  resetHeatmapMapDraft()
+  heatmapMapStep.value = heatmapMapDraft.file ? 3 : 1
+  heatmapMapDialogVisible.value = true
+}
+
+function chooseExistingHeatmapMap() {
+  heatmapMapStep.value = 3
 }
 
 function handleHeatmapMapFileChange(uploadFile: any) {
@@ -3705,10 +3798,48 @@ function handleHeatmapMapFileChange(uploadFile: any) {
   }
   const reader = new FileReader()
   reader.onload = () => {
-    sqlBuilder.heatmap.mapFile = typeof reader.result === 'string' ? reader.result : ''
-    heatmapMapFileName.value = file.name
+    const result = typeof reader.result === 'string' ? reader.result : ''
+    if (!result) return
+    const image = new Image()
+    image.onload = () => {
+      heatmapMapDraft.file = result
+      heatmapMapDraft.fileName = file.name
+      heatmapMapDraft.width = image.naturalWidth || 0
+      heatmapMapDraft.height = image.naturalHeight || 0
+      heatmapMapDraft.leftBottomX = ''
+      heatmapMapDraft.leftBottomY = ''
+      heatmapMapDraft.rightTopX = ''
+      heatmapMapDraft.rightTopY = ''
+    }
+    image.src = result
   }
   reader.readAsDataURL(file)
+}
+
+function goToNextHeatmapMapStep() {
+  if (!heatmapMapCanNext.value) {
+    ElMessage.warning(heatmapMapStep.value === 1 ? '请先上传或选择地图。' : '请填写四个有效的地图坐标。')
+    return
+  }
+  if (heatmapMapStep.value < 3) heatmapMapStep.value += 1
+}
+
+function goToPreviousHeatmapMapStep() {
+  if (heatmapMapStep.value > 1) heatmapMapStep.value -= 1
+}
+
+function confirmHeatmapMap() {
+  if (!heatmapMapCanNext.value) return
+  sqlBuilder.heatmap.mapFile = heatmapMapDraft.file
+  sqlBuilder.heatmap.mapFileName = heatmapMapDraft.fileName
+  sqlBuilder.heatmap.mapWidth = heatmapMapDraft.width
+  sqlBuilder.heatmap.mapHeight = heatmapMapDraft.height
+  sqlBuilder.heatmap.mapCoordinates = {
+    leftBottom: { x: heatmapMapDraft.leftBottomX.trim(), y: heatmapMapDraft.leftBottomY.trim() },
+    rightTop: { x: heatmapMapDraft.rightTopX.trim(), y: heatmapMapDraft.rightTopY.trim() },
+  }
+  heatmapMapFileName.value = heatmapMapDraft.fileName
+  heatmapMapDialogVisible.value = false
 }
 
 function resetPropertyConfig() {
@@ -4657,6 +4788,16 @@ function heatmapBlockingIssues() {
   if (heatmap.metric.aggregation !== 'count' && !heatmap.metric.field) {
     issues.push('热力地图使用非次数聚合时，请选择计算字段。')
   }
+  if (heatmap.mapFile && (!heatmap.mapCoordinates || ![heatmap.mapCoordinates.leftBottom.x, heatmap.mapCoordinates.leftBottom.y, heatmap.mapCoordinates.rightTop.x, heatmap.mapCoordinates.rightTop.y].every((value) => Number.isFinite(Number(value))))) {
+    issues.push('热力地图已选择地图文件，请补全左下角和右上角坐标。')
+  }
+  if (heatmap.mapFile && heatmap.mapCoordinates) {
+    const leftBottom = heatmap.mapCoordinates.leftBottom
+    const rightTop = heatmap.mapCoordinates.rightTop
+    if (Number.isFinite(Number(leftBottom.x)) && Number.isFinite(Number(leftBottom.y)) && Number.isFinite(Number(rightTop.x)) && Number.isFinite(Number(rightTop.y)) && (Number(rightTop.x) <= Number(leftBottom.x) || Number(rightTop.y) <= Number(leftBottom.y))) {
+      issues.push('热力地图右上角坐标必须大于左下角坐标。')
+    }
+  }
   if (heatmap.xField && heatmap.yField && heatmap.xField === heatmap.yField) {
     issues.push('热力地图的 X/Y 坐标属性不能相同。')
   }
@@ -5200,6 +5341,9 @@ function collectBuilderAiContext() {
       },
       mapFile: sqlBuilder.heatmap.mapFile?.startsWith('data:') ? '[uploaded map asset]' : (sqlBuilder.heatmap.mapFile || null),
       mapFileName: heatmapMapFileName.value || null,
+      mapWidth: sqlBuilder.heatmap.mapWidth || null,
+      mapHeight: sqlBuilder.heatmap.mapHeight || null,
+      mapCoordinates: sqlBuilder.heatmap.mapCoordinates,
     } : null,
     distribution: sqlBuilder.analysisModel === 'distribution' ? {
       content: '一段时间内，指定用户参与某一事件的总完成次数或属性值按个人聚合后的全员分布情况',
@@ -8300,11 +8444,9 @@ function closeDrawer() {
                 </div>
                 <label class="builder-field-label">地图绘制</label>
                 <div class="heatmap-map-picker">
-                  <el-upload :auto-upload="false" :show-file-list="false" accept=".jpg,.jpeg,.png" :on-change="handleHeatmapMapFileChange">
-                    <el-button :icon="FolderOpened">选择地图</el-button>
-                  </el-upload>
+                  <el-button :icon="FolderOpened" @click="openHeatmapMapDialog">选择地图</el-button>
                   <span v-if="heatmapMapFileName" class="heatmap-map-file-name">{{ heatmapMapFileName }}</span>
-                  <el-input v-model="sqlBuilder.heatmap.mapFile" clearable placeholder="或填写地图文件 URL" />
+                  <span v-else class="heatmap-map-file-empty">未选择地图</span>
                 </div>
                 <label class="builder-field-label">事件坐标</label>
                 <div class="heatmap-axis-row">
@@ -10607,6 +10749,80 @@ function closeDrawer() {
       <el-button type="primary" @click="applyChange">{{ t('dashboard.sql_editor_apply') }}</el-button>
     </template>
   </el-drawer>
+  <el-dialog
+    v-model="heatmapMapDialogVisible"
+    class="heatmap-map-dialog"
+    width="650px"
+    append-to-body
+    :show-close="true"
+    title="选择地图"
+  >
+    <div class="heatmap-map-stepper" aria-label="地图选择步骤">
+      <div v-for="step in 3" :key="step" class="heatmap-map-step" :class="{ active: heatmapMapStep === step, done: heatmapMapStep > step }">
+        <span class="heatmap-map-step-index">{{ heatmapMapStep > step ? '✓' : step }}</span>
+        <span>{{ ['上传地图', '绑定坐标', '确认选择'][step - 1] }}</span>
+      </div>
+    </div>
+    <div v-if="heatmapMapStep === 1" class="heatmap-map-upload-step">
+      <el-upload
+        class="heatmap-map-uploader"
+        drag
+        :auto-upload="false"
+        :show-file-list="false"
+        accept=".jpg,.jpeg,.png"
+        :on-change="handleHeatmapMapFileChange"
+      >
+        <el-icon class="heatmap-map-upload-icon"><FolderOpened /></el-icon>
+        <div class="heatmap-map-upload-text">将文件拖到此处，或<span>点击上传</span></div>
+        <div class="heatmap-map-upload-tip">支持上传 JPG、PNG 和 JPEG 格式，大小不超过 10 MB</div>
+      </el-upload>
+      <div class="heatmap-map-recent">
+        <div class="heatmap-map-recent-title">最近使用的地图</div>
+        <button v-if="heatmapMapDraft.file" type="button" class="heatmap-map-recent-item" @click="chooseExistingHeatmapMap">
+          <img :src="heatmapMapDraft.file" :alt="heatmapMapDraft.fileName || '最近使用的地图'">
+          <span>{{ heatmapMapDraft.fileName || '当前地图' }}</span>
+        </button>
+        <div v-else class="heatmap-map-recent-empty">暂无最近使用的地图</div>
+      </div>
+    </div>
+    <div v-else-if="heatmapMapStep === 2" class="heatmap-map-coordinate-step">
+      <div class="heatmap-map-coordinate-preview">
+        <img v-if="heatmapMapDraft.file" :src="heatmapMapDraft.file" :alt="heatmapMapDraft.fileName || '地图预览'" :style="heatmapMapImageStyle">
+        <div v-else class="heatmap-map-preview-empty">请先上传地图</div>
+        <span class="heatmap-map-corner corner-left-bottom">A</span>
+        <span class="heatmap-map-corner corner-right-top">B</span>
+      </div>
+      <div class="heatmap-map-coordinate-form">
+        <div class="heatmap-map-coordinate-group">
+          <div class="heatmap-map-coordinate-title"><span>A</span> 左下角</div>
+          <el-input v-model="heatmapMapDraft.leftBottomX" placeholder="X轴坐标值" />
+          <el-input v-model="heatmapMapDraft.leftBottomY" placeholder="Y轴坐标值" />
+        </div>
+        <div class="heatmap-map-coordinate-group">
+          <div class="heatmap-map-coordinate-title"><span>B</span> 右上角</div>
+          <el-input v-model="heatmapMapDraft.rightTopX" placeholder="X轴坐标值" />
+          <el-input v-model="heatmapMapDraft.rightTopY" placeholder="Y轴坐标值" />
+        </div>
+      </div>
+    </div>
+    <div v-else class="heatmap-map-confirm-step">
+      <div class="heatmap-map-confirm-preview">
+        <img v-if="heatmapMapDraft.file" :src="heatmapMapDraft.file" :alt="heatmapMapDraft.fileName || '地图预览'">
+      </div>
+      <div class="heatmap-map-confirm-info">
+        <div><span>文件名</span><strong>{{ heatmapMapDraft.fileName || '未命名地图' }}</strong></div>
+        <div><span>地图尺寸</span><strong>{{ heatmapMapDraft.width || 0 }} × {{ heatmapMapDraft.height || 0 }}</strong></div>
+        <div><span>左下角坐标值</span><strong>({{ heatmapMapDraft.leftBottomX || 0 }}, {{ heatmapMapDraft.leftBottomY || 0 }})</strong></div>
+        <div><span>右上角坐标值</span><strong>({{ heatmapMapDraft.rightTopX || 0 }}, {{ heatmapMapDraft.rightTopY || 0 }})</strong></div>
+      </div>
+    </div>
+    <template #footer>
+      <el-button @click="heatmapMapDialogVisible = false">取消</el-button>
+      <el-button v-if="heatmapMapStep > 1" @click="goToPreviousHeatmapMapStep">上一步</el-button>
+      <el-button v-if="heatmapMapStep < 3" type="primary" :disabled="!heatmapMapCanNext" @click="goToNextHeatmapMapStep">下一步</el-button>
+      <el-button v-else type="primary" :disabled="!heatmapMapCanNext" @click="confirmHeatmapMap">确认选择</el-button>
+    </template>
+  </el-dialog>
   <el-dialog
     v-model="builderAgentAdvice.visible"
     title="配置 Agent 建议"
@@ -13169,5 +13385,274 @@ function closeDrawer() {
   white-space: nowrap;
   color: #646a73;
   font-size: 12px;
+}
+
+.heatmap-map-file-empty {
+  color: #8f959e;
+  font-size: 12px;
+}
+
+:deep(.heatmap-map-dialog) {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+:deep(.heatmap-map-dialog .el-dialog__body) {
+  padding: 10px 32px 24px;
+}
+
+.heatmap-map-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 2px 0 24px;
+}
+
+.heatmap-map-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #8f959e;
+  font-size: 14px;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.heatmap-map-step:not(:last-child)::after {
+  content: '';
+  height: 1px;
+  background: #e5e6eb;
+  flex: 1;
+  margin: 0 14px;
+}
+
+.heatmap-map-step.active,
+.heatmap-map-step.done {
+  color: #1f2329;
+}
+
+.heatmap-map-step-index {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f2f5;
+  color: #646a73;
+  flex: none;
+}
+
+.heatmap-map-step.active .heatmap-map-step-index {
+  background: #4355f5;
+  color: #fff;
+}
+
+.heatmap-map-step.done .heatmap-map-step-index {
+  background: #eef0ff;
+  color: #4355f5;
+}
+
+.heatmap-map-upload-step,
+.heatmap-map-coordinate-step,
+.heatmap-map-confirm-step {
+  min-height: 280px;
+}
+
+.heatmap-map-upload-step {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, .72fr);
+  gap: 28px;
+}
+
+.heatmap-map-uploader :deep(.el-upload-dragger) {
+  height: 280px;
+  border-radius: 8px;
+  border-color: #d9dce5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.heatmap-map-upload-icon {
+  color: #3478f6;
+  font-size: 56px;
+  margin-bottom: 12px;
+}
+
+.heatmap-map-upload-text {
+  color: #1f2329;
+  font-size: 14px;
+}
+
+.heatmap-map-upload-text span {
+  color: #4355f5;
+  margin-left: 4px;
+}
+
+.heatmap-map-upload-tip,
+.heatmap-map-recent-empty {
+  color: #8f959e;
+  font-size: 12px;
+  line-height: 20px;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.heatmap-map-recent-title {
+  color: #646a73;
+  font-size: 13px;
+  margin: 8px 0 12px;
+}
+
+.heatmap-map-recent-item {
+  background: transparent;
+  border: 0;
+  color: #1f2329;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.heatmap-map-recent-item img {
+  background: #20213f;
+  border-radius: 6px;
+  height: 220px;
+  object-fit: contain;
+  width: 100%;
+}
+
+.heatmap-map-coordinate-step {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, .72fr);
+  gap: 28px;
+}
+
+.heatmap-map-coordinate-preview,
+.heatmap-map-confirm-preview {
+  align-items: center;
+  background: #20213f;
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  min-height: 280px;
+  overflow: hidden;
+  position: relative;
+}
+
+.heatmap-map-coordinate-preview img {
+  max-height: 250px;
+  max-width: 88%;
+  object-fit: contain;
+}
+
+.heatmap-map-preview-empty {
+  color: #fff;
+  font-size: 13px;
+}
+
+.heatmap-map-corner {
+  align-items: center;
+  background: #ff7a00;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  font-size: 12px;
+  height: 22px;
+  justify-content: center;
+  position: absolute;
+  width: 22px;
+}
+
+.corner-left-bottom { bottom: 8px; left: 8px; }
+.corner-right-top { right: 8px; top: 8px; }
+
+.heatmap-map-coordinate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding-top: 6px;
+}
+
+.heatmap-map-coordinate-group {
+  display: grid;
+  gap: 8px;
+}
+
+.heatmap-map-coordinate-title {
+  color: #1f2329;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.heatmap-map-coordinate-title span {
+  align-items: center;
+  background: #ff7a00;
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  font-size: 12px;
+  height: 20px;
+  justify-content: center;
+  margin-right: 6px;
+  width: 20px;
+}
+
+.heatmap-map-confirm-step {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, .72fr);
+  gap: 28px;
+}
+
+.heatmap-map-confirm-preview img {
+  max-height: 250px;
+  max-width: 88%;
+  object-fit: contain;
+}
+
+.heatmap-map-confirm-info {
+  display: grid;
+  align-content: center;
+  gap: 22px;
+}
+
+.heatmap-map-confirm-info div {
+  display: grid;
+  gap: 5px;
+}
+
+.heatmap-map-confirm-info span {
+  color: #8f959e;
+  font-size: 12px;
+}
+
+.heatmap-map-confirm-info strong {
+  color: #1f2329;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+@media (max-width: 640px) {
+  .heatmap-map-upload-step,
+  .heatmap-map-coordinate-step,
+  .heatmap-map-confirm-step {
+    grid-template-columns: 1fr;
+  }
+
+  .heatmap-map-step {
+    gap: 5px;
+    font-size: 12px;
+  }
+
+  .heatmap-map-step:not(:last-child)::after {
+    margin: 0 6px;
+  }
 }
 </style>
