@@ -196,7 +196,7 @@ type SqlBuilderMetricItem = {
   filterLogic: SqlBuilderFilterLogic
   filters: SqlBuilderFilter[]
 }
-type AnalysisModel = 'event' | 'property' | 'retention' | 'funnel' | 'distribution' | 'interval' | 'path' | 'revenue' | 'attribution' | 'ranking'
+type AnalysisModel = 'event' | 'property' | 'retention' | 'funnel' | 'distribution' | 'interval' | 'path' | 'revenue' | 'attribution' | 'ranking' | 'heatmap'
 type RetentionEventTarget = 'initial' | 'return'
 type IntervalEventTarget = 'start' | 'end'
 type SqlBuilderFunnelStep = {
@@ -316,6 +316,19 @@ type SqlBuilderRankingConfig = {
   tieHandling: 'default' | 'skip' | 'dense'
   simultaneousMetrics: SqlBuilderRankingMetric[]
   simultaneousProperties: string[]
+}
+type SqlBuilderHeatmapConfig = {
+  event: string
+  eventFilterLogic: SqlBuilderFilterLogic
+  eventFilters: SqlBuilderFilter[]
+  xField: string
+  yField: string
+  metric: {
+    aggregation: SqlBuilderAggregation
+    field: string
+  }
+  mapFile: string
+  mapFileName?: string
 }
 type SqlBuilderPropertyConfig = {
   groupMode: 'property' | 'audience'
@@ -586,6 +599,15 @@ const sqlBuilder = reactive({
     simultaneousMetrics: [],
     simultaneousProperties: [],
   } as SqlBuilderRankingConfig,
+  heatmap: {
+    event: '',
+    eventFilterLogic: 'and',
+    eventFilters: [],
+    xField: '',
+    yField: '',
+    metric: { aggregation: 'count', field: '' },
+    mapFile: '',
+  } as SqlBuilderHeatmapConfig,
 })
 const retentionFilterExpanded = reactive<Record<RetentionEventTarget, boolean>>({
   initial: false,
@@ -613,6 +635,8 @@ const intervalFilterExpanded = reactive<Record<IntervalEventTarget, boolean>>({
   end: false,
 })
 const attributionTargetFilterExpanded = ref(false)
+const heatmapFilterExpanded = ref(false)
+const heatmapMapFileName = ref('')
 const attributionEventFilterExpanded = reactive<Record<string, boolean>>({})
 const builderAgentAdvice = reactive({
   visible: false,
@@ -1065,6 +1089,7 @@ const analysisModelOptions: Array<{ label: string; value: AnalysisModel; content
   { label: '收入分析', value: 'revenue' as AnalysisModel, content: '以同期初始事件形成主体 Cohort，统计其在观察期内参与付费事件产生的每日及累计收入指标' },
   { label: '归因分析', value: 'attribution' as AnalysisModel, content: '按目标事件发生前窗口期内的首次、末次或线性归因方式分配贡献，统计各归因事件获得的目标次数、目标值和贡献占比' },
   { label: '排行榜', value: 'ranking' as AnalysisModel, content: '按排行主体聚合主排行指标并生成名次，同时展示附加指标和属性；并列名次严格使用配置规则' },
+  { label: '热力地图', value: 'heatmap' as AnalysisModel, content: '按事件的 X/Y 坐标聚合指标，在地图或二维坐标上展示空间分布热度' },
 ]
 const analysisModelContent = computed(() =>
   analysisModelOptions.find((option) => option.value === sqlBuilder.analysisModel)?.content || ''
@@ -1088,6 +1113,7 @@ const attributionMethodOptions: Array<{ label: string; value: AttributionMethod 
   { label: '线性归因', value: 'linear' },
 ]
 const isRankingAnalysis = computed(() => sqlBuilder.analysisModel === 'ranking')
+const isHeatmapAnalysis = computed(() => sqlBuilder.analysisModel === 'heatmap')
 const propertyFieldOptions = computed<SchemaFieldOption[]>(() => {
   if (eventFieldScope.value.status !== 'active') return builderFieldOptions.value as SchemaFieldOption[]
   const options = [
@@ -1227,7 +1253,7 @@ const showXAxis = computed(() =>
 )
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
-const supportsPivotConfig = computed(() => hasSqlSource.value && !hasMcpSource.value && !['table', 'metric'].includes(form.chartType))
+const supportsPivotConfig = computed(() => hasSqlSource.value && !hasMcpSource.value && !['table', 'metric', 'heatmap'].includes(form.chartType))
 const dateExpressionEnabled = computed(
   () => hasSqlSource.value && sqlBuilder.dateExpressionPickerEnabled === true && shouldUseDashboardDateParameters()
 )
@@ -1974,6 +2000,8 @@ function resetSqlBuilderState() {
   resetIntervalConfig()
   resetPathConfig()
   resetAttributionConfig()
+  resetRankingConfig()
+  resetHeatmapConfig()
   clearBuilderAgentAdvice()
 }
 
@@ -2496,6 +2524,21 @@ function builderConfigForSave() {
       simultaneousMetrics: sqlBuilder.ranking.simultaneousMetrics.map(serializeRankingMetric),
       simultaneousProperties: [...sqlBuilder.ranking.simultaneousProperties],
     } : undefined,
+    heatmap: sqlBuilder.analysisModel === 'heatmap' ? {
+      event: sqlBuilder.heatmap.event,
+      eventFilters: {
+        logic: builderLogic(sqlBuilder.heatmap.eventFilterLogic),
+        rules: compactBuilderFilters(sqlBuilder.heatmap.eventFilters),
+      },
+      xField: sqlBuilder.heatmap.xField,
+      yField: sqlBuilder.heatmap.yField,
+      metric: {
+        aggregation: sqlBuilder.heatmap.metric.aggregation,
+        field: sqlBuilder.heatmap.metric.aggregation === 'count' ? '' : sqlBuilder.heatmap.metric.field,
+      },
+      mapFile: sqlBuilder.heatmap.mapFile,
+      mapFileName: heatmapMapFileName.value,
+    } : undefined,
     timeField: SQL_EDITOR_TIME_FIELD,
     timeGrain: SQL_EDITOR_TIME_GRAIN,
     timeRange: 'expression',
@@ -2522,7 +2565,7 @@ function restoreSqlBuilderState(value: any) {
   if (!value || typeof value !== 'object') {
     return
   }
-  sqlBuilder.analysisModel = ['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'].includes(value.analysisModel)
+  sqlBuilder.analysisModel = ['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking', 'heatmap'].includes(value.analysisModel)
     ? value.analysisModel
     : 'event'
   const property = value.property && typeof value.property === 'object' ? value.property : {}
@@ -2766,6 +2809,21 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.ranking.simultaneousProperties = Array.isArray(ranking.simultaneousProperties)
     ? ranking.simultaneousProperties.filter((item: any) => typeof item === 'string')
     : []
+  const heatmap = value.heatmap && typeof value.heatmap === 'object' ? value.heatmap : {}
+  sqlBuilder.heatmap.event = typeof heatmap.event === 'string' ? heatmap.event : ''
+  sqlBuilder.heatmap.eventFilterLogic = builderLogic(heatmap.eventFilters?.logic)
+  sqlBuilder.heatmap.eventFilters = restoreBuilderFilters(heatmap.eventFilters?.rules)
+  sqlBuilder.heatmap.xField = typeof heatmap.xField === 'string' ? heatmap.xField : ''
+  sqlBuilder.heatmap.yField = typeof heatmap.yField === 'string' ? heatmap.yField : ''
+  const heatmapMetric = heatmap.metric && typeof heatmap.metric === 'object' ? heatmap.metric : {}
+  sqlBuilder.heatmap.metric.aggregation = builderAggregationOptions.some(
+    (option) => option.value === heatmapMetric.aggregation
+  ) ? heatmapMetric.aggregation : 'count'
+  sqlBuilder.heatmap.metric.field = sqlBuilder.heatmap.metric.aggregation !== 'count'
+    && typeof heatmapMetric.field === 'string' ? heatmapMetric.field : ''
+  sqlBuilder.heatmap.mapFile = typeof heatmap.mapFile === 'string' ? heatmap.mapFile : ''
+  heatmapMapFileName.value = typeof heatmap.mapFileName === 'string' ? heatmap.mapFileName : ''
+  heatmapFilterExpanded.value = false
   sqlBuilder.dateExpressionPickerEnabled = true
   sqlBuilder.metricDateExpressionEnabled = value.metricDateExpressionEnabled === true
   const timeExpression = normalizeDashboardDateExpression(value.timeExpression)
@@ -3355,6 +3413,15 @@ function builderEventScopeIssues() {
       }
     })
   }
+  if (isHeatmapAnalysis.value) {
+    appendEventScopeFieldIssue(sqlBuilder.heatmap.event, 'heatmap.event', issues)
+    appendEventScopeFieldIssue(sqlBuilder.heatmap.xField, 'heatmap.xField', issues)
+    appendEventScopeFieldIssue(sqlBuilder.heatmap.yField, 'heatmap.yField', issues)
+    if (sqlBuilder.heatmap.metric.aggregation !== 'count') {
+      appendEventScopeFieldIssue(sqlBuilder.heatmap.metric.field, 'heatmap.metric.field', issues)
+    }
+    appendEventScopeFilterIssues(sqlBuilder.heatmap.eventFilters, 'heatmap.event_filter', issues)
+  }
   sqlBuilder.groups.forEach((field, index) => appendEventScopeFieldIssue(field, `group[${index}]`, issues))
   appendEventScopeFilterIssues(sqlBuilder.globalFilters, 'global_filter', issues)
   return unique(issues)
@@ -3614,6 +3681,36 @@ function resetRankingConfig() {
   sqlBuilder.ranking.simultaneousProperties = []
 }
 
+function resetHeatmapConfig() {
+  sqlBuilder.heatmap.event = ''
+  sqlBuilder.heatmap.eventFilterLogic = 'and'
+  sqlBuilder.heatmap.eventFilters = []
+  sqlBuilder.heatmap.xField = ''
+  sqlBuilder.heatmap.yField = ''
+  sqlBuilder.heatmap.metric = { aggregation: 'count', field: '' }
+  sqlBuilder.heatmap.mapFile = ''
+  heatmapMapFileName.value = ''
+  heatmapFilterExpanded.value = false
+}
+
+function handleHeatmapMapFileChange(uploadFile: any) {
+  const file = uploadFile?.raw as File | undefined
+  if (!file) return
+  const extension = file.name.split('.').pop()?.toLowerCase() || ''
+  const isSupportedType = ['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)
+    || ['png', 'jpg', 'jpeg'].includes(extension)
+  if (!isSupportedType || file.size > 10 * 1024 * 1024) {
+    ElMessage.warning('地图文件仅支持 JPG、PNG，且大小不超过 10 MB。')
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    sqlBuilder.heatmap.mapFile = typeof reader.result === 'string' ? reader.result : ''
+    heatmapMapFileName.value = file.name
+  }
+  reader.readAsDataURL(file)
+}
+
 function resetPropertyConfig() {
   sqlBuilder.property.groupMode = 'property'
   sqlBuilder.property.groupSettings = {}
@@ -3801,7 +3898,8 @@ function removeRankingMetric(index: number) {
 }
 
 function handleAnalysisModelChange(model: AnalysisModel) {
-  sqlBuilder.analysisModel = ['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'].includes(model) ? model : 'event'
+  sqlBuilder.analysisModel = ['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking', 'heatmap'].includes(model) ? model : 'event'
+  resetHeatmapConfig()
   if (sqlBuilder.analysisModel === 'property') {
     resetPropertyConfig()
     sqlBuilder.metricItems = []
@@ -3925,6 +4023,21 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetRevenueConfig()
     resetAttributionConfig()
     resetRankingConfig()
+  } else if (sqlBuilder.analysisModel === 'heatmap') {
+    sqlBuilder.metricItems = []
+    sqlBuilder.calculatedMetrics = []
+    activeFormulaMetricId.value = ''
+    form.chartType = 'heatmap'
+    resetPropertyConfig()
+    resetRetentionConfig()
+    resetFunnelConfig()
+    resetDistributionConfig()
+    resetIntervalConfig()
+    resetPathConfig()
+    resetRevenueConfig()
+    resetAttributionConfig()
+    resetRankingConfig()
+    resetHeatmapConfig()
   } else {
     resetPropertyConfig()
     resetRetentionConfig()
@@ -4459,6 +4572,30 @@ function sanitizeRankingConfig() {
   if (cleared.length) ElMessage.warning(`${unique(cleared).join('、')}在当前数据源中无效，已清除，请重新选择。`)
 }
 
+function sanitizeHeatmapConfig() {
+  if (!isHeatmapAnalysis.value) return
+  const heatmap = sqlBuilder.heatmap
+  const cleared: string[] = []
+  if (heatmap.event && !optionExists(heatmap.event, trackingEventCatalogOptions.value)) {
+    heatmap.event = ''
+    heatmap.eventFilters = []
+    cleared.push('热力事件')
+  }
+  const scopedOptions = eventFilterFieldOptions(heatmap.event)
+  const clearInvalid = (key: 'xField' | 'yField' | 'metricField', label: string) => {
+    const value = key === 'metricField' ? heatmap.metric.field : heatmap[key]
+    if (!value || optionExists(value, scopedOptions)) return
+    if (key === 'metricField') heatmap.metric.field = ''
+    else heatmap[key] = ''
+    cleared.push(label)
+  }
+  clearInvalid('xField', 'X 轴属性')
+  clearInvalid('yField', 'Y 轴属性')
+  clearInvalid('metricField', '计算字段')
+  if (heatmap.metric.aggregation === 'count') heatmap.metric.field = ''
+  if (cleared.length) ElMessage.warning(`${unique(cleared).join('、')}在当前数据源中无效，已清除，请重新选择。`)
+}
+
 function sanitizePropertyConfig() {
   if (!isPropertyAnalysis.value) return
   if (!['property', 'audience'].includes(sqlBuilder.property.groupMode)) {
@@ -4506,6 +4643,23 @@ function rankingBlockingIssues() {
     }
   })
   if (!['default', 'skip', 'dense'].includes(ranking.tieHandling)) issues.push('排行榜并列名次处理方式无效。')
+  return issues
+}
+
+function heatmapBlockingIssues() {
+  if (!isHeatmapAnalysis.value) return []
+  const issues: string[] = []
+  const heatmap = sqlBuilder.heatmap
+  if (!heatmap.event) issues.push('热力地图请先选择热力事件。')
+  if (!heatmap.xField) issues.push('热力地图请先选择 X 轴坐标属性。')
+  if (!heatmap.yField) issues.push('热力地图请先选择 Y 轴坐标属性。')
+  if (!sqlBuilder.timeField) issues.push('热力地图请先选择时间字段。')
+  if (heatmap.metric.aggregation !== 'count' && !heatmap.metric.field) {
+    issues.push('热力地图使用非次数聚合时，请选择计算字段。')
+  }
+  if (heatmap.xField && heatmap.yField && heatmap.xField === heatmap.yField) {
+    issues.push('热力地图的 X/Y 坐标属性不能相同。')
+  }
   return issues
 }
 
@@ -4904,6 +5058,13 @@ function selectedBuilderFieldValues() {
       ...sqlBuilder.ranking.simultaneousMetrics.flatMap((item) => [item.event, item.metricField]),
       ...sqlBuilder.ranking.simultaneousProperties,
     ] : []),
+    ...(sqlBuilder.analysisModel === 'heatmap' ? [
+      sqlBuilder.heatmap.event,
+      sqlBuilder.heatmap.xField,
+      sqlBuilder.heatmap.yField,
+      sqlBuilder.heatmap.metric.field,
+      ...filterFieldValues(sqlBuilder.heatmap.eventFilters),
+    ] : []),
     ...(sqlBuilder.analysisModel === 'property' && sqlBuilder.property.groupMode === 'audience'
       ? sqlBuilder.property.audiences.flatMap((group) => filterFieldValues(group.filters))
       : []),
@@ -5021,6 +5182,24 @@ function collectBuilderAiContext() {
         metricField: item.aggregation === 'count' ? null : fieldOptionPayload(item.metricField),
       })),
       simultaneousProperties: sqlBuilder.ranking.simultaneousProperties.map(fieldOptionPayload).filter(Boolean),
+    } : null,
+    heatmap: sqlBuilder.analysisModel === 'heatmap' ? {
+      content: '按事件的 X/Y 坐标聚合指标，在地图或二维坐标上展示空间分布热度',
+      event: fieldOptionPayload(sqlBuilder.heatmap.event),
+      eventFilters: {
+        logic: sqlBuilder.heatmap.eventFilterLogic,
+        rules: filterContext(sqlBuilder.heatmap.eventFilters),
+      },
+      xField: fieldOptionPayload(sqlBuilder.heatmap.xField),
+      yField: fieldOptionPayload(sqlBuilder.heatmap.yField),
+      metric: {
+        aggregation: sqlBuilder.heatmap.metric.aggregation,
+        field: sqlBuilder.heatmap.metric.aggregation === 'count'
+          ? null
+          : fieldOptionPayload(sqlBuilder.heatmap.metric.field),
+      },
+      mapFile: sqlBuilder.heatmap.mapFile?.startsWith('data:') ? '[uploaded map asset]' : (sqlBuilder.heatmap.mapFile || null),
+      mapFileName: heatmapMapFileName.value || null,
     } : null,
     distribution: sqlBuilder.analysisModel === 'distribution' ? {
       content: '一段时间内，指定用户参与某一事件的总完成次数或属性值按个人聚合后的全员分布情况',
@@ -5227,6 +5406,7 @@ function collectLocalBuilderConfigIssues() {
   const revenueIssues = revenueBlockingIssues()
   const attributionIssues = attributionBlockingIssues()
   const rankingIssues = rankingBlockingIssues()
+  const heatmapIssues = heatmapBlockingIssues()
   const issues: string[] = [
     ...eventScopeIssues,
     ...propertyIssues,
@@ -5238,6 +5418,7 @@ function collectLocalBuilderConfigIssues() {
     ...revenueIssues,
     ...attributionIssues,
     ...rankingIssues,
+    ...heatmapIssues,
   ]
   const suggestions: string[] = []
   if (eventScopeIssues.length && eventFieldScope.value.defaultEventTable) {
@@ -5430,7 +5611,8 @@ async function generateBuilderAiSql() {
   const pathIssues = pathBlockingIssues()
   const attributionIssues = attributionBlockingIssues()
   const rankingIssues = rankingBlockingIssues()
-  if (retentionIssues.length || funnelIssues.length || distributionIssues.length || intervalIssues.length || pathIssues.length || attributionIssues.length || rankingIssues.length) {
+  const heatmapIssues = heatmapBlockingIssues()
+  if (retentionIssues.length || funnelIssues.length || distributionIssues.length || intervalIssues.length || pathIssues.length || attributionIssues.length || rankingIssues.length || heatmapIssues.length) {
     const localAdvice = collectLocalBuilderConfigIssues()
     const analysisIssues = retentionIssues.length
       ? retentionIssues
@@ -5442,9 +5624,11 @@ async function generateBuilderAiSql() {
             ? intervalIssues
               : pathIssues.length
                 ? pathIssues
-              : attributionIssues.length
+                : attributionIssues.length
                 ? attributionIssues
-                : rankingIssues
+                : heatmapIssues.length
+                  ? heatmapIssues
+                  : rankingIssues
     const analysisLabel = retentionIssues.length
       ? '留存'
       : funnelIssues.length
@@ -5457,7 +5641,9 @@ async function generateBuilderAiSql() {
               ? '路径'
               : attributionIssues.length
                 ? '归因'
-                : '排行榜'
+                : heatmapIssues.length
+                  ? '热力地图'
+                  : '排行榜'
     setBuilderAgentAdvice({
       severity: 'warning',
       intent: inferBuilderIntentText(),
@@ -5666,6 +5852,14 @@ async function generateBuilderAiSql() {
         : []),
     ]
   }
+  if (sqlBuilder.analysisModel === 'heatmap' || result.analysis_model === 'heatmap') {
+    const resultConfig = result.result_config || result.resultConfig || {}
+    form.chartType = 'heatmap'
+    form.x = String(resultConfig.x_field || resultConfig.xField || 'heatmap_x')
+    form.series = String(resultConfig.y_field || resultConfig.yField || 'heatmap_y')
+    form.y = [String(resultConfig.value_field || resultConfig.valueField || 'heatmap_value')]
+    form.columns = [form.x, form.series, form.y[0]]
+  }
   syncDashboardDateParameterUsage()
   if (result.success) {
     ElMessage.success('已生成 SQL')
@@ -5786,6 +5980,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
     sanitizeRevenueConfig()
     sanitizeAttributionConfig()
     sanitizeRankingConfig()
+    sanitizeHeatmapConfig()
     if (sqlBuilder.analysisModel === 'event') {
       if (!sqlBuilder.metricItems.length && !sqlBuilder.calculatedMetrics.length) {
         addMetricItem()
@@ -6218,6 +6413,7 @@ function currentPreviewSignature() {
     revenue: sqlBuilder.analysisModel === 'revenue' ? sqlBuilder.revenue : null,
     attribution: sqlBuilder.analysisModel === 'attribution' ? sqlBuilder.attribution : null,
     ranking: sqlBuilder.analysisModel === 'ranking' ? sqlBuilder.ranking : null,
+    heatmap: sqlBuilder.analysisModel === 'heatmap' ? sqlBuilder.heatmap : null,
     sources: [...form.sourceTypes],
     sql: hasSqlSource.value
       ? {
@@ -7019,6 +7215,8 @@ function initEditor() {
     ? 'funnel'
     : isPathAnalysis.value
       ? 'sankey'
+      : isHeatmapAnalysis.value
+        ? 'heatmap'
       : chartTypes.some((item) => item.value === persistedChartType)
         ? persistedChartType
         : 'table'
@@ -8069,7 +8267,73 @@ function closeDrawer() {
               </div>
             </section>
 
-            <section v-else-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" class="builder-section">
+            <section v-else-if="isHeatmapAnalysis" class="builder-section heatmap-builder-section">
+              <div class="builder-section-head">
+                <div class="builder-section-title">
+                  <BuilderSectionIcon class="builder-section-icon" />
+                  <span>热力指标</span>
+                </div>
+              </div>
+              <div class="heatmap-config-grid">
+                <label class="builder-field-label">热力事件</label>
+                <BuilderFieldPicker
+                  v-model="sqlBuilder.heatmap.event"
+                  :options="trackingEventCatalogOptions"
+                  :loading="schemaLoading"
+                  mode="tracking-event"
+                  placeholder="选择事件"
+                />
+                <label class="builder-field-label">计算</label>
+                <div class="heatmap-metric-row">
+                  <span>总次数</span>
+                  <el-select v-model="sqlBuilder.heatmap.metric.aggregation" class="heatmap-aggregation-select">
+                    <el-option v-for="option in builderAggregationOptions" :key="option.value" :label="option.label" :value="option.value" />
+                  </el-select>
+                  <BuilderFieldPicker
+                    v-if="sqlBuilder.heatmap.metric.aggregation !== 'count'"
+                    v-model="sqlBuilder.heatmap.metric.field"
+                    :options="eventFilterFieldOptions(sqlBuilder.heatmap.event)"
+                    :loading="schemaLoading"
+                    mode="metric"
+                    placeholder="计算字段"
+                  />
+                </div>
+                <label class="builder-field-label">地图绘制</label>
+                <div class="heatmap-map-picker">
+                  <el-upload :auto-upload="false" :show-file-list="false" accept=".jpg,.jpeg,.png" :on-change="handleHeatmapMapFileChange">
+                    <el-button :icon="FolderOpened">选择地图</el-button>
+                  </el-upload>
+                  <span v-if="heatmapMapFileName" class="heatmap-map-file-name">{{ heatmapMapFileName }}</span>
+                  <el-input v-model="sqlBuilder.heatmap.mapFile" clearable placeholder="或填写地图文件 URL" />
+                </div>
+                <label class="builder-field-label">事件坐标</label>
+                <div class="heatmap-axis-row">
+                  <span>X 轴属性</span>
+                  <BuilderFieldPicker v-model="sqlBuilder.heatmap.xField" :options="eventFilterFieldOptions(sqlBuilder.heatmap.event)" :loading="schemaLoading" mode="property" placeholder="选择 X 坐标" />
+                  <span>Y 轴属性</span>
+                  <BuilderFieldPicker v-model="sqlBuilder.heatmap.yField" :options="eventFilterFieldOptions(sqlBuilder.heatmap.event)" :loading="schemaLoading" mode="property" placeholder="选择 Y 坐标" />
+                </div>
+              </div>
+              <div class="builder-inline-actions">
+                <button type="button" class="builder-add-link" @click="heatmapFilterExpanded = !heatmapFilterExpanded">
+                  <el-icon><Filter /></el-icon><span>筛选条件</span>
+                </button>
+              </div>
+              <BuilderFilterTree
+                v-if="heatmapFilterExpanded"
+                :nodes="sqlBuilder.heatmap.eventFilters"
+                :logic="sqlBuilder.heatmap.eventFilterLogic"
+                :field-options="eventFilterFieldOptions(sqlBuilder.heatmap.event)"
+                :operator-options="builderFilterOperatorOptions"
+                :schema-loading="schemaLoading"
+                picker-mode="filter-property"
+                :filter-property-tabs="['all', 'event', 'user']"
+                empty-text="暂无事件筛选"
+                @update:logic="sqlBuilder.heatmap.eventFilterLogic = $event"
+              />
+            </section>
+
+            <section v-else-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis && !isHeatmapAnalysis" class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
                   <BuilderSectionIcon class="builder-section-icon" />
@@ -9805,7 +10069,7 @@ function closeDrawer() {
           </div>
           <div class="builder-bottom-bar">
             <div class="builder-bottom-options">
-              <el-checkbox v-if="sqlBuilder.activeTab === 'builder' && !isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isAttributionAnalysis && !isRankingAnalysis" v-model="sqlBuilder.approximate">
+              <el-checkbox v-if="sqlBuilder.activeTab === 'builder' && !isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isAttributionAnalysis && !isRankingAnalysis && !isHeatmapAnalysis" v-model="sqlBuilder.approximate">
                 近似计算
               </el-checkbox>
             </div>
@@ -10051,7 +10315,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-if="!isFunnelAnalysis && !isPathAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
+            <el-select v-if="!isFunnelAnalysis && !isPathAnalysis" v-model="form.chartType" :disabled="isHeatmapAnalysis" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -10062,7 +10326,7 @@ function closeDrawer() {
             <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : '桑基图'" disabled />
           </el-form-item>
         </div>
-        <el-form-item v-if="form.chartType === 'table' && !isPropertyAnalysis && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" :label="t('dashboard.sql_editor_columns')">
+        <el-form-item v-if="form.chartType === 'table' && !isPropertyAnalysis && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis && !isHeatmapAnalysis" :label="t('dashboard.sql_editor_columns')">
           <el-select v-model="form.columns" multiple filterable>
             <el-option
               v-for="field in fieldOptions"
@@ -12841,5 +13105,69 @@ function closeDrawer() {
 
 .data-preview-table {
   width: 100%;
+}
+
+.heatmap-config-grid {
+  display: grid;
+  grid-template-columns: 92px minmax(180px, 1fr);
+  gap: 14px 12px;
+  align-items: center;
+}
+
+.heatmap-config-grid :deep(.builder-field-picker-trigger),
+.heatmap-config-grid :deep(.el-input),
+.heatmap-config-grid :deep(.el-select) {
+  width: 100%;
+}
+
+.heatmap-metric-row,
+.heatmap-axis-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.heatmap-metric-row > span,
+.heatmap-axis-row > span {
+  flex: none;
+  color: #646a73;
+  font-size: 12px;
+}
+
+.heatmap-metric-row :deep(.builder-field-picker),
+.heatmap-axis-row :deep(.builder-field-picker),
+.heatmap-metric-row :deep(.el-select) {
+  min-width: 0;
+  flex: 1;
+}
+
+.heatmap-aggregation-select {
+  width: 110px !important;
+  flex: none !important;
+}
+
+.heatmap-axis-row {
+  flex-wrap: wrap;
+}
+
+.heatmap-map-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.heatmap-map-picker :deep(.el-input) {
+  flex: 1;
+}
+
+.heatmap-map-file-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #646a73;
+  font-size: 12px;
 }
 </style>

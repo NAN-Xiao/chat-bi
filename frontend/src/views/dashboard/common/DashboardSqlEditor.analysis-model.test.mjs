@@ -183,7 +183,7 @@ test('persists and restores retention configuration in the SQL builder', () => {
 
   assert.match(saveBody, /analysisModel:\s*sqlBuilder\.analysisModel/)
   assert.match(saveBody, /retention:\s*sqlBuilder\.analysisModel === 'retention'/)
-  assert.match(restoreBody, /\['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'\]\.includes\(value\.analysisModel\)/)
+  assert.match(restoreBody, /\['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking', 'heatmap'\]\.includes\(value\.analysisModel\)/)
   assert.match(restoreBody, /retention\.entityField/)
   assert.match(restoreBody, /retention\.initialEvent/)
   assert.match(restoreBody, /retention\.returnEvent/)
@@ -336,7 +336,7 @@ test('keeps distribution analysis configuration and controls isolated from other
   assert.match(source, /type AnalysisModel = 'event' \| 'property' \| 'retention' \| 'funnel' \| 'distribution'/)
   assert.match(source, /const isDistributionAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'distribution'\)/)
   assert.match(saveBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
-  assert.match(restoreBody, /\['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'\]\.includes\(value\.analysisModel\)/)
+  assert.match(restoreBody, /\['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking', 'heatmap'\]\.includes\(value\.analysisModel\)/)
   assert.match(contextBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
   assert.match(
     source,
@@ -550,4 +550,27 @@ test('keeps ranking analysis isolated with rank, tie, metric, and property contr
   assert.match(source, /direction: 'asc' \| 'desc'/)
   assert.match(source, /tieHandling: 'default' \| 'skip' \| 'dense'/)
   assert.match(source, /form\.chartType = 'table'/)
+})
+
+test('keeps heatmap analysis isolated with event coordinates and map metadata', () => {
+  const saveBody = source.match(/function builderConfigForSave\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const restoreBody = source.match(/function restoreSqlBuilderState\(value: any\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction formulaTokensReferenceMetricIds/)?.[1] || ''
+  const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+
+  assert.match(source, /type AnalysisModel = .*'heatmap'/)
+  assert.match(source, /\{ label: '热力地图', value: 'heatmap'/)
+  assert.match(source, /const isHeatmapAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'heatmap'\)/)
+  assert.match(saveBody, /heatmap:\s*sqlBuilder\.analysisModel === 'heatmap'/)
+  assert.match(saveBody, /xField: sqlBuilder\.heatmap\.xField/)
+  assert.match(saveBody, /yField: sqlBuilder\.heatmap\.yField/)
+  assert.match(restoreBody, /sqlBuilder\.heatmap\.xField/)
+  assert.match(restoreBody, /sqlBuilder\.heatmap\.yField/)
+  assert.match(contextBody, /heatmap: sqlBuilder\.analysisModel === 'heatmap'/)
+  assert.match(switchBody, /sqlBuilder\.analysisModel === 'heatmap'/)
+  assert.match(switchBody, /form\.chartType = 'heatmap'/)
+  assert.match(source, /heatmap-builder-section/)
+  assert.match(source, /handleHeatmapMapFileChange/)
+  assert.match(source, /heatmap_table|heatmap_value/)
+  assert.match(source, /function heatmapBlockingIssues\(\)/)
 })

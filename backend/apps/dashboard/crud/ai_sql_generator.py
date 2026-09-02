@@ -776,7 +776,7 @@ def _normalize_manual_config(
     ).strip()
     time_config["date_expression"] = time_config.get("dateExpression") or time_config.get("date_expression")
     analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
-    if analysis_model not in {"event", "property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"}:
+    if analysis_model not in {"event", "property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking", "heatmap"}:
         analysis_model = "event"
     property_config = dict(context.get("property") or {}) if isinstance(context.get("property"), dict) else {}
     property_group_mode = str(
@@ -824,6 +824,7 @@ def _normalize_manual_config(
     revenue = dict(context.get("revenue") or {}) if isinstance(context.get("revenue"), dict) else {}
     attribution = dict(context.get("attribution") or {}) if isinstance(context.get("attribution"), dict) else {}
     ranking = dict(context.get("ranking") or {}) if isinstance(context.get("ranking"), dict) else {}
+    heatmap = dict(context.get("heatmap") or {}) if isinstance(context.get("heatmap"), dict) else {}
     return {
         "analysis_model": analysis_model,
         "property": property_config,
@@ -835,6 +836,7 @@ def _normalize_manual_config(
         "revenue": revenue,
         "attribution": attribution,
         "ranking": ranking,
+        "heatmap": heatmap,
         "chart": context.get("chart") if isinstance(context.get("chart"), dict) else {
             "title": request.title,
             "type": request.chart_type,
@@ -1549,6 +1551,19 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
         table_name = _field_table_name(field)
         if table_name:
             tables.add(table_name)
+    heatmap = normalized_config.get("heatmap") if isinstance(normalized_config.get("heatmap"), dict) else {}
+    heatmap_metric = heatmap.get("metric") if isinstance(heatmap.get("metric"), dict) else {}
+    heatmap_fields = [
+        heatmap.get("event"),
+        heatmap.get("xField") or heatmap.get("x_field"),
+        heatmap.get("yField") or heatmap.get("y_field"),
+        heatmap_metric.get("field") or heatmap_metric.get("metricField") or heatmap_metric.get("metric_field"),
+    ]
+    heatmap_fields.extend(_iter_filter_rule_fields(heatmap.get("eventFilters") or heatmap.get("event_filters")))
+    for field in heatmap_fields:
+        table_name = _field_table_name(field)
+        if table_name:
+            tables.add(table_name)
     return tables
 
 
@@ -1915,6 +1930,51 @@ def _deterministic_validate_manual_config(
             issues.extend(_field_table_permission_issues(entity_field, "排行榜排行主体", allowed_tables))
             issues.extend(_field_schema_permission_issues(entity_field, "排行榜排行主体", allowed_fields_by_table))
 
+    if analysis_model == "heatmap":
+        heatmap = normalized_config.get("heatmap") if isinstance(normalized_config.get("heatmap"), dict) else {}
+        event = heatmap.get("event")
+        x_field = heatmap.get("xField") or heatmap.get("x_field")
+        y_field = heatmap.get("yField") or heatmap.get("y_field")
+        metric = heatmap.get("metric") if isinstance(heatmap.get("metric"), dict) else {}
+        aggregation = str(metric.get("aggregation") or "count").strip().lower()
+        metric_field = metric.get("field") or metric.get("metricField") or metric.get("metric_field")
+        if not _field_has_resolvable_reference(event):
+            issues.append("热力地图请先选择热力事件。")
+        if not _field_has_resolvable_reference(x_field):
+            issues.append("热力地图请先选择 X 轴坐标属性。")
+        if not _field_has_resolvable_reference(y_field):
+            issues.append("热力地图请先选择 Y 轴坐标属性。")
+        if not _field_has_resolvable_reference(time_config.get("field")):
+            issues.append("热力地图请先选择时间字段。")
+        if x_field and y_field and str(x_field) == str(y_field):
+            issues.append("热力地图的 X/Y 坐标属性不能相同。")
+        if aggregation not in {"count", "sum", "avg", "max", "min", "count_distinct"}:
+            issues.append("热力地图使用了不支持的聚合方式。")
+        if aggregation != "count" and not _field_has_resolvable_reference(metric_field):
+            issues.append("热力地图使用非次数聚合时，请选择计算字段。")
+        if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "heatmap":
+            issues.append("热力地图分析只能使用热力图结果。")
+        for field, label in ((event, "热力地图事件"), (x_field, "热力地图 X 轴属性"), (y_field, "热力地图 Y 轴属性"), (metric_field if aggregation != "count" else None, "热力地图计算字段")):
+            if not field:
+                continue
+            issues.extend(_tracking_event_metadata_issues(field, label))
+            issues.extend(_json_subfield_mapping_issues(field, label))
+            issues.extend(_field_table_permission_issues(field, label, allowed_tables))
+            issues.extend(_field_schema_permission_issues(field, label, allowed_fields_by_table))
+        event_name = _tracking_event_name_from_field(event)
+        for field, label in ((x_field, "热力地图 X 轴属性"), (y_field, "热力地图 Y 轴属性"), (metric_field if aggregation != "count" else None, "热力地图计算字段")):
+            field_event_name = _tracking_event_name_from_field(field)
+            if field_event_name and event_name and field_event_name != event_name:
+                issues.append(f"{label}不属于当前热力事件。")
+        for index, filter_field in enumerate(_iter_filter_rule_fields(heatmap.get("eventFilters") or heatmap.get("event_filters"))):
+            label = f"热力地图事件筛选{index + 1}"
+            issues.extend(_json_subfield_mapping_issues(filter_field, label))
+            issues.extend(_field_table_permission_issues(filter_field, label, allowed_tables))
+            issues.extend(_field_schema_permission_issues(filter_field, label, allowed_fields_by_table))
+            filter_event_name = _tracking_event_name_from_field(filter_field)
+            if filter_event_name and event_name and filter_event_name != event_name:
+                issues.append(f"{label}不属于当前热力事件。")
+
     if analysis_model == "interval":
         interval = normalized_config.get("interval") if isinstance(normalized_config.get("interval"), dict) else {}
         entity_field = interval.get("entityField") or interval.get("entity_field")
@@ -2251,7 +2311,7 @@ def _deterministic_validate_manual_config(
         issues=issues,
         warnings=warnings,
         suggestions=_unique_text_items(suggestions),
-        analysis_model=analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event",
+        analysis_model=analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking", "heatmap"} else "event",
     )
 
 
@@ -2361,6 +2421,16 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             ],
             "tie_handling": str(ranking.get("tieHandling") or ranking.get("tie_handling") or "default"),
         }
+    elif analysis_model == "heatmap":
+        result_contract = {
+            "type": "heatmap_table",
+            "required_columns": ["heatmap_x", "heatmap_y", "heatmap_value"],
+            "x_field": "heatmap_x",
+            "y_field": "heatmap_y",
+            "value_field": "heatmap_value",
+            "final_grain": ["heatmap_x", "heatmap_y"],
+            "map_file": (normalized_config.get("heatmap") or {}).get("mapFile") or (normalized_config.get("heatmap") or {}).get("map_file") or None,
+        }
     elif analysis_model == "interval":
         result_contract = {
             "type": "interval_table",
@@ -2449,6 +2519,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
         "path": normalized_config.get("path") or {},
         "revenue": revenue,
         "attribution": attribution,
+        "heatmap": normalized_config.get("heatmap") or {},
         "result_contract": result_contract,
         "time": time_config,
         "date_parameters": {
@@ -2627,6 +2698,17 @@ def _dashboard_config_prompt(
             "若 property.groupSettings 为时间分组字段提供配置，summarize=true 时按对应 timeGrain(day/week/month) 汇总；summarize=false 时保留原始时间粒度，不得擅自改写其他分组字段。",
             "filters 只作为全局属性筛选应用；属性分析不得扫描当前配置之外的表或字段。",
             "最终返回 chart_type 必须为 table。",
+        ]
+    heatmap = context.get("heatmap") if isinstance(context.get("heatmap"), dict) else {}
+    heatmap_rules: list[str] = []
+    if analysis_model == "heatmap":
+        metric = heatmap.get("metric") if isinstance(heatmap.get("metric"), dict) else {}
+        heatmap_rules = [
+            "当前 analysisModel=heatmap，只能使用 heatmap 配置生成热力地图查询；不得改写为普通事件趋势或明细表。",
+            "heatmap.event 定义热力事件，heatmap.xField 与 heatmap.yField 分别定义 X/Y 坐标；必须使用字段对象提供的事件表、事件名字段和事件名。",
+            "按 X/Y 坐标分组聚合 heatmap.metric，固定输出 heatmap_x、heatmap_y、heatmap_value 三列；不得调换坐标或使用未配置字段。",
+            f"当前热力指标配置：{_safe_json(metric)}；地图资源仅作为展示元数据，不参与 SQL。",
+            "最终返回 chart_type 必须为 heatmap。",
         ]
     retention = context.get("retention") if isinstance(context.get("retention"), dict) else {}
     retention_rules: list[str] = []
@@ -2822,12 +2904,13 @@ def _dashboard_config_prompt(
         "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段；必须使用字段对象的 expression，不得把用户属性改为 user 表或其他表的同名字段。",
         "字段对象包含 sourceField、jsonPath 和 expression 时，JSON 子字段必须使用 expression；不得自行改写 JSON 宿主列或路径。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
-         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/property/retention/funnel/distribution/interval/path/revenue/attribution/ranking 字段信息生成 SQL；不要编造未提供字段。",
+         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/property/retention/funnel/distribution/interval/path/revenue/attribution/ranking/heatmap 字段信息生成 SQL；不要编造未提供字段。",
         *property_rules,
         *retention_rules,
         *funnel_rules,
         *distribution_rules,
         *ranking_rules,
+        *heatmap_rules,
         *interval_rules,
         *path_rules,
         *revenue_rules,
@@ -3285,6 +3368,27 @@ def _ranking_sql_result_issues(
     return _unique_text_items(issues)
 
 
+def _heatmap_sql_result_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+) -> list[str]:
+    if str(normalized_config.get("analysis_model") or "event") != "heatmap":
+        return []
+    required_aliases = ["heatmap_x", "heatmap_y", "heatmap_value"]
+    normalized_sql = str(sql or "").lower()
+    missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
+    issues = [f"热力地图 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    metric = normalized_config.get("heatmap", {}).get("metric", {}) if isinstance(normalized_config.get("heatmap"), dict) else {}
+    aggregation = str(metric.get("aggregation") or "count").strip().lower()
+    if aggregation == "count" and not re.search(r"\bcount\s*\(", normalized_sql):
+        issues.append("热力地图 SQL 必须统计事件次数。")
+    elif aggregation == "count_distinct" and not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
+        issues.append("热力地图 SQL 必须使用 COUNT(DISTINCT ...) 聚合。")
+    elif aggregation in {"sum", "avg", "max", "min"} and not re.search(rf"\b{aggregation}\s*\(", normalized_sql):
+        issues.append(f"热力地图 SQL 必须使用 {aggregation.upper()} 聚合。")
+    return _unique_text_items(issues)
+
+
 def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
     common_prompt = (
         "你是 BI 手动看板 SQL 生成节点。确定性配置校验已经通过，你只负责根据当前配置、公式 IR 和 SQL plan 生成只读 SELECT SQL。\n"
@@ -3420,6 +3524,15 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "ORDER BY rank, ranking_entity。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。\n"
             "主指标必须先按主体聚合再排名；同时展示指标和属性只丰富同一主体行，不得改变排名依据或主体粒度。\n"
+        )
+    elif str(analysis_model or "event") == "heatmap":
+        structure_prompt = (
+            "当前 SQL plan 的 analysis_model=heatmap，必须使用热力地图专用的坐标聚合结构；禁止改写为普通事件趋势或表格明细。\n"
+            "热力地图 SQL 结构范式：\n"
+            "WITH scoped_events AS (...按配置时间范围、热力事件和筛选条件保留 X/Y 坐标与指标字段...),\n"
+            "aggregated AS (SELECT <x_field> AS heatmap_x, <y_field> AS heatmap_y, <configured_aggregation> AS heatmap_value FROM scoped_events GROUP BY <x_field>, <y_field>)\n"
+            "SELECT heatmap_x, heatmap_y, heatmap_value FROM aggregated ORDER BY heatmap_x, heatmap_y。\n"
+            "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；坐标字段必须来自 heatmap.xField 和 heatmap.yField，不能编造字段。\n"
         )
     elif str(analysis_model or "event") == "path":
         structure_prompt = (
@@ -3874,7 +3987,7 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
         SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ], node="generate_sql")
-    response.analysis_model = analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event"
+    response.analysis_model = analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking", "heatmap"} else "event"
     validation = state.get("validation_result")
     if validation:
         response.intent = response.intent or validation.intent
@@ -4104,6 +4217,14 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 未满足排行榜生成要求。"
         response.advice = "请按排行主体聚合、排序方向、并列名次和固定结果列重新生成排行榜查询。"
         response.issues = _unique_text_items(list(response.issues or []) + ranking_issues)
+    elif heatmap_issues := _heatmap_sql_result_issues(
+        sql,
+        state.get("normalized_config") or {},
+    ):
+        response.success = False
+        response.message = "生成 SQL 未满足热力地图生成要求。"
+        response.advice = "请按 X/Y 坐标聚合、热力指标和固定结果列重新生成热力地图查询。"
+        response.issues = _unique_text_items(list(response.issues or []) + heatmap_issues)
     elif json_issues := _json_subfield_sql_issues(
         sql,
         state.get("json_subfield_requirements") or [],
@@ -4180,7 +4301,7 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
     )
     normalized_config = state.get("normalized_config") or {}
     analysis_model = str(normalized_config.get("analysis_model") or "event")
-    response.analysis_model = analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event"
+    response.analysis_model = analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking", "heatmap"} else "event"
     if response.analysis_model == "property":
         property_config = normalized_config.get("property") if isinstance(normalized_config.get("property"), dict) else {}
         groups = normalized_config.get("groups") or []
@@ -4313,6 +4434,16 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
                 f"ranking_property_{index + 1}" for index, _ in enumerate(simultaneous_properties)
             ],
             "tie_handling": str(ranking.get("tieHandling") or ranking.get("tie_handling") or "default"),
+        }
+    elif response.analysis_model == "heatmap":
+        heatmap = normalized_config.get("heatmap") if isinstance(normalized_config.get("heatmap"), dict) else {}
+        response.chart_type = "heatmap"
+        response.result_config = {
+            "type": "heatmap_table",
+            "x_field": "heatmap_x",
+            "y_field": "heatmap_y",
+            "value_field": "heatmap_value",
+            "map_file": heatmap.get("mapFile") or heatmap.get("map_file") or "",
         }
     return {
         "response": response,
