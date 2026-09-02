@@ -1,4 +1,4 @@
-export type AttributionMethod = 'linear'
+export type AttributionMethod = 'first' | 'last' | 'linear'
 export type AttributionWindowUnit = 'day' | 'hour' | 'minute'
 
 export type AttributionWindowConfig = {

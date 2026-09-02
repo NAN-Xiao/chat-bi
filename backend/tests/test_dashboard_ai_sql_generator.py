@@ -1950,6 +1950,44 @@ def test_attribution_prompt_plan_and_result_contract_keep_linear_semantics() -> 
     assert any("attributed_value" in issue for issue in invalid)
 
 
+def test_attribution_supports_first_and_last_methods() -> None:
+    valid_sql = (
+        "SELECT attribution_event, COUNT(DISTINCT target_id) AS target_count, "
+        "SUM(target_value) AS attributed_value, "
+        "SUM(target_value) * 100.0 / NULLIF(SUM(target_value), 0) AS contribution_rate "
+        "FROM first_touch GROUP BY attribution_event"
+    )
+    for method in ("first", "last"):
+        request = _attribution_request(method=method)
+        normalized = ai_sql_generator._normalize_manual_config(request)
+        result = ai_sql_generator._deterministic_validate_manual_config(
+            request,
+            normalized,
+            ai_sql_generator._build_formula_ir(normalized),
+            allowed_tables=["event"],
+            allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+        )
+        plan = ai_sql_generator._build_sql_plan(normalized, ai_sql_generator._build_formula_ir(normalized))
+
+        assert result.success is True
+        assert plan["result_contract"]["method"] == method
+        assert ai_sql_generator._attribution_sql_result_issues(valid_sql, normalized) == []
+
+
+def test_attribution_rejects_unknown_method() -> None:
+    request = _attribution_request(method="position")
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+    )
+
+    assert result.success is False
+    assert "归因分析使用了不支持的归因方式。" in result.issues
+
+
 def _ranking_request(**overrides):
     ranking = {
         "entityField": {"table": "event", "field": "user_id", "value": "event.user_id"},

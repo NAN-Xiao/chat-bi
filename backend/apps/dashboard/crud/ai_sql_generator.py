@@ -2082,8 +2082,8 @@ def _deterministic_validate_manual_config(
 
         if not _field_has_resolvable_reference(entity_field):
             issues.append("归因分析请先选择分析主体。")
-        if method != "linear":
-            issues.append("归因分析当前仅支持线性归因。")
+        if method not in {"first", "last", "linear"}:
+            issues.append("归因分析使用了不支持的归因方式。")
         if window_mode != "custom" or window_unit not in ATTRIBUTION_WINDOW_UNIT_SECONDS:
             issues.append("归因分析窗口期配置无效。")
         elif window_seconds < 60 or window_seconds > ATTRIBUTION_WINDOW_MAX_SECONDS:
@@ -2360,7 +2360,9 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
                 "attributed_value",
                 "contribution_rate",
             ],
-            "method": "linear",
+            "method": str(attribution.get("method") or "linear").strip().lower()
+            if str(attribution.get("method") or "linear").strip().lower() in {"first", "last", "linear"}
+            else "linear",
             "window_seconds": window_value * ATTRIBUTION_WINDOW_UNIT_SECONDS.get(window_unit, 0),
             "final_grain": ["attribution_event"],
         }
@@ -2582,11 +2584,11 @@ def _dashboard_config_prompt(
         attribution_events = _list_dict_items(attribution.get("events"))
         attribution_rules = [
             "当前 analysisModel=attribution，只能使用 attribution 配置生成归因查询；不得读取或套用事件、留存、漏斗、分布、间隔或路径模型的指标语义。",
-            "当前只支持 method=linear 的线性归因：对每个目标事件，找到同一主体在目标时间之前且位于 window 内的已配置归因事件，并把该目标事件的贡献在所有匹配触点之间等分。",
+            "归因方式由 attribution.method 决定：首次归因（first）只保留每个目标最早匹配触点，末次归因（last）只保留最晚匹配触点，线性归因（linear）在所有匹配触点之间等分贡献。",
             "目标事件必须使用 attribution.targetEvent，目标值必须严格按 targetMetric.aggregation 和 targetMetric.metricField 计算；targetEventFilters 只应用于目标事件明细。",
             "每个 attribution.events[i].filters 只应用于该归因事件；事件与筛选不得交换。目标事件之后的触点、窗口之外的触点以及其他未配置事件不得参与归因。",
             "includeDirect=true 时，没有匹配归因事件的目标转化归入 attribution_event='直接转化'；false 时必须排除这些目标转化。",
-            "最终结果固定输出 attribution_event、target_count、attributed_value、contribution_rate；target_count 是获得归因贡献的目标事件数，attributed_value 是按线性权重分配后的目标值，contribution_rate 是 attributed_value 占全部已归因目标值的比例并使用 NULLIF 保护分母。",
+            "最终结果固定输出 attribution_event、target_count、attributed_value、contribution_rate；target_count 是获得归因贡献的目标事件数，attributed_value 按所选归因方式分配目标值，contribution_rate 是 attributed_value 占全部已归因目标值的比例并使用 NULLIF 保护分母。",
             f"当前归因事件数量：{len(attribution_events)}；归因窗口：{_safe_json(attribution.get('window'))}；直接转化：{attribution.get('includeDirect') is True}。",
             "最终返回 chart_type 必须为 table。",
         ]
@@ -3166,7 +3168,9 @@ def _attribution_sql_result_issues(
         issues.append("归因 SQL 必须按目标事件去重统计 target_count。")
     if not re.search(r"\bnullif\s*\(", normalized_sql):
         issues.append("归因 SQL 的线性权重或贡献占比必须使用 NULLIF 保护分母。")
-    if not re.search(r"(?:1(?:\.0)?\s*/|/\s*nullif|linear_weight|touch_count)", normalized_sql):
+    attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
+    method = str(attribution.get("method") or "linear").strip().lower()
+    if method == "linear" and not re.search(r"(?:1(?:\.0)?\s*/|/\s*nullif|linear_weight|touch_count)", normalized_sql):
         issues.append("归因 SQL 必须按每个目标的匹配触点数计算线性归因权重。")
     return _unique_text_items(issues)
 
@@ -3366,12 +3370,12 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
         )
     elif str(analysis_model or "event") == "attribution":
         structure_prompt = (
-            "当前 SQL plan 的 analysis_model=attribution，必须使用归因分析专用的目标识别、窗口触点匹配、线性权重和贡献汇总结构；禁止改写成漏斗或普通事件计数。\n"
+            "当前 SQL plan 的 analysis_model=attribution，必须使用归因分析专用的目标识别、窗口触点匹配、归因方式和贡献汇总结构；禁止改写成漏斗或普通事件计数。\n"
             "归因 SQL 结构范式：\n"
             "WITH targets AS (...仅保留目标事件，输出 target_id、entity_id、target_time、target_value，并应用目标事件筛选...),\n"
             "touches AS (...仅保留配置的归因事件，输出 entity_id、touch_time、attribution_event，并应用各自筛选...),\n"
             "matched AS (...按同一主体连接 touch_time <= target_time 且时间差不超过配置 window_seconds 的触点...),\n"
-            "weighted AS (...按 target_id 计算匹配触点数，每个触点 linear_weight=1.0/NULLIF(touch_count, 0)；按 includeDirect 处理无触点目标...),\n"
+            "weighted AS (...按 attribution.method 选择最早触点、最晚触点或按 target_id 计算匹配触点数并以 linear_weight=1.0/NULLIF(touch_count, 0) 等分；按 includeDirect 处理无触点目标...),\n"
             "aggregated AS (...按 attribution_event 汇总目标数和 target_value * linear_weight...),\n"
             "SELECT attribution_event, COUNT(DISTINCT target_id) AS target_count,\n"
             "       SUM(weighted_target_value) AS attributed_value,\n"
@@ -4004,7 +4008,7 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     ):
         response.success = False
         response.message = "生成 SQL 未满足归因分析生成要求。"
-        response.advice = "请按归因窗口、线性权重和固定结果列重新生成归因查询。"
+        response.advice = "请按归因窗口、归因方式和固定结果列重新生成归因查询。"
         response.issues = _unique_text_items(list(response.issues or []) + attribution_issues)
     elif ranking_issues := _ranking_sql_result_issues(
         sql,
@@ -4194,7 +4198,9 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "target_count_field": "target_count",
             "attributed_value_field": "attributed_value",
             "contribution_rate_field": "contribution_rate",
-            "method": "linear",
+            "method": str(attribution.get("method") or "linear").strip().lower()
+            if str(attribution.get("method") or "linear").strip().lower() in {"first", "last", "linear"}
+            else "linear",
             "include_direct": attribution.get("includeDirect") is True,
         }
     elif response.analysis_model == "ranking":

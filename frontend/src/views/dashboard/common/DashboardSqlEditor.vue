@@ -1053,7 +1053,7 @@ const analysisModelOptions: Array<{ label: string; value: AnalysisModel; content
   { label: '间隔分析', value: 'interval' as AnalysisModel, content: '分析同一主体依次完成起点事件和终点事件的时间间隔；不同事件按最后一个连续起点匹配后续第一个终点，相同事件按相邻两次匹配' },
   { label: '路径分析', value: 'path' as AnalysisModel, content: '按会话追踪参与分析事件的行为顺序，展示初始事件之后的节点流入和流出' },
   { label: '收入分析', value: 'revenue' as AnalysisModel, content: '以同期初始事件形成主体 Cohort，统计其在观察期内参与付费事件产生的每日及累计收入指标' },
-  { label: '归因分析', value: 'attribution' as AnalysisModel, content: '把目标事件发生前窗口期内的归因事件按线性归因方式均分贡献，统计各归因事件获得的目标次数、目标值和贡献占比' },
+  { label: '归因分析', value: 'attribution' as AnalysisModel, content: '按目标事件发生前窗口期内的首次、末次或线性归因方式分配贡献，统计各归因事件获得的目标次数、目标值和贡献占比' },
   { label: '排行榜', value: 'ranking' as AnalysisModel, content: '按排行主体聚合主排行指标并生成名次，同时展示附加指标和属性；并列名次严格使用配置规则' },
 ]
 const analysisModelContent = computed(() =>
@@ -1072,6 +1072,11 @@ const isIntervalAnalysis = computed(() => sqlBuilder.analysisModel === 'interval
 const isPathAnalysis = computed(() => sqlBuilder.analysisModel === 'path')
 const isRevenueAnalysis = computed(() => sqlBuilder.analysisModel === 'revenue')
 const isAttributionAnalysis = computed(() => sqlBuilder.analysisModel === 'attribution')
+const attributionMethodOptions: Array<{ label: string; value: AttributionMethod }> = [
+  { label: '首次归因', value: 'first' },
+  { label: '末次归因', value: 'last' },
+  { label: '线性归因', value: 'linear' },
+]
 const isRankingAnalysis = computed(() => sqlBuilder.analysisModel === 'ranking')
 const propertyFieldOptions = computed<SchemaFieldOption[]>(() => {
   if (eventFieldScope.value.status !== 'active') return builderFieldOptions.value as SchemaFieldOption[]
@@ -2668,7 +2673,9 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.revenue.observationDays = clampRevenueObservationDays(revenue.observationDays)
   const attribution = value.attribution && typeof value.attribution === 'object' ? value.attribution : {}
   sqlBuilder.attribution.entityField = typeof attribution.entityField === 'string' ? attribution.entityField : ''
-  sqlBuilder.attribution.method = attribution.method === 'linear' ? attribution.method : 'linear'
+  sqlBuilder.attribution.method = attributionMethodOptions.some((option) => option.value === attribution.method)
+    ? attribution.method
+    : 'linear'
   sqlBuilder.attribution.window = normalizeAttributionWindow(attribution.window)
   sqlBuilder.attribution.targetEvent = typeof attribution.targetEvent === 'string' ? attribution.targetEvent : ''
   sqlBuilder.attribution.targetEventFilterLogic = builderLogic(attribution.targetEventFilters?.logic)
@@ -4248,7 +4255,9 @@ function attributionBlockingIssues() {
   const issues: string[] = []
   const attribution = sqlBuilder.attribution
   if (!attribution.entityField) issues.push('归因分析请先选择分析主体。')
-  if (attribution.method !== 'linear') issues.push('归因分析使用了不支持的归因方式。')
+  if (!attributionMethodOptions.some((option) => option.value === attribution.method)) {
+    issues.push('归因分析使用了不支持的归因方式。')
+  }
   if (!isValidAttributionWindow(attribution.window)) issues.push('归因分析窗口期配置无效，请重新设置。')
   if (!attribution.targetEvent) issues.push('归因分析请先选择目标事件。')
   if (attribution.targetMetric.aggregation !== 'count' && !attribution.targetMetric.metricField) {
@@ -4975,7 +4984,7 @@ function collectBuilderAiContext() {
       observationDays: clampRevenueObservationDays(sqlBuilder.revenue.observationDays),
     } : null,
     attribution: sqlBuilder.analysisModel === 'attribution' ? {
-      content: '把目标事件发生前窗口期内的归因事件按线性归因方式均分贡献，统计各归因事件获得的目标次数、目标值和贡献占比',
+      content: '按目标事件发生前窗口期内的首次、末次或线性归因方式分配贡献，统计各归因事件获得的目标次数、目标值和贡献占比',
       entityField: fieldOptionPayload(sqlBuilder.attribution.entityField),
       method: sqlBuilder.attribution.method,
       window: normalizeAttributionWindow(sqlBuilder.attribution.window),
@@ -8869,7 +8878,12 @@ function closeDrawer() {
                 <div class="attribution-method-row">
                   <span>归因方式</span>
                   <el-select v-model="sqlBuilder.attribution.method" class="attribution-method-select">
-                    <el-option label="线性归因" value="linear" />
+                    <el-option
+                      v-for="option in attributionMethodOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
                   </el-select>
                 </div>
                 <AttributionWindowPicker v-model="sqlBuilder.attribution.window" />
