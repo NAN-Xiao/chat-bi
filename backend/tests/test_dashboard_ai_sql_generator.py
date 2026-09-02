@@ -2037,11 +2037,27 @@ def test_property_config_has_independent_normalization_and_validation() -> None:
     )
 
     assert normalized["analysis_model"] == "property"
-    assert normalized["property"] == {"groupMode": "property"}
+    assert normalized["property"] == {"groupMode": "property", "groupSettings": {}}
     assert normalized["retention"] == {}
     assert normalized["funnel"] == {}
     assert result.success is True
     assert result.analysis_model == "property"
+
+
+def test_property_group_settings_are_normalized_for_time_dimensions() -> None:
+    request = _property_request(property={
+        "groupMode": "property",
+        "groupSettings": {
+            "event.dt": {"summarize": False, "timeGrain": "week"},
+            "event.country": {"summarize": True, "timeGrain": "invalid"},
+            "": {"summarize": True, "timeGrain": "month"},
+        },
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    assert normalized["property"]["groupSettings"] == {
+        "event.dt": {"summarize": False, "timeGrain": "week"},
+        "event.country": {"summarize": True, "timeGrain": "day"},
+    }
 
 
 def test_property_audience_group_mode_is_explicitly_blocked_without_audience_assets() -> None:
@@ -2055,7 +2071,7 @@ def test_property_audience_group_mode_is_explicitly_blocked_without_audience_ass
         allowed_fields_by_table={"event": {"dt", "account_id", "country"}},
     )
 
-    assert normalized["property"] == {"groupMode": "audience"}
+    assert normalized["property"] == {"groupMode": "audience", "groupSettings": {}}
     assert result.success is False
     assert any("暂不能按人群分组统计" in issue for issue in result.issues)
 

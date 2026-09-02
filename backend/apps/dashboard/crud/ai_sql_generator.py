@@ -762,6 +762,18 @@ def _normalize_manual_config(
         property_config.get("groupMode") or property_config.get("group_mode") or "property"
     ).strip().lower()
     property_config["groupMode"] = property_group_mode if property_group_mode in {"property", "audience"} else "property"
+    raw_group_settings = property_config.get("groupSettings") or property_config.get("group_settings")
+    group_settings: dict[str, dict[str, Any]] = {}
+    if isinstance(raw_group_settings, dict):
+        for field, value in raw_group_settings.items():
+            if not isinstance(field, str) or not field.strip() or not isinstance(value, dict):
+                continue
+            grain = str(value.get("timeGrain") or value.get("time_grain") or "day").strip().lower()
+            group_settings[field] = {
+                "summarize": value.get("summarize") is not False,
+                "timeGrain": grain if grain in {"day", "week", "month"} else "day",
+            }
+    property_config["groupSettings"] = group_settings
     retention = dict(context.get("retention") or {}) if isinstance(context.get("retention"), dict) else {}
     funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
     if analysis_model == "funnel" or funnel:
@@ -2536,6 +2548,7 @@ def _dashboard_config_prompt(
             "metrics[i].field 和 metricField 都是属性字段，不是事件；禁止根据字段名猜测事件条件或补充未配置事件。",
             "聚合规则必须严格按 metrics 顺序执行：count=COUNT(field)，count_distinct=COUNT(DISTINCT metricField)，sum/avg/max/min 分别使用对应 SQL 聚合函数。",
             "最终按当前时间粒度和 groups 聚合，固定输出 property_date、group_1...group_N、property_metric_1...property_metric_N；无 groups 时不得虚构分组列。",
+            "若 property.groupSettings 为时间分组字段提供配置，summarize=true 时按对应 timeGrain(day/week/month) 汇总；summarize=false 时保留原始时间粒度，不得擅自改写其他分组字段。",
             "filters 只作为全局属性筛选应用；属性分析不得扫描当前配置之外的表或字段。",
             "最终返回 chart_type 必须为 table。",
         ]

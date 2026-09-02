@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CopyDocument, Delete, EditPen, Filter, FolderOpened, InfoFilled, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
+import { CopyDocument, Delete, EditPen, Filter, FolderOpened, InfoFilled, MoreFilled, Plus, Setting, WarningFilled } from '@element-plus/icons-vue'
 import { datasourceApi } from '@/api/datasource'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
@@ -319,6 +319,10 @@ type SqlBuilderRankingConfig = {
 }
 type SqlBuilderPropertyConfig = {
   groupMode: 'property' | 'audience'
+  groupSettings: Record<string, {
+    summarize: boolean
+    timeGrain: 'day' | 'week' | 'month'
+  }>
 }
 type SqlBuilderCalculatedMetricItem = {
   id: string
@@ -464,6 +468,7 @@ const sqlBuilder = reactive({
   approximate: false,
   property: {
     groupMode: 'property',
+    groupSettings: {},
   } as SqlBuilderPropertyConfig,
   retention: {
     entityField: '',
@@ -591,6 +596,7 @@ const funnelAliasEditing = reactive<Record<string, boolean>>({})
 const funnelAliasDraft = reactive<Record<string, string>>({})
 const propertyMetricAliasEditing = reactive<Record<string, boolean>>({})
 const propertyMetricAliasDraft = reactive<Record<string, string>>({})
+const propertyGroupSettingsVisible = reactive<Record<string, boolean>>({})
 const distributionFilterExpanded = ref(false)
 const intervalFilterExpanded = reactive<Record<IntervalEventTarget, boolean>>({
   start: false,
@@ -1055,6 +1061,7 @@ const propertyGroupModeOptions = [
   { label: '人群', value: 'audience' as const },
   { label: '属性', value: 'property' as const },
 ]
+const propertyGroupTimeGrainOptions = builderTimeGrainOptions.filter((option) => option.value !== 'none')
 const isPropertyAnalysis = computed(() => sqlBuilder.analysisModel === 'property')
 const isRetentionAnalysis = computed(() => sqlBuilder.analysisModel === 'retention')
 const isFunnelAnalysis = computed(() => sqlBuilder.analysisModel === 'funnel')
@@ -1064,11 +1071,15 @@ const isPathAnalysis = computed(() => sqlBuilder.analysisModel === 'path')
 const isRevenueAnalysis = computed(() => sqlBuilder.analysisModel === 'revenue')
 const isAttributionAnalysis = computed(() => sqlBuilder.analysisModel === 'attribution')
 const isRankingAnalysis = computed(() => sqlBuilder.analysisModel === 'ranking')
-const propertyFieldOptions = computed<SchemaFieldOption[]>(() => (
-  eventFieldScope.value.status === 'active'
-    ? eventUserPropertyOptions.value as SchemaFieldOption[]
-    : builderFieldOptions.value as SchemaFieldOption[]
-))
+const propertyFieldOptions = computed<SchemaFieldOption[]>(() => {
+  if (eventFieldScope.value.status !== 'active') return builderFieldOptions.value as SchemaFieldOption[]
+  const options = [...eventUserPropertyOptions.value] as SchemaFieldOption[]
+  const known = new Set(options.map((option) => option.value))
+  ;(builderFieldOptions.value as SchemaFieldOption[]).forEach((option) => {
+    if (isTimeFieldOption(option) && !known.has(option.value)) options.push(option)
+  })
+  return options
+})
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
 const funnelEntityFieldOptions = computed(() => builderFieldOptions.value)
@@ -2269,6 +2280,9 @@ function builderConfigForSave() {
     analysisModel: sqlBuilder.analysisModel,
     property: sqlBuilder.analysisModel === 'property' ? {
       groupMode: sqlBuilder.property.groupMode,
+      groupSettings: Object.fromEntries(
+        Object.entries(sqlBuilder.property.groupSettings).map(([field, setting]) => [field, { ...setting }]),
+      ),
       metrics: sqlBuilder.metricItems.map(serializePropertyMetric),
     } : undefined,
     retention: sqlBuilder.analysisModel === 'retention' ? {
@@ -2456,10 +2470,21 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.property.groupMode = ['property', 'audience'].includes(property.groupMode)
     ? property.groupMode
     : 'property'
+  sqlBuilder.property.groupSettings = {}
+  if (property.groupSettings && typeof property.groupSettings === 'object') {
+    Object.entries(property.groupSettings).forEach(([field, value]: [string, any]) => {
+      if (!field) return
+      sqlBuilder.property.groupSettings[field] = {
+        summarize: value?.summarize !== false,
+        timeGrain: ['day', 'week', 'month'].includes(value?.timeGrain) ? value.timeGrain : 'day',
+      }
+    })
+  }
   if (sqlBuilder.analysisModel === 'property') {
     sqlBuilder.metricItems = Array.isArray(property.metrics)
       ? property.metrics.map(restorePropertyMetric)
       : []
+    sanitizePropertyGroupSettings()
   }
   const retention = value.retention && typeof value.retention === 'object' ? value.retention : {}
   sqlBuilder.retention.entityField = typeof retention.entityField === 'string' ? retention.entityField : ''
@@ -3516,6 +3541,54 @@ function resetRankingConfig() {
 
 function resetPropertyConfig() {
   sqlBuilder.property.groupMode = 'property'
+  sqlBuilder.property.groupSettings = {}
+  Object.keys(propertyGroupSettingsVisible).forEach((key) => { delete propertyGroupSettingsVisible[key] })
+}
+
+function propertyGroupSetting(field: string) {
+  const current = sqlBuilder.property.groupSettings[field]
+  return current || { summarize: true, timeGrain: 'day' as const }
+}
+
+function propertyGroupSupportsTimeSettings(field: string) {
+  const option = field ? fieldOptionByValue(field) : null
+  return Boolean(option && isTimeFieldOption(option))
+}
+
+function sanitizePropertyGroupSettings() {
+  const activeFields = new Set(sqlBuilder.groups.filter((field) => propertyGroupSupportsTimeSettings(field)))
+  Object.keys(sqlBuilder.property.groupSettings).forEach((field) => {
+    if (!activeFields.has(field)) delete sqlBuilder.property.groupSettings[field]
+  })
+  Object.keys(propertyGroupSettingsVisible).forEach((field) => {
+    if (!activeFields.has(field)) delete propertyGroupSettingsVisible[field]
+  })
+}
+
+function handlePropertyGroupFieldChange(index: number, value: string) {
+  const previous = sqlBuilder.groups[index]
+  if (previous && previous !== value) {
+    delete sqlBuilder.property.groupSettings[previous]
+    delete propertyGroupSettingsVisible[previous]
+  }
+  sqlBuilder.groups[index] = value
+  if (propertyGroupSupportsTimeSettings(value)) propertyGroupSetting(value)
+  sanitizePropertyGroupSettings()
+}
+
+function removePropertyGroup(index: number) {
+  const field = sqlBuilder.groups[index]
+  sqlBuilder.groups.splice(index, 1)
+  if (field) {
+    delete sqlBuilder.property.groupSettings[field]
+    delete propertyGroupSettingsVisible[field]
+  }
+}
+
+function updatePropertyGroupSetting(field: string, patch: Partial<{ summarize: boolean; timeGrain: 'day' | 'week' | 'month' }>) {
+  const setting = sqlBuilder.property.groupSettings[field] || { summarize: true, timeGrain: 'day' as const }
+  sqlBuilder.property.groupSettings[field] = setting
+  Object.assign(setting, patch)
 }
 
 function handlePropertyGroupModeChange(mode: 'property' | 'audience') {
@@ -4271,6 +4344,7 @@ function sanitizePropertyConfig() {
     }
   })
   sqlBuilder.groups = sqlBuilder.groups.filter((field) => optionExists(field, propertyFieldOptions.value))
+  sanitizePropertyGroupSettings()
 }
 
 function rankingBlockingIssues() {
@@ -4723,6 +4797,9 @@ function collectBuilderAiContext() {
     property: sqlBuilder.analysisModel === 'property' ? {
       content: '对当前数据源中的属性字段进行聚合统计，并可按属性维度拆分结果',
       groupMode: sqlBuilder.property.groupMode,
+      groupSettings: Object.fromEntries(
+        Object.entries(sqlBuilder.property.groupSettings).map(([field, setting]) => [field, { ...setting }]),
+      ),
     } : null,
     retention: sqlBuilder.analysisModel === 'retention' ? {
       content: RETENTION_ANALYSIS_CONTEXT_CONTENT,
@@ -9401,13 +9478,60 @@ function closeDrawer() {
                 <div v-for="(_, index) in sqlBuilder.groups" :key="index" class="group-row">
                   <span class="group-index">{{ index + 1 }}</span>
                   <BuilderFieldPicker
-                    v-model="sqlBuilder.groups[index]"
+                    :model-value="sqlBuilder.groups[index]"
                     :options="isPropertyAnalysis ? propertyFieldOptions : builderFieldOptions"
                     :loading="schemaLoading"
                     mode="property"
                     placeholder="分组字段"
+                    @update:modelValue="handlePropertyGroupFieldChange(index, $event)"
                   />
-                  <button type="button" class="builder-icon-button danger" @click="sqlBuilder.groups.splice(index, 1)">
+                  <el-popover
+                    v-if="isPropertyAnalysis && propertyGroupSupportsTimeSettings(sqlBuilder.groups[index])"
+                    v-model:visible="propertyGroupSettingsVisible[sqlBuilder.groups[index]]"
+                    placement="bottom-start"
+                    :width="300"
+                    trigger="click"
+                    :teleported="false"
+                  >
+                    <template #reference>
+                      <button
+                        type="button"
+                        class="builder-icon-button property-group-settings-button"
+                        title="设置时间分组"
+                        :aria-label="`设置时间分组${index + 1}`"
+                      >
+                        <el-icon><Setting /></el-icon>
+                      </button>
+                    </template>
+                    <div class="property-group-settings">
+                      <div class="property-group-settings-title">分组方式</div>
+                      <el-radio-group
+                        :model-value="propertyGroupSetting(sqlBuilder.groups[index]).summarize ? 'summarize' : 'raw'"
+                        @update:modelValue="updatePropertyGroupSetting(sqlBuilder.groups[index], { summarize: $event === 'summarize' })"
+                      >
+                        <el-radio value="summarize">汇总</el-radio>
+                        <el-radio value="raw">不汇总</el-radio>
+                      </el-radio-group>
+                      <el-select
+                        v-if="propertyGroupSetting(sqlBuilder.groups[index]).summarize"
+                        class="property-group-time-grain-select"
+                        :model-value="propertyGroupSetting(sqlBuilder.groups[index]).timeGrain"
+                        @update:modelValue="updatePropertyGroupSetting(sqlBuilder.groups[index], { timeGrain: $event })"
+                      >
+                        <el-option
+                          v-for="option in propertyGroupTimeGrainOptions"
+                          :key="option.value"
+                          :label="option.label"
+                          :value="option.value"
+                        />
+                      </el-select>
+                    </div>
+                  </el-popover>
+                  <button
+                    type="button"
+                    class="builder-icon-button danger"
+                    @click="removePropertyGroup(index)"
+                  >
                     <el-icon><Delete /></el-icon>
                   </button>
                 </div>
@@ -12109,9 +12233,29 @@ function closeDrawer() {
 
 .group-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 26px;
+  grid-template-columns: 28px minmax(0, 1fr) 26px 26px;
   gap: 6px;
   align-items: center;
+}
+
+.property-group-settings-button {
+  color: #606a80;
+}
+
+.property-group-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.property-group-settings-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #30343b;
+}
+
+.property-group-time-grain-select {
+  width: 120px;
 }
 
 .group-index {

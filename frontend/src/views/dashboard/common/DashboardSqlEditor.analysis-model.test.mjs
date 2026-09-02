@@ -83,6 +83,7 @@ test('keeps property analysis isolated with property metrics, filters, and group
   assert.match(source, /const isPropertyAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'property'\)/)
   assert.match(source, /const propertyFieldOptions = computed/)
   assert.match(saveBody, /property:\s*sqlBuilder\.analysisModel === 'property'/)
+  assert.match(saveBody, /groupSettings:/)
   assert.match(saveBody, /metrics:\s*sqlBuilder\.metricItems\.map\(serializePropertyMetric\)/)
   assert.match(restoreBody, /property\.metrics\.map\(restorePropertyMetric\)/)
   assert.match(contextBody, /property:\s*sqlBuilder\.analysisModel === 'property'/)
@@ -106,6 +107,11 @@ test('keeps property analysis isolated with property metrics, filters, and group
   assert.match(source, /function cancelPropertyMetricRename\(item: SqlBuilderMetricItem\)/)
   assert.match(source, />进行分组统计</)
   assert.match(source, /function propertyBlockingIssues\(\)/)
+  assert.match(source, /propertyGroupSupportsTimeSettings/)
+  assert.match(source, /title="设置时间分组"/)
+  assert.match(source, />汇总</)
+  assert.match(source, />不汇总</)
+  assert.match(source, /propertyGroupTimeGrainOptions/)
 })
 
 test('loads retention events from the workspace event catalog', () => {
