@@ -71,6 +71,20 @@ ATTRIBUTION_WINDOW_UNIT_SECONDS = {
 ATTRIBUTION_WINDOW_MAX_SECONDS = 365 * 24 * 60 * 60
 
 
+def _normalized_attribution_window(window: Any) -> dict[str, Any]:
+    value = dict(window) if isinstance(window, dict) else {}
+    mode = str(value.get("mode") or "duration").strip().lower()
+    if mode == "same_day":
+        return {"mode": "same_day", "value": 1, "unit": "day"}
+    unit = str(value.get("unit") or "day").strip().lower()
+    try:
+        raw_value = value.get("value")
+        numeric_value = int(1 if raw_value is None else raw_value)
+    except (TypeError, ValueError):
+        numeric_value = 1
+    return {"mode": "duration", "value": numeric_value, "unit": unit}
+
+
 class DashboardManualChartGraphState(TypedDict, total=False):
     """
     类说明：DashboardManualChartGraphState 表示手动看板配置 Agent 图的运行状态。
@@ -2067,13 +2081,10 @@ def _deterministic_validate_manual_config(
         entity_field = attribution.get("entityField") or attribution.get("entity_field")
         target_event = attribution.get("targetEvent") or attribution.get("target_event")
         method = str(attribution.get("method") or "linear").strip().lower()
-        window = attribution.get("window") if isinstance(attribution.get("window"), dict) else {}
-        window_mode = str(window.get("mode") or "custom").strip().lower()
-        window_unit = str(window.get("unit") or "day").strip().lower()
-        try:
-            window_value = int(window.get("value") or 0)
-        except (TypeError, ValueError):
-            window_value = 0
+        window = _normalized_attribution_window(attribution.get("window"))
+        window_mode = window["mode"]
+        window_unit = window["unit"]
+        window_value = window["value"]
         window_seconds = window_value * ATTRIBUTION_WINDOW_UNIT_SECONDS.get(window_unit, 0)
         target_metric = attribution.get("targetMetric") if isinstance(attribution.get("targetMetric"), dict) else {}
         target_aggregation = str(target_metric.get("aggregation") or "count").strip().lower()
@@ -2084,7 +2095,9 @@ def _deterministic_validate_manual_config(
             issues.append("归因分析请先选择分析主体。")
         if method not in {"first", "last", "linear"}:
             issues.append("归因分析使用了不支持的归因方式。")
-        if window_mode != "custom" or window_unit not in ATTRIBUTION_WINDOW_UNIT_SECONDS:
+        if window_mode == "same_day":
+            window_seconds = 24 * 60 * 60
+        elif window_mode != "duration" or window_unit not in ATTRIBUTION_WINDOW_UNIT_SECONDS:
             issues.append("归因分析窗口期配置无效。")
         elif window_seconds < 60 or window_seconds > ATTRIBUTION_WINDOW_MAX_SECONDS:
             issues.append("归因分析窗口期必须在 1 分钟到 365 天之间。")
@@ -2349,7 +2362,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "cost_enabled": cost_enabled,
         }
     elif analysis_model == "attribution":
-        window = attribution.get("window") if isinstance(attribution.get("window"), dict) else {}
+        window = _normalized_attribution_window(attribution.get("window"))
         window_unit = str(window.get("unit") or "day")
         window_value = int(window.get("value") or 1)
         result_contract = {
@@ -2363,7 +2376,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "method": str(attribution.get("method") or "linear").strip().lower()
             if str(attribution.get("method") or "linear").strip().lower() in {"first", "last", "linear"}
             else "linear",
-            "window_seconds": window_value * ATTRIBUTION_WINDOW_UNIT_SECONDS.get(window_unit, 0),
+            "window_seconds": 24 * 60 * 60 if window.get("mode") == "same_day" else window_value * ATTRIBUTION_WINDOW_UNIT_SECONDS.get(window_unit, 0),
             "final_grain": ["attribution_event"],
         }
     return {
@@ -2586,7 +2599,8 @@ def _dashboard_config_prompt(
             "当前 analysisModel=attribution，只能使用 attribution 配置生成归因查询；不得读取或套用事件、留存、漏斗、分布、间隔或路径模型的指标语义。",
             "归因方式由 attribution.method 决定：首次归因（first）只保留每个目标最早匹配触点，末次归因（last）只保留最晚匹配触点，线性归因（linear）在所有匹配触点之间等分贡献。",
             "目标事件必须使用 attribution.targetEvent，目标值必须严格按 targetMetric.aggregation 和 targetMetric.metricField 计算；targetEventFilters 只应用于目标事件明细。",
-            "每个 attribution.events[i].filters 只应用于该归因事件；事件与筛选不得交换。目标事件之后的触点、窗口之外的触点以及其他未配置事件不得参与归因。",
+            "归因窗口 mode=same_day 时只匹配目标事件所在自然日内且发生在目标事件之前的触点；mode=duration 时按 value 和 unit 的精确时长回溯。目标事件之后的触点、窗口之外的触点以及其他未配置事件不得参与归因。",
+            "每个 attribution.events[i].filters 只应用于该归因事件；事件与筛选不得交换。",
             "includeDirect=true 时，没有匹配归因事件的目标转化归入 attribution_event='直接转化'；false 时必须排除这些目标转化。",
             "最终结果固定输出 attribution_event、target_count、attributed_value、contribution_rate；target_count 是获得归因贡献的目标事件数，attributed_value 按所选归因方式分配目标值，contribution_rate 是 attributed_value 占全部已归因目标值的比例并使用 NULLIF 保护分母。",
             f"当前归因事件数量：{len(attribution_events)}；归因窗口：{_safe_json(attribution.get('window'))}；直接转化：{attribution.get('includeDirect') is True}。",

@@ -5,6 +5,7 @@ import {
   maxAttributionWindowValue,
   normalizeAttributionWindow,
   type AttributionWindowConfig,
+  type AttributionWindowMode,
   type AttributionWindowUnit,
 } from './attributionAnalysis'
 
@@ -30,6 +31,7 @@ function updateValue(value: number | undefined) {
   const numericValue = Number(value)
   emits('update:modelValue', normalizeAttributionWindow({
     ...normalizedValue.value,
+    mode: 'duration',
     value: Number.isInteger(numericValue) ? numericValue : 1,
   }))
 }
@@ -37,10 +39,19 @@ function updateValue(value: number | undefined) {
 function updateUnit(unit: AttributionWindowUnit) {
   const current = normalizedValue.value
   emits('update:modelValue', {
-    mode: 'custom',
+    mode: 'duration',
     value: Math.min(current.value, maxAttributionWindowValue(unit)),
     unit,
   })
+}
+
+function updateMode(mode: AttributionWindowMode) {
+  if (mode === 'same_day') {
+    emits('update:modelValue', { mode: 'same_day', value: 1, unit: 'day' })
+    return
+  }
+  const current = normalizedValue.value
+  emits('update:modelValue', { mode: 'duration', value: current.value || 1, unit: current.unit || 'day' })
 }
 </script>
 
@@ -52,11 +63,19 @@ function updateUnit(unit: AttributionWindowUnit) {
         <el-icon aria-label="归因窗口期说明"><InfoFilled /></el-icon>
       </el-tooltip>
     </span>
-    <el-select class="attribution-window-mode" model-value="custom" :disabled="disabled">
-      <el-option label="自定义" value="custom" />
+    <el-select
+      class="attribution-window-mode"
+      :model-value="normalizedValue.mode"
+      :disabled="disabled"
+      aria-label="归因窗口期模式"
+      @update:modelValue="updateMode"
+    >
+      <el-option label="当天" value="same_day" />
+      <el-option label="自定义" value="duration" />
     </el-select>
     <el-input-number
       class="attribution-window-value"
+      v-if="normalizedValue.mode === 'duration'"
       :model-value="normalizedValue.value"
       :min="1"
       :max="maxValue"
@@ -69,6 +88,7 @@ function updateUnit(unit: AttributionWindowUnit) {
     <el-select
       class="attribution-window-unit"
       :model-value="normalizedValue.unit"
+      v-if="normalizedValue.mode === 'duration'"
       :disabled="disabled"
       aria-label="归因窗口单位"
       @update:modelValue="updateUnit"
@@ -85,8 +105,7 @@ function updateUnit(unit: AttributionWindowUnit) {
 
 <style scoped>
 .attribution-window-picker {
-  display: grid;
-  grid-template-columns: 64px 100px 68px 82px;
+  display: flex;
   align-items: center;
   gap: 8px;
   color: #505968;
@@ -118,7 +137,7 @@ function updateUnit(unit: AttributionWindowUnit) {
 
 @media (max-width: 540px) {
   .attribution-window-picker {
-    grid-template-columns: 64px minmax(92px, 1fr) 68px 76px;
+    flex-wrap: wrap;
     width: 100%;
   }
 }

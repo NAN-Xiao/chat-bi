@@ -1,8 +1,10 @@
 export type AttributionMethod = 'first' | 'last' | 'linear'
 export type AttributionWindowUnit = 'day' | 'hour' | 'minute'
 
+export type AttributionWindowMode = 'same_day' | 'duration'
+
 export type AttributionWindowConfig = {
-  mode: 'custom'
+  mode: AttributionWindowMode
   value: number
   unit: AttributionWindowUnit
 }
@@ -10,7 +12,7 @@ export type AttributionWindowConfig = {
 export const ATTRIBUTION_EVENT_LIMIT = 30
 export const ATTRIBUTION_WINDOW_MAX_SECONDS = 365 * 24 * 60 * 60
 export const DEFAULT_ATTRIBUTION_WINDOW: AttributionWindowConfig = {
-  mode: 'custom',
+  mode: 'duration',
   value: 1,
   unit: 'day',
 }
@@ -28,7 +30,11 @@ export function maxAttributionWindowValue(unit: AttributionWindowUnit) {
 export function isValidAttributionWindow(value: unknown): value is AttributionWindowConfig {
   if (!value || typeof value !== 'object') return false
   const config = value as Partial<AttributionWindowConfig>
-  if (config.mode !== 'custom' || !config.unit || !(config.unit in UNIT_SECONDS)) return false
+  if (config.mode === 'same_day') return true
+  // Migrate the pre-mode shape that stored custom windows as mode="custom".
+  if ((config.mode !== 'duration' && config.mode !== ('custom' as AttributionWindowMode))
+    || !config.unit
+    || !(config.unit in UNIT_SECONDS)) return false
   const numericValue = Number(config.value)
   return Number.isInteger(numericValue)
     && numericValue >= 1
@@ -37,8 +43,9 @@ export function isValidAttributionWindow(value: unknown): value is AttributionWi
 
 export function normalizeAttributionWindow(value: unknown): AttributionWindowConfig {
   if (!isValidAttributionWindow(value)) return { ...DEFAULT_ATTRIBUTION_WINDOW }
+  if (value.mode === 'same_day') return { mode: 'same_day', value: 1, unit: 'day' }
   return {
-    mode: 'custom',
+    mode: 'duration',
     value: Number(value.value),
     unit: value.unit,
   }
