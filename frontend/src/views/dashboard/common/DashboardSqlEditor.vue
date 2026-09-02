@@ -13344,27 +13344,35 @@ function closeDrawer() {
   min-width: 0;
 }
 
+.heatmap-axis-row {
+  display: grid;
+  grid-template-columns: auto minmax(116px, 1fr) auto minmax(116px, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
 .heatmap-metric-row > span,
 .heatmap-axis-row > span {
   flex: none;
   color: #646a73;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .heatmap-metric-row :deep(.builder-field-picker),
-.heatmap-axis-row :deep(.builder-field-picker),
 .heatmap-metric-row :deep(.el-select) {
   min-width: 0;
   flex: 1;
 }
 
+.heatmap-axis-row :deep(.builder-field-picker) {
+  min-width: 0;
+  width: 100%;
+}
+
 .heatmap-aggregation-select {
   width: 110px !important;
   flex: none !important;
-}
-
-.heatmap-axis-row {
-  flex-wrap: wrap;
 }
 
 .heatmap-map-picker {
@@ -13653,6 +13661,18 @@ function closeDrawer() {
 
   .heatmap-map-step:not(:last-child)::after {
     margin: 0 6px;
+  }
+
+  .heatmap-axis-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .heatmap-axis-row > span:nth-of-type(2) {
+    grid-column: 1;
+  }
+
+  .heatmap-axis-row :deep(.builder-field-picker:nth-of-type(2)) {
+    grid-column: 2;
   }
 }
 </style>

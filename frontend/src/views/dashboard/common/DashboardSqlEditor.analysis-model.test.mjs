@@ -578,4 +578,6 @@ test('keeps heatmap analysis isolated with event coordinates and map metadata', 
   assert.match(source, /confirmHeatmapMap/)
   assert.match(source, /heatmap_table|heatmap_value/)
   assert.match(source, /function heatmapBlockingIssues\(\)/)
+  assert.match(source, /grid-template-columns: auto minmax\(116px, 1fr\) auto minmax\(116px, 1fr\)/)
+  assert.match(source, /\.heatmap-axis-row :deep\(\.builder-field-picker\)/)
 })
