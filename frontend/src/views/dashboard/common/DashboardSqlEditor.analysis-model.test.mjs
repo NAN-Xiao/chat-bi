@@ -74,6 +74,50 @@ test('renders the analysis model selector before event metrics', () => {
   )
 })
 
+test('keeps property analysis isolated with property metrics, filters, and grouping', () => {
+  const saveBody = source.match(/function builderConfigForSave\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const restoreBody = source.match(
+    /function restoreSqlBuilderState\(value: any\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction formulaTokensReferenceMetricIds/
+  )?.[1] || ''
+  const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const signatureBody = source.match(/function currentPreviewSignature\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+
+  assert.match(source, /\{ label: '属性分析', value: 'property'/)
+  assert.match(source, /const isPropertyAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'property'\)/)
+  assert.match(source, /const propertyFieldOptions = computed/)
+  assert.match(saveBody, /property:\s*sqlBuilder\.analysisModel === 'property'/)
+  assert.match(saveBody, /groupSettings:/)
+  assert.match(saveBody, /metrics:\s*sqlBuilder\.metricItems\.map\(serializePropertyMetric\)/)
+  assert.match(restoreBody, /property\.metrics\.map\(restorePropertyMetric\)/)
+  assert.match(contextBody, /property:\s*sqlBuilder\.analysisModel === 'property'/)
+  assert.match(signatureBody, /property:\s*sqlBuilder\.analysisModel === 'property'/)
+  assert.match(switchBody, /sqlBuilder\.analysisModel === 'property'/)
+  assert.match(switchBody, /form\.chartType = 'table'/)
+  assert.match(source, /class="builder-section property-builder-section"/)
+  assert.match(source, />分析指标</)
+  assert.match(source, />全局筛选</)
+  assert.match(source, /const propertyGroupModeOptions = \[/)
+  assert.match(source, /label: '人群', value: 'audience'/)
+  assert.match(source, /label: '属性', value: 'property'/)
+  assert.match(source, /class="property-group-mode-select"/)
+  assert.match(source, /@change="handlePropertyGroupModeChange"/)
+  assert.match(source, /class="property-metric-alias-input"/)
+  assert.match(source, /aria-label="`重命名属性指标\$\{index \+ 1\}`"/)
+  assert.match(source, /@keydown\.enter\.prevent="finishPropertyMetricRename\(item\)"/)
+  assert.match(source, /@keydown\.esc\.prevent="cancelPropertyMetricRename\(item\)"/)
+  assert.match(source, /function beginPropertyMetricRename\(item: SqlBuilderMetricItem\)/)
+  assert.match(source, /function finishPropertyMetricRename\(item: SqlBuilderMetricItem\)/)
+  assert.match(source, /function cancelPropertyMetricRename\(item: SqlBuilderMetricItem\)/)
+  assert.match(source, />进行分组统计</)
+  assert.match(source, /function propertyBlockingIssues\(\)/)
+  assert.match(source, /propertyGroupSupportsTimeSettings/)
+  assert.match(source, /title="设置时间分组"/)
+  assert.match(source, />汇总</)
+  assert.match(source, />不汇总</)
+  assert.match(source, /propertyGroupTimeGrainOptions/)
+})
+
 test('loads retention events from the workspace event catalog', () => {
   const schemaLoaderBody = source.match(
     /async function loadSchemaTables\(startViewInfo: any, requestSeq: number\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction ensureBuilderSchemaLoaded/
@@ -93,7 +137,7 @@ test('persists and restores retention configuration in the SQL builder', () => {
 
   assert.match(saveBody, /analysisModel:\s*sqlBuilder\.analysisModel/)
   assert.match(saveBody, /retention:\s*sqlBuilder\.analysisModel === 'retention'/)
-  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'\]\.includes\(value\.analysisModel\)/)
+  assert.match(restoreBody, /\['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'\]\.includes\(value\.analysisModel\)/)
   assert.match(restoreBody, /retention\.entityField/)
   assert.match(restoreBody, /retention\.initialEvent/)
   assert.match(restoreBody, /retention\.returnEvent/)
@@ -243,10 +287,10 @@ test('keeps distribution analysis configuration and controls isolated from other
   const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
   const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
 
-  assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution'/)
+  assert.match(source, /type AnalysisModel = 'event' \| 'property' \| 'retention' \| 'funnel' \| 'distribution'/)
   assert.match(source, /const isDistributionAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'distribution'\)/)
   assert.match(saveBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
-  assert.match(restoreBody, /\['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'\]\.includes\(value\.analysisModel\)/)
+  assert.match(restoreBody, /\['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'\]\.includes\(value\.analysisModel\)/)
   assert.match(contextBody, /distribution:\s*sqlBuilder\.analysisModel === 'distribution'/)
   assert.match(
     source,
@@ -305,7 +349,7 @@ test('keeps interval analysis isolated and exposes the reference controls', () =
   const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
   const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
 
-  assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution' \| 'interval'/)
+  assert.match(source, /type AnalysisModel = 'event' \| 'property' \| 'retention' \| 'funnel' \| 'distribution' \| 'interval'/)
   assert.match(source, /const isIntervalAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'interval'\)/)
   assert.match(saveBody, /interval:\s*sqlBuilder\.analysisModel === 'interval'/)
   assert.match(restoreBody, /sqlBuilder\.interval\.startEvent/)
@@ -341,7 +385,7 @@ test('keeps path analysis isolated and exposes event split and session controls'
   const signatureBody = source.match(/function currentPreviewSignature\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
   const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
 
-  assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution' \| 'interval' \| 'path'/)
+  assert.match(source, /type AnalysisModel = 'event' \| 'property' \| 'retention' \| 'funnel' \| 'distribution' \| 'interval' \| 'path'/)
   assert.match(source, /const isPathAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'path'\)/)
   assert.match(saveBody, /path:\s*sqlBuilder\.analysisModel === 'path'/)
   assert.match(restoreBody, /PATH_EVENT_LIMIT/)
@@ -388,7 +432,7 @@ test('keeps revenue analysis isolated with cohort, metric, cost, and observation
   const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
   const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
 
-  assert.match(source, /type AnalysisModel = 'event' \| 'retention' \| 'funnel' \| 'distribution' \| 'interval' \| 'path' \| 'revenue' \| 'attribution'/)
+  assert.match(source, /type AnalysisModel = 'event' \| 'property' \| 'retention' \| 'funnel' \| 'distribution' \| 'interval' \| 'path' \| 'revenue' \| 'attribution'/)
   assert.match(source, /const isRevenueAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'revenue'\)/)
   assert.match(saveBody, /revenue:\s*sqlBuilder\.analysisModel === 'revenue'/)
   assert.match(restoreBody, /sqlBuilder\.revenue\.paymentEvent/)

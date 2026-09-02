@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CopyDocument, Delete, EditPen, Filter, FolderOpened, InfoFilled, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
+import { CopyDocument, Delete, EditPen, Filter, FolderOpened, InfoFilled, MoreFilled, Plus, Setting, WarningFilled } from '@element-plus/icons-vue'
 import { datasourceApi } from '@/api/datasource'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
@@ -196,7 +196,7 @@ type SqlBuilderMetricItem = {
   filterLogic: SqlBuilderFilterLogic
   filters: SqlBuilderFilter[]
 }
-type AnalysisModel = 'event' | 'retention' | 'funnel' | 'distribution' | 'interval' | 'path' | 'revenue' | 'attribution' | 'ranking'
+type AnalysisModel = 'event' | 'property' | 'retention' | 'funnel' | 'distribution' | 'interval' | 'path' | 'revenue' | 'attribution' | 'ranking'
 type RetentionEventTarget = 'initial' | 'return'
 type IntervalEventTarget = 'start' | 'end'
 type SqlBuilderFunnelStep = {
@@ -316,6 +316,13 @@ type SqlBuilderRankingConfig = {
   tieHandling: 'default' | 'skip' | 'dense'
   simultaneousMetrics: SqlBuilderRankingMetric[]
   simultaneousProperties: string[]
+}
+type SqlBuilderPropertyConfig = {
+  groupMode: 'property' | 'audience'
+  groupSettings: Record<string, {
+    summarize: boolean
+    timeGrain: 'day' | 'week' | 'month'
+  }>
 }
 type SqlBuilderCalculatedMetricItem = {
   id: string
@@ -459,6 +466,10 @@ const sqlBuilder = reactive({
   globalFilters: [] as SqlBuilderFilter[],
   globalFilterLogic: 'and' as SqlBuilderFilterLogic,
   approximate: false,
+  property: {
+    groupMode: 'property',
+    groupSettings: {},
+  } as SqlBuilderPropertyConfig,
   retention: {
     entityField: '',
     initialEvent: '',
@@ -583,6 +594,9 @@ const retentionAliasDraft = reactive<Record<RetentionEventTarget, string>>({
 const funnelFilterExpanded = reactive<Record<string, boolean>>({})
 const funnelAliasEditing = reactive<Record<string, boolean>>({})
 const funnelAliasDraft = reactive<Record<string, string>>({})
+const propertyMetricAliasEditing = reactive<Record<string, boolean>>({})
+const propertyMetricAliasDraft = reactive<Record<string, string>>({})
+const propertyGroupSettingsVisible = reactive<Record<string, boolean>>({})
 const distributionFilterExpanded = ref(false)
 const intervalFilterExpanded = reactive<Record<IntervalEventTarget, boolean>>({
   start: false,
@@ -1030,6 +1044,7 @@ const analysisFieldPickerMode = computed(() => usesTrackingEventPicker.value ? '
 const formulaFieldPickerPlaceholder = computed(() => usesTrackingEventPicker.value ? '选择事件' : '选择字段')
 const analysisModelOptions: Array<{ label: string; value: AnalysisModel; content?: string }> = [
   { label: '事件分析', value: 'event' as AnalysisModel },
+  { label: '属性分析', value: 'property' as AnalysisModel, content: '按用户属性字段分组，统计属性指标在时间范围内的分布情况' },
   { label: '留存分析', value: 'retention' as AnalysisModel, content: RETENTION_ANALYSIS_CONTEXT_CONTENT },
   { label: '漏斗分析', value: 'funnel' as AnalysisModel, content: '以某段时间做过步骤1的用户为样本，查看窗口期内，指定步骤下用户的转化情况' },
   { label: '分布分析', value: 'distribution' as AnalysisModel, content: '一段时间内，指定用户参与某一事件的总完成次数或属性值按个人聚合后的全员分布情况' },
@@ -1042,6 +1057,12 @@ const analysisModelOptions: Array<{ label: string; value: AnalysisModel; content
 const analysisModelContent = computed(() =>
   analysisModelOptions.find((option) => option.value === sqlBuilder.analysisModel)?.content || ''
 )
+const propertyGroupModeOptions = [
+  { label: '人群', value: 'audience' as const },
+  { label: '属性', value: 'property' as const },
+]
+const propertyGroupTimeGrainOptions = builderTimeGrainOptions.filter((option) => option.value !== 'none')
+const isPropertyAnalysis = computed(() => sqlBuilder.analysisModel === 'property')
 const isRetentionAnalysis = computed(() => sqlBuilder.analysisModel === 'retention')
 const isFunnelAnalysis = computed(() => sqlBuilder.analysisModel === 'funnel')
 const isDistributionAnalysis = computed(() => sqlBuilder.analysisModel === 'distribution')
@@ -1050,6 +1071,15 @@ const isPathAnalysis = computed(() => sqlBuilder.analysisModel === 'path')
 const isRevenueAnalysis = computed(() => sqlBuilder.analysisModel === 'revenue')
 const isAttributionAnalysis = computed(() => sqlBuilder.analysisModel === 'attribution')
 const isRankingAnalysis = computed(() => sqlBuilder.analysisModel === 'ranking')
+const propertyFieldOptions = computed<SchemaFieldOption[]>(() => {
+  if (eventFieldScope.value.status !== 'active') return builderFieldOptions.value as SchemaFieldOption[]
+  const options = [...eventUserPropertyOptions.value] as SchemaFieldOption[]
+  const known = new Set(options.map((option) => option.value))
+  ;(builderFieldOptions.value as SchemaFieldOption[]).forEach((option) => {
+    if (isTimeFieldOption(option) && !known.has(option.value)) options.push(option)
+  })
+  return options
+})
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
 const funnelEntityFieldOptions = computed(() => builderFieldOptions.value)
@@ -1511,11 +1541,38 @@ function emptyCalculatedMetricItem(): SqlBuilderCalculatedMetricItem {
 
 function addMetricItem() {
   const item = emptyMetricItem()
-  const numericField = eventScopedSchemaFieldOptions.value.find(isNumericFieldOption)
-  item.field = analysisFieldOptions.value[0]?.value || ''
+  const availableFields: SchemaFieldOption[] = isPropertyAnalysis.value
+    ? propertyFieldOptions.value
+    : analysisFieldOptions.value as SchemaFieldOption[]
+  const numericField = availableFields.find(isNumericFieldOption)
+  item.field = availableFields[0]?.value || ''
   item.metric = numericField?.value || item.field
-  item.alias = `指标${sqlBuilder.metricItems.length + 1}`
+  item.alias = isPropertyAnalysis.value ? '' : `指标${sqlBuilder.metricItems.length + 1}`
   sqlBuilder.metricItems.push(item)
+}
+
+function serializePropertyMetric(item: SqlBuilderMetricItem) {
+  return {
+    id: item.id,
+    field: item.field,
+    metric: item.aggregation === 'count' ? '' : (item.metric || item.field),
+    aggregation: item.aggregation,
+    alias: item.alias.trim(),
+  }
+}
+
+function restorePropertyMetric(value: any, index: number): SqlBuilderMetricItem {
+  const item = emptyMetricItem()
+  item.id = typeof value?.id === 'string' && value.id ? value.id : `property-metric-${index}`
+  item.field = typeof value?.field === 'string' ? value.field : ''
+  item.aggregation = builderAggregationOptions.some((option) => option.value === value?.aggregation)
+    ? value.aggregation
+    : 'count_distinct'
+  item.metric = item.aggregation === 'count'
+    ? item.field
+    : typeof value?.metric === 'string' && value.metric ? value.metric : item.field
+  item.alias = typeof value?.alias === 'string' ? value.alias : ''
+  return item
 }
 
 function removeMetricItem(index: number) {
@@ -1523,6 +1580,8 @@ function removeMetricItem(index: number) {
   if (!removed) {
     return
   }
+  delete propertyMetricAliasEditing[removed.id]
+  delete propertyMetricAliasDraft[removed.id]
   sqlBuilder.calculatedMetrics.forEach((item) => {
     item.tokens = item.tokens.filter((token) => token.type !== 'metric' || token.metricId !== removed.id)
     if (item.pendingMetricId === removed.id) {
@@ -1857,6 +1916,7 @@ function resetSqlBuilderState() {
   sqlBuilder.globalFilters = []
   sqlBuilder.globalFilterLogic = 'and'
   sqlBuilder.approximate = false
+  resetPropertyConfig()
   resetRetentionConfig()
   resetFunnelConfig()
   resetDistributionConfig()
@@ -2218,6 +2278,13 @@ function builderConfigForSave() {
   const usesDashboardDateParameters = shouldUseDashboardDateParameters()
   return {
     analysisModel: sqlBuilder.analysisModel,
+    property: sqlBuilder.analysisModel === 'property' ? {
+      groupMode: sqlBuilder.property.groupMode,
+      groupSettings: Object.fromEntries(
+        Object.entries(sqlBuilder.property.groupSettings).map(([field, setting]) => [field, { ...setting }]),
+      ),
+      metrics: sqlBuilder.metricItems.map(serializePropertyMetric),
+    } : undefined,
     retention: sqlBuilder.analysisModel === 'retention' ? {
       entityField: sqlBuilder.retention.entityField,
       initialEvent: sqlBuilder.retention.initialEvent,
@@ -2396,9 +2463,29 @@ function restoreSqlBuilderState(value: any) {
   if (!value || typeof value !== 'object') {
     return
   }
-  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'].includes(value.analysisModel)
+  sqlBuilder.analysisModel = ['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'].includes(value.analysisModel)
     ? value.analysisModel
     : 'event'
+  const property = value.property && typeof value.property === 'object' ? value.property : {}
+  sqlBuilder.property.groupMode = ['property', 'audience'].includes(property.groupMode)
+    ? property.groupMode
+    : 'property'
+  sqlBuilder.property.groupSettings = {}
+  if (property.groupSettings && typeof property.groupSettings === 'object') {
+    Object.entries(property.groupSettings).forEach(([field, value]: [string, any]) => {
+      if (!field) return
+      sqlBuilder.property.groupSettings[field] = {
+        summarize: value?.summarize !== false,
+        timeGrain: ['day', 'week', 'month'].includes(value?.timeGrain) ? value.timeGrain : 'day',
+      }
+    })
+  }
+  if (sqlBuilder.analysisModel === 'property') {
+    sqlBuilder.metricItems = Array.isArray(property.metrics)
+      ? property.metrics.map(restorePropertyMetric)
+      : []
+    sanitizePropertyGroupSettings()
+  }
   const retention = value.retention && typeof value.retention === 'object' ? value.retention : {}
   sqlBuilder.retention.entityField = typeof retention.entityField === 'string' ? retention.entityField : ''
   sqlBuilder.retention.initialEvent = typeof retention.initialEvent === 'string' ? retention.initialEvent : ''
@@ -3452,6 +3539,116 @@ function resetRankingConfig() {
   sqlBuilder.ranking.simultaneousProperties = []
 }
 
+function resetPropertyConfig() {
+  sqlBuilder.property.groupMode = 'property'
+  sqlBuilder.property.groupSettings = {}
+  Object.keys(propertyGroupSettingsVisible).forEach((key) => { delete propertyGroupSettingsVisible[key] })
+}
+
+function propertyGroupSetting(field: string) {
+  const current = sqlBuilder.property.groupSettings[field]
+  return current || { summarize: true, timeGrain: 'day' as const }
+}
+
+function propertyGroupSupportsTimeSettings(field: string) {
+  const option = field ? fieldOptionByValue(field) : null
+  return Boolean(option && isTimeFieldOption(option))
+}
+
+function sanitizePropertyGroupSettings() {
+  const activeFields = new Set(sqlBuilder.groups.filter((field) => propertyGroupSupportsTimeSettings(field)))
+  Object.keys(sqlBuilder.property.groupSettings).forEach((field) => {
+    if (!activeFields.has(field)) delete sqlBuilder.property.groupSettings[field]
+  })
+  Object.keys(propertyGroupSettingsVisible).forEach((field) => {
+    if (!activeFields.has(field)) delete propertyGroupSettingsVisible[field]
+  })
+}
+
+function handlePropertyGroupFieldChange(index: number, value: string) {
+  const previous = sqlBuilder.groups[index]
+  if (previous && previous !== value) {
+    delete sqlBuilder.property.groupSettings[previous]
+    delete propertyGroupSettingsVisible[previous]
+  }
+  sqlBuilder.groups[index] = value
+  if (propertyGroupSupportsTimeSettings(value)) propertyGroupSetting(value)
+  sanitizePropertyGroupSettings()
+}
+
+function removePropertyGroup(index: number) {
+  const field = sqlBuilder.groups[index]
+  sqlBuilder.groups.splice(index, 1)
+  if (field) {
+    delete sqlBuilder.property.groupSettings[field]
+    delete propertyGroupSettingsVisible[field]
+  }
+}
+
+function updatePropertyGroupSetting(field: string, patch: Partial<{ summarize: boolean; timeGrain: 'day' | 'week' | 'month' }>) {
+  const setting = sqlBuilder.property.groupSettings[field] || { summarize: true, timeGrain: 'day' as const }
+  sqlBuilder.property.groupSettings[field] = setting
+  Object.assign(setting, patch)
+}
+
+function handlePropertyGroupModeChange(mode: 'property' | 'audience') {
+  sqlBuilder.property.groupMode = mode === 'audience' ? 'audience' : 'property'
+  if (sqlBuilder.property.groupMode === 'audience') {
+    sqlBuilder.groups = []
+  }
+}
+
+function beginPropertyMetricRename(item: SqlBuilderMetricItem) {
+  propertyMetricAliasDraft[item.id] = item.alias
+  propertyMetricAliasEditing[item.id] = true
+}
+
+function finishPropertyMetricRename(item: SqlBuilderMetricItem) {
+  if (!propertyMetricAliasEditing[item.id]) return
+  item.alias = (propertyMetricAliasDraft[item.id] || '').trim()
+  propertyMetricAliasEditing[item.id] = false
+  propertyMetricAliasDraft[item.id] = ''
+}
+
+function cancelPropertyMetricRename(item: SqlBuilderMetricItem) {
+  propertyMetricAliasEditing[item.id] = false
+  propertyMetricAliasDraft[item.id] = ''
+}
+
+function syncPropertyMetric(item: SqlBuilderMetricItem, fieldChanged = false) {
+  if (fieldChanged || item.aggregation !== 'count') {
+    item.metric = item.field
+  }
+  if (['sum', 'avg'].includes(item.aggregation)) {
+    const option = fieldOptionByValue(item.field)
+    if (option && !isNumericFieldOption(option)) {
+      item.aggregation = 'count_distinct'
+      ElMessage.warning('当前属性不是数值字段，已改为去重数。')
+    }
+  }
+}
+
+function propertyBlockingIssues() {
+  if (!isPropertyAnalysis.value) return []
+  const issues: string[] = []
+  if (sqlBuilder.property.groupMode === 'audience') {
+    issues.push('当前工作空间暂未配置可用人群，暂不能按人群分组统计，请切换为属性。')
+  }
+  if (!sqlBuilder.metricItems.length) issues.push('属性分析至少需要配置一个分析指标。')
+  sqlBuilder.metricItems.forEach((item, index) => {
+    if (!item.field) issues.push(`属性分析请先选择指标${index + 1}属性。`)
+    if (!optionExists(item.field, propertyFieldOptions.value)) {
+      issues.push(`属性分析指标${index + 1}不属于当前可用属性。`)
+    }
+  })
+  sqlBuilder.groups.forEach((field, index) => {
+    if (field && !optionExists(field, propertyFieldOptions.value)) {
+      issues.push(`属性分析分组${index + 1}不属于当前可用属性。`)
+    }
+  })
+  return issues
+}
+
 function handleRankingMetricChange(metric: SqlBuilderRankingMetric, eventValue: string) {
   if (metric.event === eventValue) return
   metric.event = eventValue
@@ -3477,8 +3674,27 @@ function removeRankingMetric(index: number) {
 }
 
 function handleAnalysisModelChange(model: AnalysisModel) {
-  sqlBuilder.analysisModel = ['retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'].includes(model) ? model : 'event'
-  if (sqlBuilder.analysisModel === 'retention') {
+  sqlBuilder.analysisModel = ['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking'].includes(model) ? model : 'event'
+  if (sqlBuilder.analysisModel === 'property') {
+    resetPropertyConfig()
+    sqlBuilder.metricItems = []
+    sqlBuilder.calculatedMetrics = []
+    activeFormulaMetricId.value = ''
+    form.chartType = 'table'
+    resetRetentionConfig()
+    resetFunnelConfig()
+    resetDistributionConfig()
+    resetIntervalConfig()
+    resetPathConfig()
+    resetRevenueConfig()
+    resetAttributionConfig()
+    resetRankingConfig()
+    addMetricItem()
+    if (sqlBuilder.metricItems[0]) {
+      sqlBuilder.metricItems[0].aggregation = 'count_distinct'
+      syncPropertyMetric(sqlBuilder.metricItems[0], true)
+    }
+  } else if (sqlBuilder.analysisModel === 'retention') {
     sqlBuilder.metricItems = []
     sqlBuilder.calculatedMetrics = []
     activeFormulaMetricId.value = ''
@@ -3583,6 +3799,7 @@ function handleAnalysisModelChange(model: AnalysisModel) {
     resetAttributionConfig()
     resetRankingConfig()
   } else {
+    resetPropertyConfig()
     resetRetentionConfig()
     resetFunnelConfig()
     resetDistributionConfig()
@@ -4113,6 +4330,23 @@ function sanitizeRankingConfig() {
   if (cleared.length) ElMessage.warning(`${unique(cleared).join('、')}在当前数据源中无效，已清除，请重新选择。`)
 }
 
+function sanitizePropertyConfig() {
+  if (!isPropertyAnalysis.value) return
+  if (!['property', 'audience'].includes(sqlBuilder.property.groupMode)) {
+    sqlBuilder.property.groupMode = 'property'
+  }
+  sqlBuilder.metricItems.forEach((item) => {
+    if (!optionExists(item.field, propertyFieldOptions.value)) {
+      item.field = ''
+      item.metric = ''
+    } else {
+      syncPropertyMetric(item)
+    }
+  })
+  sqlBuilder.groups = sqlBuilder.groups.filter((field) => optionExists(field, propertyFieldOptions.value))
+  sanitizePropertyGroupSettings()
+}
+
 function rankingBlockingIssues() {
   if (!isRankingAnalysis.value) return []
   const issues: string[] = []
@@ -4560,6 +4794,13 @@ function collectBuilderAiContext() {
   })
   return {
     analysisModel: sqlBuilder.analysisModel,
+    property: sqlBuilder.analysisModel === 'property' ? {
+      content: '对当前数据源中的属性字段进行聚合统计，并可按属性维度拆分结果',
+      groupMode: sqlBuilder.property.groupMode,
+      groupSettings: Object.fromEntries(
+        Object.entries(sqlBuilder.property.groupSettings).map(([field, setting]) => [field, { ...setting }]),
+      ),
+    } : null,
     retention: sqlBuilder.analysisModel === 'retention' ? {
       content: RETENTION_ANALYSIS_CONTEXT_CONTENT,
       entityField: fieldOptionPayload(sqlBuilder.retention.entityField),
@@ -4835,6 +5076,7 @@ function generatedSqlMatchesBuilderMetrics(sql: string) {
 
 function collectLocalBuilderConfigIssues() {
   const eventScopeIssues = builderBlockingScopeIssues()
+  const propertyIssues = propertyBlockingIssues()
   const retentionIssues = retentionBlockingIssues()
   const funnelIssues = funnelBlockingIssues()
   const distributionIssues = distributionBlockingIssues()
@@ -4845,6 +5087,7 @@ function collectLocalBuilderConfigIssues() {
   const rankingIssues = rankingBlockingIssues()
   const issues: string[] = [
     ...eventScopeIssues,
+    ...propertyIssues,
     ...retentionIssues,
     ...funnelIssues,
     ...distributionIssues,
@@ -5190,6 +5433,19 @@ async function generateBuilderAiSql() {
     const valueField = String(resultConfig.value_field || resultConfig.valueField || 'step_count')
     form.y = [valueField]
   }
+  if (sqlBuilder.analysisModel === 'property' || result.analysis_model === 'property') {
+    const resultConfig = result.result_config || result.resultConfig || {}
+    form.chartType = 'table'
+    form.columns = [
+      String(resultConfig.date_field || resultConfig.dateField || 'property_date'),
+      ...(Array.isArray(resultConfig.group_fields || resultConfig.groupFields)
+        ? (resultConfig.group_fields || resultConfig.groupFields).map(String)
+        : []),
+      ...(Array.isArray(resultConfig.metric_fields || resultConfig.metricFields)
+        ? (resultConfig.metric_fields || resultConfig.metricFields).map(String)
+        : []),
+    ]
+  }
   if (sqlBuilder.analysisModel === 'distribution' || result.analysis_model === 'distribution') {
     form.chartType = 'table'
     form.columns = [DISTRIBUTION_DATE_COLUMN, DISTRIBUTION_TOTAL_COLUMN]
@@ -5376,6 +5632,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
     trackingConfig.value = metadata.trackingConfig
     trackingEventCatalog.value = metadata.trackingEventCatalog
     schemaTables.value = metadata.schemaTables.length ? metadata.schemaTables : previewSchemaTables()
+    sanitizePropertyConfig()
     sanitizeRetentionConfig()
     sanitizeFunnelConfig()
     sanitizeDistributionConfig()
@@ -5801,6 +6058,12 @@ function applyDateExpression(value: DashboardDateExpression) {
 function currentPreviewSignature() {
   return JSON.stringify({
     analysisModel: sqlBuilder.analysisModel,
+    property: sqlBuilder.analysisModel === 'property' ? {
+      config: sqlBuilder.property,
+      metrics: sqlBuilder.metricItems,
+      groups: sqlBuilder.groups,
+      filters: sqlBuilder.globalFilters,
+    } : null,
     retention: sqlBuilder.analysisModel === 'retention' ? sqlBuilder.retention : null,
     funnel: sqlBuilder.analysisModel === 'funnel' ? sqlBuilder.funnel : null,
     distribution: sqlBuilder.analysisModel === 'distribution' ? sqlBuilder.distribution : null,
@@ -6562,7 +6825,7 @@ function resetFieldSelections() {
     return
   }
   form.columns = form.columns.filter((field) => fields.includes(field))
-  if (isRetentionAnalysis.value || isDistributionAnalysis.value) {
+  if (isPropertyAnalysis.value || isRetentionAnalysis.value || isDistributionAnalysis.value) {
     form.columns = [...fields]
   } else if (form.columns.length === 0) {
     form.columns = fields.slice(0, 8)
@@ -6604,9 +6867,11 @@ function initEditor() {
   form.primarySource = sourceTypes.includes('external_mcp') && !sourceTypes.includes('sql') ? 'external_mcp' : 'sql'
   form.sql = viewInfo.sql || ''
   form.title = chart.title || ''
-  form.chartType = isRetentionAnalysis.value
+  form.chartType = isPropertyAnalysis.value
     ? 'table'
-    : isFunnelAnalysis.value
+    : isRetentionAnalysis.value
+      ? 'table'
+      : isFunnelAnalysis.value
       ? 'funnel'
       : isDistributionAnalysis.value
         ? 'table'
@@ -7573,7 +7838,95 @@ function closeDrawer() {
               </div>
             </section>
 
-            <section v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" class="builder-section">
+            <section v-if="isPropertyAnalysis" class="builder-section property-builder-section">
+              <div class="builder-section-head">
+                <div class="builder-section-title">
+                  <BuilderSectionIcon class="builder-section-icon" />
+                  <span>分析指标</span>
+                </div>
+                <div class="builder-section-actions">
+                  <button type="button" class="builder-icon-button" title="添加属性指标" @click="addMetricItem">
+                    <el-icon><Plus /></el-icon>
+                  </button>
+                </div>
+              </div>
+              <div class="property-metric-list">
+                <div v-for="(item, index) in sqlBuilder.metricItems" :key="item.id" class="property-metric-row">
+                  <span class="property-metric-index">{{ index + 1 }}</span>
+                  <div class="property-metric-body">
+                    <div
+                      class="property-metric-editor"
+                      :class="{
+                        'is-active': propertyMetricAliasEditing[item.id],
+                        'has-alias': Boolean(item.alias.trim()),
+                      }"
+                    >
+                      <div v-if="propertyMetricAliasEditing[item.id] || item.alias.trim()" class="property-metric-alias-row">
+                        <el-input
+                          v-if="propertyMetricAliasEditing[item.id]"
+                          v-model="propertyMetricAliasDraft[item.id]"
+                          class="property-metric-alias-input"
+                          clearable
+                          maxlength="80"
+                          :placeholder="metricTitle(item, index)"
+                          :aria-label="`重命名属性指标${index + 1}`"
+                          autofocus
+                          @keydown.stop
+                          @keyup.stop
+                          @keydown.enter.prevent="finishPropertyMetricRename(item)"
+                          @keydown.esc.prevent="cancelPropertyMetricRename(item)"
+                          @blur="finishPropertyMetricRename(item)"
+                        />
+                        <span v-else class="property-metric-alias-text">{{ item.alias.trim() }}</span>
+                      </div>
+                      <div class="property-metric-main-row">
+                        <BuilderFieldPicker
+                          v-model="item.field"
+                          :options="propertyFieldOptions"
+                          :loading="schemaLoading"
+                          mode="property"
+                          placeholder="选择属性"
+                          @update:modelValue="syncPropertyMetric(item, true)"
+                        />
+                        <span class="metric-of">的</span>
+                        <el-select v-model="item.aggregation" class="property-aggregation-select" @change="syncPropertyMetric(item)">
+                          <el-option
+                            v-for="option in builderAggregationOptions"
+                            :key="option.value"
+                            :label="option.label"
+                            :value="option.value"
+                          />
+                        </el-select>
+                        <div class="property-metric-actions">
+                          <button
+                            type="button"
+                            class="retention-event-action"
+                            :title="`重命名属性指标${index + 1}`"
+                            :aria-label="`重命名属性指标${index + 1}`"
+                            :disabled="!item.field"
+                            @click="beginPropertyMetricRename(item)"
+                          >
+                            <el-icon><EditPen /></el-icon>
+                          </button>
+                          <button
+                            type="button"
+                            class="builder-icon-button danger"
+                            :title="`删除属性指标${index + 1}`"
+                            :aria-label="`删除属性指标${index + 1}`"
+                            @click="removeMetricItem(index)"
+                          >
+                            <el-icon><Delete /></el-icon>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="!sqlBuilder.metricItems.length" class="builder-empty">暂无分析指标</div>
+              </div>
+            </section>
+
+            <section v-else-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
                   <BuilderSectionIcon class="builder-section-icon" />
@@ -9078,10 +9431,10 @@ function closeDrawer() {
               <BuilderFilterTree
                 :nodes="sqlBuilder.globalFilters"
                 :logic="sqlBuilder.globalFilterLogic"
-                :field-options="eventUserPropertyOptions"
+                :field-options="isPropertyAnalysis ? propertyFieldOptions : eventUserPropertyOptions"
                 :operator-options="builderFilterOperatorOptions"
                 :schema-loading="schemaLoading"
-                picker-mode="filter-property"
+                :picker-mode="isPropertyAnalysis && eventFieldScope.status !== 'active' ? 'property' : 'filter-property'"
                 :filter-property-tabs="['user']"
                 :show-toolbar="false"
                 empty-text="暂无全局筛选"
@@ -9091,27 +9444,101 @@ function closeDrawer() {
 
             <section class="builder-section">
               <div class="builder-section-head">
-                <div class="builder-section-title">
-                  <BuilderSectionIcon class="builder-section-icon" />
-                  <span>分组项</span>
+                  <div class="builder-section-title">
+                    <BuilderSectionIcon class="builder-section-icon" />
+                    <template v-if="isPropertyAnalysis">
+                      <span>按</span>
+                      <el-select
+                        v-model="sqlBuilder.property.groupMode"
+                        class="property-group-mode-select"
+                        size="small"
+                        :teleported="false"
+                        @change="handlePropertyGroupModeChange"
+                      >
+                        <el-option
+                          v-for="option in propertyGroupModeOptions"
+                          :key="option.value"
+                          :label="option.label"
+                          :value="option.value"
+                        />
+                      </el-select>
+                      <span>进行分组统计</span>
+                    </template>
+                  <span v-else>分组项</span>
                 </div>
                 <div class="builder-section-actions">
-                  <button type="button" class="builder-icon-button" title="添加分组项" @click="sqlBuilder.groups.push('')">
+                  <button
+                    type="button"
+                    class="builder-icon-button"
+                    title="添加分组项"
+                    :disabled="isPropertyAnalysis && sqlBuilder.property.groupMode === 'audience'"
+                    @click="sqlBuilder.groups.push('')"
+                  >
                     <el-icon><Plus /></el-icon>
                   </button>
                 </div>
               </div>
-              <div class="group-list">
+              <div v-if="isPropertyAnalysis && sqlBuilder.property.groupMode === 'audience'" class="builder-empty property-group-empty">
+                当前工作空间暂无可用人群
+              </div>
+              <div v-else class="group-list">
                 <div v-for="(_, index) in sqlBuilder.groups" :key="index" class="group-row">
                   <span class="group-index">{{ index + 1 }}</span>
                   <BuilderFieldPicker
-                    v-model="sqlBuilder.groups[index]"
-                    :options="builderFieldOptions"
+                    :model-value="sqlBuilder.groups[index]"
+                    :options="isPropertyAnalysis ? propertyFieldOptions : builderFieldOptions"
                     :loading="schemaLoading"
                     mode="property"
                     placeholder="分组字段"
+                    @update:modelValue="handlePropertyGroupFieldChange(index, $event)"
                   />
-                  <button type="button" class="builder-icon-button danger" @click="sqlBuilder.groups.splice(index, 1)">
+                  <el-popover
+                    v-if="isPropertyAnalysis && propertyGroupSupportsTimeSettings(sqlBuilder.groups[index])"
+                    v-model:visible="propertyGroupSettingsVisible[sqlBuilder.groups[index]]"
+                    placement="bottom-start"
+                    :width="300"
+                    trigger="click"
+                    :teleported="false"
+                  >
+                    <template #reference>
+                      <button
+                        type="button"
+                        class="builder-icon-button property-group-settings-button"
+                        title="设置时间分组"
+                        :aria-label="`设置时间分组${index + 1}`"
+                      >
+                        <el-icon><Setting /></el-icon>
+                      </button>
+                    </template>
+                    <div class="property-group-settings">
+                      <div class="property-group-settings-title">分组方式</div>
+                      <el-radio-group
+                        :model-value="propertyGroupSetting(sqlBuilder.groups[index]).summarize ? 'summarize' : 'raw'"
+                        @update:modelValue="updatePropertyGroupSetting(sqlBuilder.groups[index], { summarize: $event === 'summarize' })"
+                      >
+                        <el-radio value="summarize">汇总</el-radio>
+                        <el-radio value="raw">不汇总</el-radio>
+                      </el-radio-group>
+                      <el-select
+                        v-if="propertyGroupSetting(sqlBuilder.groups[index]).summarize"
+                        class="property-group-time-grain-select"
+                        :model-value="propertyGroupSetting(sqlBuilder.groups[index]).timeGrain"
+                        @update:modelValue="updatePropertyGroupSetting(sqlBuilder.groups[index], { timeGrain: $event })"
+                      >
+                        <el-option
+                          v-for="option in propertyGroupTimeGrainOptions"
+                          :key="option.value"
+                          :label="option.label"
+                          :value="option.value"
+                        />
+                      </el-select>
+                    </div>
+                  </el-popover>
+                  <button
+                    type="button"
+                    class="builder-icon-button danger"
+                    @click="removePropertyGroup(index)"
+                  >
                     <el-icon><Delete /></el-icon>
                   </button>
                 </div>
@@ -9381,7 +9808,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
+            <el-select v-if="!isPropertyAnalysis && !isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -9389,10 +9816,10 @@ function closeDrawer() {
                 :value="item.value"
               />
             </el-select>
-            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : isDistributionAnalysis ? '分布表' : isIntervalAnalysis ? '间隔表' : isPathAnalysis ? '桑基图' : isRevenueAnalysis ? '收入表' : isAttributionAnalysis ? '归因表' : isRankingAnalysis ? '排行榜' : '留存表'" disabled />
+            <el-input v-else :model-value="isPropertyAnalysis ? '属性表' : isFunnelAnalysis ? '漏斗图' : isDistributionAnalysis ? '分布表' : isIntervalAnalysis ? '间隔表' : isPathAnalysis ? '桑基图' : isRevenueAnalysis ? '收入表' : isAttributionAnalysis ? '归因表' : isRankingAnalysis ? '排行榜' : '留存表'" disabled />
           </el-form-item>
         </div>
-        <el-form-item v-if="form.chartType === 'table' && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" :label="t('dashboard.sql_editor_columns')">
+        <el-form-item v-if="form.chartType === 'table' && !isPropertyAnalysis && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" :label="t('dashboard.sql_editor_columns')">
           <el-select v-model="form.columns" multiple filterable>
             <el-option
               v-for="field in fieldOptions"
@@ -11662,17 +12089,180 @@ function closeDrawer() {
   margin-top: 9px;
 }
 
+.property-metric-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.property-metric-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.property-metric-index {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #f5f6fa;
+  color: #8f959e;
+  font-size: 12px;
+}
+
+.property-metric-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.property-metric-editor {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 0 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: background-color 0.16s ease;
+}
+
+.property-metric-editor:hover,
+.property-metric-editor:focus-within,
+.property-metric-editor.is-active {
+  background: #f7f8fa;
+}
+
+.property-metric-alias-row,
+.property-metric-main-row {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.property-metric-main-row {
+  min-height: 28px;
+  gap: 12px;
+}
+
+.property-metric-main-row :deep(.builder-field-picker) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.property-metric-alias-input {
+  width: min(260px, 100%);
+}
+
+.property-metric-alias-input :deep(.ed-input__wrapper),
+.property-metric-alias-input :deep(.el-input__wrapper) {
+  min-height: 28px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.property-metric-alias-input :deep(.ed-input__wrapper:hover),
+.property-metric-alias-input :deep(.ed-input__wrapper.is-focus),
+.property-metric-alias-input :deep(.el-input__wrapper:hover),
+.property-metric-alias-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: inset 0 -1px 0 #2f6bff;
+}
+
+.property-metric-alias-text {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  color: #303133;
+  font-size: 13px;
+}
+
+.property-metric-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.property-aggregation-select {
+  flex: 0 0 104px;
+}
+
+.property-group-mode-select {
+  width: 72px;
+  margin: 0 2px;
+}
+
+.property-group-empty {
+  padding: 18px 0 4px;
+}
+
 .group-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
+@media (max-width: 760px) {
+  .property-metric-row {
+    align-items: flex-start;
+  }
+
+  .property-metric-main-row {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+  }
+
+  .property-metric-main-row .metric-of {
+    display: none;
+  }
+
+  .property-metric-main-row :deep(.builder-field-picker) {
+    flex: 1 1 calc(100% - 112px);
+  }
+
+  .property-aggregation-select {
+    flex: 0 0 104px;
+  }
+
+  .property-metric-actions {
+    margin-left: auto;
+  }
+
+  .property-metric-alias-input {
+    width: 100%;
+  }
+}
+
 .group-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 26px;
+  grid-template-columns: 28px minmax(0, 1fr) 26px 26px;
   gap: 6px;
   align-items: center;
+}
+
+.property-group-settings-button {
+  color: #606a80;
+}
+
+.property-group-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.property-group-settings-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #30343b;
+}
+
+.property-group-time-grain-select {
+  width: 120px;
 }
 
 .group-index {

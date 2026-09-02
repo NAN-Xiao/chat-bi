@@ -1996,6 +1996,160 @@ def _ranking_request(**overrides):
     )
 
 
+def _property_request(**overrides):
+    context = {
+        "analysisModel": "property",
+        "property": {"groupMode": "property"},
+        "chart": {"type": "table"},
+        "time": {
+            "field": {"table": "event", "field": "dt"},
+            "dateParameterType": "yyyymmdd_number",
+            "dateExpression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+        },
+        "metrics": [{
+            "id": "property-metric-1",
+            "field": {"table": "event", "field": "account_id", "value": "event.account_id"},
+            "metricField": {"table": "event", "field": "account_id", "value": "event.account_id"},
+            "aggregation": "count_distinct",
+            "alias": "账号数",
+        }],
+        "groups": [{"table": "event", "field": "country", "value": "event.country"}],
+        "filters": {},
+        "selectedFields": [],
+    }
+    context.update(overrides)
+    return DashboardAiSqlGenerateRequest(
+        datasource=1,
+        chart_type="table",
+        context=context,
+    )
+
+
+def test_property_config_has_independent_normalization_and_validation() -> None:
+    request = _property_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"dt", "account_id", "country"}},
+    )
+
+    assert normalized["analysis_model"] == "property"
+    assert normalized["property"] == {"groupMode": "property", "groupSettings": {}}
+    assert normalized["retention"] == {}
+    assert normalized["funnel"] == {}
+    assert result.success is True
+    assert result.analysis_model == "property"
+
+
+def test_property_group_settings_are_normalized_for_time_dimensions() -> None:
+    request = _property_request(property={
+        "groupMode": "property",
+        "groupSettings": {
+            "event.dt": {"summarize": False, "timeGrain": "week"},
+            "event.country": {"summarize": True, "timeGrain": "invalid"},
+            "": {"summarize": True, "timeGrain": "month"},
+        },
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    assert normalized["property"]["groupSettings"] == {
+        "event.dt": {"summarize": False, "timeGrain": "week"},
+        "event.country": {"summarize": True, "timeGrain": "day"},
+    }
+
+
+def test_property_audience_group_mode_is_explicitly_blocked_without_audience_assets() -> None:
+    request = _property_request(property={"groupMode": "audience"})
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"dt", "account_id", "country"}},
+    )
+
+    assert normalized["property"] == {"groupMode": "audience", "groupSettings": {}}
+    assert result.success is False
+    assert any("暂不能按人群分组统计" in issue for issue in result.issues)
+
+
+def test_property_analysis_rejects_event_fields_and_missing_metrics() -> None:
+    event_field = {
+        "kind": "tracking-event",
+        "eventTable": "event",
+        "eventNameField": "event_name",
+        "eventName": "login",
+        "field": "event_name",
+    }
+    request = _property_request(metrics=[{
+        "field": event_field,
+        "metricField": event_field,
+        "aggregation": "count_distinct",
+        "alias": "错误指标",
+    }])
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"dt", "event_name", "country"}},
+    )
+
+    assert result.success is False
+    assert any("必须选择属性字段" in issue for issue in result.issues)
+
+    empty_request = _property_request(metrics=[])
+    empty_normalized = ai_sql_generator._normalize_manual_config(empty_request)
+    empty_result = ai_sql_generator._deterministic_validate_manual_config(
+        empty_request,
+        empty_normalized,
+        ai_sql_generator._build_formula_ir(empty_normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"dt", "country"}},
+    )
+    assert "属性分析至少需要配置一个分析指标。" in empty_result.issues
+
+
+def test_property_prompt_plan_and_result_contract_keep_property_semantics() -> None:
+    request = _property_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"),
+        "",
+        "",
+    ) + "\n" + ai_sql_generator._dashboard_sql_system_prompt("property")
+    plan = ai_sql_generator._build_sql_plan(normalized, ai_sql_generator._build_formula_ir(normalized))
+    valid_sql = (
+        "SELECT dt AS property_date, country AS group_1, "
+        "COUNT(DISTINCT account_id) AS property_metric_1 "
+        "FROM event GROUP BY dt, country ORDER BY dt, country"
+    )
+
+    assert "只能使用 metrics、groups、filters、time 和 property 配置" in prompt
+    assert "禁止补充任何事件名条件" in prompt
+    assert plan["analysis_model"] == "property"
+    assert plan["result_contract"] == {
+        "type": "property_table",
+        "required_columns": ["property_date", "group_1", "property_metric_1"],
+        "date_field": "property_date",
+        "group_fields": ["group_1"],
+        "metric_fields": ["property_metric_1"],
+        "final_grain": ["property_date", "group_1"],
+    }
+    assert ai_sql_generator._property_sql_result_issues(valid_sql, normalized) == []
+    invalid = ai_sql_generator._property_sql_result_issues(
+        "SELECT dt AS property_date, COUNT(account_id) AS property_metric_1 FROM event GROUP BY dt",
+        normalized,
+    )
+    assert any("group_1" in issue for issue in invalid)
+    assert any("COUNT(DISTINCT" in issue for issue in invalid)
+
+
 def test_ranking_config_has_independent_normalization_and_validation() -> None:
     request = _ranking_request()
     normalized = ai_sql_generator._normalize_manual_config(request)
