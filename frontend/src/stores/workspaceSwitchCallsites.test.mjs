@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
+const appSource = read('../App.vue')
 const callsiteSources = [
   ['ProjectSelector.vue', read('../components/layout/ProjectSelector.vue')],
   ['Person.vue', read('../components/layout/Person.vue')],
@@ -14,6 +15,10 @@ const callsiteSources = [
 const userSource = read('./user.ts')
 const chatSource = read('../views/chat/index.vue')
 const resourceTreeSource = read('../views/dashboard/common/ResourceTree.vue')
+const dataDictionarySource = read('../views/system/data-dictionary/DataDictionary.vue')
+const distributionIntervalSettingsSource = read(
+  '../views/dashboard/common/DistributionIntervalSettings.vue'
+)
 
 test('普通切换调用点不再重复加载数据源或发送 changing/changed', () => {
   for (const [name, source] of callsiteSources) {
@@ -30,15 +35,25 @@ test('普通切换调用点不再重复加载数据源或发送 changing/changed
   }
 })
 
-test('工作空间切换成功提示使用较短的展示时长', () => {
+test('消息提示默认展示时长由根配置统一为 700ms', () => {
+  assert.match(appSource, /const messageConfig = \{ duration: 700 \}/)
+  assert.match(appSource, /<el-config-provider[^>]*:message="messageConfig"/)
+
   for (const name of ['ProjectSelector.vue', 'Person.vue']) {
     const source = callsiteSources.find(([callsiteName]) => callsiteName === name)[1]
     assert.match(
       source,
-      /ElMessage\.success\(\{[\s\S]*?message: t\('common\.switch_success'\),[\s\S]*?duration: 700,[\s\S]*?\}\)/,
-      `${name} should close the workspace switch success message after 700ms`
+      /ElMessage\.success\(t\('common\.switch_success'\)\)/,
+      `${name} should use the globally configured message duration`
     )
+    assert.doesNotMatch(source, /duration: 700/)
   }
+
+  assert.match(dataDictionarySource, /import \{ ElMessage \} from 'element-plus-secondary'/)
+  assert.match(
+    distributionIntervalSettingsSource,
+    /import \{ ElMessage \} from 'element-plus-secondary'/
+  )
 })
 
 test('退出最后一个工作空间也由 User Store 统一处理', () => {

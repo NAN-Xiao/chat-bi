@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus-secondary'
 import { Delete, Download, Plus, Refresh, Upload } from '@element-plus/icons-vue'
 import { datasourceApi } from '@/api/datasource'
 import { trackingConfigApi } from '@/api/system'

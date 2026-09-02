@@ -87,10 +87,7 @@ const handleWorkspaceChange = async (tenant: TenantInfo) => {
     if (!switched) return
     dashboardStore.canvasDataInit()
     emit('selectProject', null)
-    ElMessage.success({
-      message: t('common.switch_success'),
-      duration: 700,
-    })
+    ElMessage.success(t('common.switch_success'))
     popoverRef.value?.hide?.()
   } finally {
     workspaceSwitchingId.value = ''

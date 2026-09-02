@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Setting } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus-secondary'
 import type { DistributionIntervalConfig, DistributionIntervalMode } from './distributionAnalysis'
 
 const props = defineProps<{

@@ -165,10 +165,7 @@ const enterTenantAdmin = async (tenant?: TenantInfo) => {
       const switched = await userStore.switchTenant(tenantId)
       if (!switched) return
       dashboardStore.canvasDataInit()
-      ElMessage.success({
-        message: t('common.switch_success'),
-        duration: 700,
-      })
+      ElMessage.success(t('common.switch_success'))
     }
     popoverRef.value?.hide?.()
     router.push(resolveManagementHome(userStore))
