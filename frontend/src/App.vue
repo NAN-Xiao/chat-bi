@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { ElConfigProvider } from 'element-plus-secondary'
 import { getElementLocale } from '@/i18n'
 
-const messageConfig = { duration: 700 }
+const messageConfig = { duration: 3000 }
 const elLanguage = computed(() => {
   return getElementLocale()
 })

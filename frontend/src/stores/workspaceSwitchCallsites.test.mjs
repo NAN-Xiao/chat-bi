@@ -35,8 +35,8 @@ test('普通切换调用点不再重复加载数据源或发送 changing/changed
   }
 })
 
-test('消息提示默认展示时长由根配置统一为 700ms', () => {
-  assert.match(appSource, /const messageConfig = \{ duration: 700 \}/)
+test('消息提示默认展示时长由根配置统一为 3000ms', () => {
+  assert.match(appSource, /const messageConfig = \{ duration: 3000 \}/)
   assert.match(appSource, /<el-config-provider[^>]*:message="messageConfig"/)
 
   for (const name of ['ProjectSelector.vue', 'Person.vue']) {
@@ -46,7 +46,7 @@ test('消息提示默认展示时长由根配置统一为 700ms', () => {
       /ElMessage\.success\(t\('common\.switch_success'\)\)/,
       `${name} should use the globally configured message duration`
     )
-    assert.doesNotMatch(source, /duration: 700/)
+    assert.doesNotMatch(source, /duration\s*:/)
   }
 
   assert.match(dataDictionarySource, /import \{ ElMessage \} from 'element-plus-secondary'/)
