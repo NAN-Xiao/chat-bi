@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CopyDocument, Delete, EditPen, Filter, FolderOpened, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
+import { CopyDocument, Delete, EditPen, Filter, FolderOpened, InfoFilled, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
 import { datasourceApi } from '@/api/datasource'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
@@ -1028,17 +1028,20 @@ const analysisFieldOptions = computed(() => {
 })
 const analysisFieldPickerMode = computed(() => usesTrackingEventPicker.value ? 'tracking-event' : 'property')
 const formulaFieldPickerPlaceholder = computed(() => usesTrackingEventPicker.value ? '选择事件' : '选择字段')
-const analysisModelOptions = [
+const analysisModelOptions: Array<{ label: string; value: AnalysisModel; content?: string }> = [
   { label: '事件分析', value: 'event' as AnalysisModel },
-  { label: '留存分析', value: 'retention' as AnalysisModel },
-  { label: '漏斗分析', value: 'funnel' as AnalysisModel },
-  { label: '分布分析', value: 'distribution' as AnalysisModel },
-  { label: '间隔分析', value: 'interval' as AnalysisModel },
-  { label: '路径分析', value: 'path' as AnalysisModel },
-  { label: '收入分析', value: 'revenue' as AnalysisModel },
-  { label: '归因分析', value: 'attribution' as AnalysisModel },
-  { label: '排行榜', value: 'ranking' as AnalysisModel },
+  { label: '留存分析', value: 'retention' as AnalysisModel, content: RETENTION_ANALYSIS_CONTEXT_CONTENT },
+  { label: '漏斗分析', value: 'funnel' as AnalysisModel, content: '以某段时间做过步骤1的用户为样本，查看窗口期内，指定步骤下用户的转化情况' },
+  { label: '分布分析', value: 'distribution' as AnalysisModel, content: '一段时间内，指定用户参与某一事件的总完成次数或属性值按个人聚合后的全员分布情况' },
+  { label: '间隔分析', value: 'interval' as AnalysisModel, content: '分析同一主体依次完成起点事件和终点事件的时间间隔；不同事件按最后一个连续起点匹配后续第一个终点，相同事件按相邻两次匹配' },
+  { label: '路径分析', value: 'path' as AnalysisModel, content: '按会话追踪参与分析事件的行为顺序，展示初始事件之后的节点流入和流出' },
+  { label: '收入分析', value: 'revenue' as AnalysisModel, content: '以同期初始事件形成主体 Cohort，统计其在观察期内参与付费事件产生的每日及累计收入指标' },
+  { label: '归因分析', value: 'attribution' as AnalysisModel, content: '把目标事件发生前窗口期内的归因事件按线性归因方式均分贡献，统计各归因事件获得的目标次数、目标值和贡献占比' },
+  { label: '排行榜', value: 'ranking' as AnalysisModel, content: '按排行主体聚合主排行指标并生成名次，同时展示附加指标和属性；并列名次严格使用配置规则' },
 ]
+const analysisModelContent = computed(() =>
+  analysisModelOptions.find((option) => option.value === sqlBuilder.analysisModel)?.content || ''
+)
 const isRetentionAnalysis = computed(() => sqlBuilder.analysisModel === 'retention')
 const isFunnelAnalysis = computed(() => sqlBuilder.analysisModel === 'funnel')
 const isDistributionAnalysis = computed(() => sqlBuilder.analysisModel === 'distribution')
@@ -8323,6 +8326,7 @@ function closeDrawer() {
                   <div class="builder-section-title">
                     <BuilderSectionIcon class="builder-section-icon" />
                     <span>路径分析</span>
+                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
                   </div>
                 </div>
               </div>
@@ -10190,6 +10194,12 @@ function closeDrawer() {
   display: flex;
   align-items: center;
   gap: 20px;
+}
+
+.analysis-model-info-icon {
+  color: #8a93a3;
+  cursor: help;
+  font-size: 14px;
 }
 
 .path-config-block,
