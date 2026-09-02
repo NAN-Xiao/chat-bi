@@ -348,6 +348,7 @@ test('keeps path analysis isolated and exposes event split and session controls'
   assert.match(source, /<PathEventList[\s\S]*?:max-events="PATH_EVENT_LIMIT"/)
   assert.match(source, /<PathSessionGapPicker v-model="sqlBuilder\.path\.sessionGapSeconds"/)
   assert.match(source, /class="path-initial-event-tag"/)
+  assert.match(source, /const pathInitialEventOptions = computed\(\(\) => \{[\s\S]*?pathEventOptions\.value\.filter\(\(option\) => selectedEvents\.has\(option\.value\)\)/)
   assert.match(source, /路径分析只能使用桑基图结果|桑基图/)
   assert.match(pathEventListSource, /class="path-event-trigger"/)
   assert.match(pathEventListSource, /class="path-split-list"/)

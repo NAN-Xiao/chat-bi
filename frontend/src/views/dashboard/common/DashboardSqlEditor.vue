@@ -1075,17 +1075,14 @@ const revenueEntityFieldOptions = computed(() => builderFieldOptions.value)
 const revenueEventOptions = computed(() => trackingEventCatalogOptions.value)
 const revenuePaymentPropertyOptions = computed(() => eventFilterFieldOptions(sqlBuilder.revenue.paymentEvent))
 const revenueNumericPropertyOptions = computed(() => revenuePaymentPropertyOptions.value.filter(isNumericFieldOption))
-const pathInitialEventOptions = computed(() => sqlBuilder.path.events
-  .filter((item) => item.event)
-  .map((item) => {
-    const option = fieldOptionByValue(item.event)
-    return {
-      value: item.event,
-      label: option?.displayName || option?.label || item.event,
-      field: option?.field || item.event,
-      table: option?.table || '',
-    }
-  }))
+const pathInitialEventOptions = computed(() => {
+  const selectedEvents = new Set(
+    sqlBuilder.path.events
+      .map((item) => item.event)
+      .filter(Boolean)
+  )
+  return pathEventOptions.value.filter((option) => selectedEvents.has(option.value))
+})
 const attributionEntityFieldOptions = computed(() => builderFieldOptions.value)
 const attributionEventOptions = computed(() => trackingEventCatalogOptions.value)
 const attributionTargetMetricFieldOptions = computed(() => metricMeasureFieldOptions({
