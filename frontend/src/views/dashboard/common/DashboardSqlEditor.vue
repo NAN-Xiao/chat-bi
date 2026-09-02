@@ -323,6 +323,13 @@ type SqlBuilderPropertyConfig = {
     summarize: boolean
     timeGrain: 'day' | 'week' | 'month'
   }>
+  audiences: SqlBuilderAudienceGroup[]
+}
+type SqlBuilderAudienceGroup = {
+  id: string
+  name: string
+  filterLogic: SqlBuilderFilterLogic
+  filters: SqlBuilderFilter[]
 }
 type SqlBuilderCalculatedMetricItem = {
   id: string
@@ -469,6 +476,7 @@ const sqlBuilder = reactive({
   property: {
     groupMode: 'property',
     groupSettings: {},
+    audiences: [],
   } as SqlBuilderPropertyConfig,
   retention: {
     entityField: '',
@@ -597,6 +605,8 @@ const funnelAliasDraft = reactive<Record<string, string>>({})
 const propertyMetricAliasEditing = reactive<Record<string, boolean>>({})
 const propertyMetricAliasDraft = reactive<Record<string, string>>({})
 const propertyGroupSettingsVisible = reactive<Record<string, boolean>>({})
+const propertyAudienceAliasEditing = reactive<Record<string, boolean>>({})
+const propertyAudienceAliasDraft = reactive<Record<string, string>>({})
 const distributionFilterExpanded = ref(false)
 const intervalFilterExpanded = reactive<Record<IntervalEventTarget, boolean>>({
   start: false,
@@ -1080,12 +1090,20 @@ const attributionMethodOptions: Array<{ label: string; value: AttributionMethod 
 const isRankingAnalysis = computed(() => sqlBuilder.analysisModel === 'ranking')
 const propertyFieldOptions = computed<SchemaFieldOption[]>(() => {
   if (eventFieldScope.value.status !== 'active') return builderFieldOptions.value as SchemaFieldOption[]
-  const options = [...eventUserPropertyOptions.value] as SchemaFieldOption[]
-  const known = new Set(options.map((option) => option.value))
-  ;(builderFieldOptions.value as SchemaFieldOption[]).forEach((option) => {
-    if (isTimeFieldOption(option) && !known.has(option.value)) options.push(option)
+  const options = [
+    ...trackingEventPropertyOptions.value,
+    ...eventUserPropertyOptions.value,
+  ] as SchemaFieldOption[]
+  const uniqueOptions = new Map<string, SchemaFieldOption>()
+  options.forEach((option) => {
+    if (!uniqueOptions.has(option.value)) uniqueOptions.set(option.value, option)
   })
-  return options
+  const dedupedOptions = Array.from(uniqueOptions.values())
+  const known = new Set(dedupedOptions.map((option) => option.value))
+  ;(builderFieldOptions.value as SchemaFieldOption[]).forEach((option) => {
+    if (isTimeFieldOption(option) && !known.has(option.value)) dedupedOptions.push(option)
+  })
+  return dedupedOptions
 })
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
@@ -1488,6 +1506,23 @@ function emptyBuilderFilter(): SqlBuilderFilter {
     operator: 'eq',
     value: '',
     logic: 'and',
+  }
+}
+
+function createAudienceGroup(index: number, withDefaultFilter = false): SqlBuilderAudienceGroup {
+  const filters = withDefaultFilter ? [emptyBuilderFilter()] : []
+  if (filters[0]) filters[0].field = eventUserPropertyOptions.value[0]?.value || ''
+  return {
+    id: nodeId('audience'),
+    name: `人群${index + 1}`,
+    filterLogic: 'and',
+    filters,
+  }
+}
+
+function ensurePropertyAudienceGroups() {
+  if (!sqlBuilder.property.audiences.length) {
+    sqlBuilder.property.audiences.push(createAudienceGroup(0))
   }
 }
 
@@ -2299,6 +2334,14 @@ function builderConfigForSave() {
       groupSettings: Object.fromEntries(
         Object.entries(sqlBuilder.property.groupSettings).map(([field, setting]) => [field, { ...setting }]),
       ),
+      audiences: sqlBuilder.property.audiences.map((group) => ({
+        id: group.id,
+        name: group.name.trim() || `人群${sqlBuilder.property.audiences.indexOf(group) + 1}`,
+        filters: {
+          logic: builderLogic(group.filterLogic),
+          rules: compactBuilderFilters(group.filters),
+        },
+      })),
       metrics: sqlBuilder.metricItems.map(serializePropertyMetric),
     } : undefined,
     retention: sqlBuilder.analysisModel === 'retention' ? {
@@ -2496,10 +2539,19 @@ function restoreSqlBuilderState(value: any) {
       }
     })
   }
+  sqlBuilder.property.audiences = Array.isArray(property.audiences)
+    ? property.audiences.map((item: any, index: number) => ({
+        id: typeof item?.id === 'string' && item.id ? item.id : nodeId('audience'),
+        name: typeof item?.name === 'string' && item.name.trim() ? item.name : `人群${index + 1}`,
+        filterLogic: builderLogic(item?.filters?.logic),
+        filters: restoreBuilderFilters(item?.filters?.rules),
+      }))
+    : []
   if (sqlBuilder.analysisModel === 'property') {
     sqlBuilder.metricItems = Array.isArray(property.metrics)
       ? property.metrics.map(restorePropertyMetric)
       : []
+    if (sqlBuilder.property.groupMode === 'audience') ensurePropertyAudienceGroups()
     sanitizePropertyGroupSettings()
   }
   const retention = value.retention && typeof value.retention === 'object' ? value.retention : {}
@@ -3395,6 +3447,11 @@ function builderFilterScopeIssues() {
       )
     })
   }
+  if (isPropertyAnalysis.value && sqlBuilder.property.groupMode === 'audience') {
+    sqlBuilder.property.audiences.forEach((group, index) => {
+      appendFilterRangeIssues(group.filters, eventUserPropertyOptions.value, `property.audiences[${index}].filter`, issues)
+    })
+  }
   appendFilterRangeIssues(sqlBuilder.globalFilters, eventUserPropertyOptions.value, 'global_filter', issues)
   return unique(issues)
 }
@@ -3560,7 +3617,10 @@ function resetRankingConfig() {
 function resetPropertyConfig() {
   sqlBuilder.property.groupMode = 'property'
   sqlBuilder.property.groupSettings = {}
+  sqlBuilder.property.audiences = []
   Object.keys(propertyGroupSettingsVisible).forEach((key) => { delete propertyGroupSettingsVisible[key] })
+  Object.keys(propertyAudienceAliasEditing).forEach((key) => { delete propertyAudienceAliasEditing[key] })
+  Object.keys(propertyAudienceAliasDraft).forEach((key) => { delete propertyAudienceAliasDraft[key] })
 }
 
 function propertyGroupSetting(field: string) {
@@ -3613,7 +3673,38 @@ function handlePropertyGroupModeChange(mode: 'property' | 'audience') {
   sqlBuilder.property.groupMode = mode === 'audience' ? 'audience' : 'property'
   if (sqlBuilder.property.groupMode === 'audience') {
     sqlBuilder.groups = []
+    ensurePropertyAudienceGroups()
   }
+}
+
+function addPropertyAudience() {
+  ensurePropertyAudienceGroups()
+  sqlBuilder.property.audiences.push(createAudienceGroup(sqlBuilder.property.audiences.length, true))
+}
+
+function removePropertyAudience(index: number) {
+  const [removed] = sqlBuilder.property.audiences.splice(index, 1)
+  if (!removed) return
+  delete propertyAudienceAliasEditing[removed.id]
+  delete propertyAudienceAliasDraft[removed.id]
+}
+
+function beginPropertyAudienceRename(group: SqlBuilderAudienceGroup) {
+  propertyAudienceAliasDraft[group.id] = group.name
+  propertyAudienceAliasEditing[group.id] = true
+}
+
+function finishPropertyAudienceRename(group: SqlBuilderAudienceGroup) {
+  if (!propertyAudienceAliasEditing[group.id]) return
+  const fallback = `人群${sqlBuilder.property.audiences.indexOf(group) + 1}`
+  group.name = propertyAudienceAliasDraft[group.id]?.trim() || fallback
+  propertyAudienceAliasEditing[group.id] = false
+  propertyAudienceAliasDraft[group.id] = ''
+}
+
+function cancelPropertyAudienceRename(group: SqlBuilderAudienceGroup) {
+  propertyAudienceAliasEditing[group.id] = false
+  propertyAudienceAliasDraft[group.id] = ''
 }
 
 function beginPropertyMetricRename(item: SqlBuilderMetricItem) {
@@ -3649,9 +3740,6 @@ function syncPropertyMetric(item: SqlBuilderMetricItem, fieldChanged = false) {
 function propertyBlockingIssues() {
   if (!isPropertyAnalysis.value) return []
   const issues: string[] = []
-  if (sqlBuilder.property.groupMode === 'audience') {
-    issues.push('当前工作空间暂未配置可用人群，暂不能按人群分组统计，请切换为属性。')
-  }
   if (!sqlBuilder.metricItems.length) issues.push('属性分析至少需要配置一个分析指标。')
   sqlBuilder.metricItems.forEach((item, index) => {
     if (!item.field) issues.push(`属性分析请先选择指标${index + 1}属性。`)
@@ -3664,6 +3752,27 @@ function propertyBlockingIssues() {
       issues.push(`属性分析分组${index + 1}不属于当前可用属性。`)
     }
   })
+  if (sqlBuilder.property.groupMode === 'audience') {
+    if (!sqlBuilder.property.audiences.length) {
+      issues.push('按人群分析至少需要配置一个人群。')
+    }
+    sqlBuilder.property.audiences.forEach((group, index) => {
+      if (!group.name.trim()) issues.push(`人群${index + 1}名称不能为空。`)
+      filterFieldValues(group.filters).forEach((field) => {
+        if (!optionExists(field, eventUserPropertyOptions.value)) {
+          issues.push(`人群${index + 1}筛选字段不属于当前用户属性。`)
+        }
+      })
+      const visit = (nodes: SqlBuilderFilter[]) => nodes.forEach((node) => {
+        if (node.type === 'group' || Array.isArray(node.children)) {
+          visit(node.children || [])
+        } else if (node.field && !builderFilterRuleHasValue(node)) {
+          issues.push(`人群${index + 1}筛选条件的值不能为空。`)
+        }
+      })
+      visit(group.filters)
+    })
+  }
   return issues
 }
 
@@ -4795,6 +4904,9 @@ function selectedBuilderFieldValues() {
       ...sqlBuilder.ranking.simultaneousMetrics.flatMap((item) => [item.event, item.metricField]),
       ...sqlBuilder.ranking.simultaneousProperties,
     ] : []),
+    ...(sqlBuilder.analysisModel === 'property' && sqlBuilder.property.groupMode === 'audience'
+      ? sqlBuilder.property.audiences.flatMap((group) => filterFieldValues(group.filters))
+      : []),
     ...sqlBuilder.metricItems.flatMap((item) => [item.field, item.metric]),
     ...sqlBuilder.calculatedMetrics.flatMap((item) => [item.pendingEventField, item.pendingMetricField]),
     ...formulaFields,
@@ -4820,6 +4932,16 @@ function collectBuilderAiContext() {
       groupSettings: Object.fromEntries(
         Object.entries(sqlBuilder.property.groupSettings).map(([field, setting]) => [field, { ...setting }]),
       ),
+      audiences: sqlBuilder.property.groupMode === 'audience'
+        ? sqlBuilder.property.audiences.map((group, index) => ({
+            order: index + 1,
+            name: group.name.trim() || `人群${index + 1}`,
+            filters: {
+              logic: group.filterLogic,
+              rules: filterContext(group.filters),
+            },
+          }))
+        : [],
     } : null,
     retention: sqlBuilder.analysisModel === 'retention' ? {
       content: RETENTION_ANALYSIS_CONTEXT_CONTENT,
@@ -6085,6 +6207,7 @@ function currentPreviewSignature() {
       config: sqlBuilder.property,
       metrics: sqlBuilder.metricItems,
       groups: sqlBuilder.groups,
+      audiences: sqlBuilder.property.audiences,
       filters: sqlBuilder.globalFilters,
     } : null,
     retention: sqlBuilder.analysisModel === 'retention' ? sqlBuilder.retention : null,
@@ -9533,16 +9656,73 @@ function closeDrawer() {
                   <button
                     type="button"
                     class="builder-icon-button"
-                    title="添加分组项"
-                    :disabled="isPropertyAnalysis && sqlBuilder.property.groupMode === 'audience'"
-                    @click="sqlBuilder.groups.push('')"
+                    :title="isPropertyAnalysis && sqlBuilder.property.groupMode === 'audience' ? '添加人群' : '添加分组项'"
+                    @click="isPropertyAnalysis && sqlBuilder.property.groupMode === 'audience' ? addPropertyAudience() : sqlBuilder.groups.push('')"
                   >
                     <el-icon><Plus /></el-icon>
                   </button>
                 </div>
               </div>
-              <div v-if="isPropertyAnalysis && sqlBuilder.property.groupMode === 'audience'" class="builder-empty property-group-empty">
-                当前工作空间暂无可用人群
+              <div v-if="isPropertyAnalysis && sqlBuilder.property.groupMode === 'audience'" class="property-audience-list">
+                <div
+                  v-for="(group, index) in sqlBuilder.property.audiences"
+                  :key="group.id"
+                  class="property-audience-group"
+                >
+                  <div class="property-audience-head">
+                    <span class="property-audience-index">{{ index + 1 }}</span>
+                    <el-input
+                      v-if="propertyAudienceAliasEditing[group.id]"
+                      v-model="propertyAudienceAliasDraft[group.id]"
+                      class="property-audience-name-input"
+                      size="small"
+                      :aria-label="`重命名${group.name}`"
+                      @keydown.enter.prevent="finishPropertyAudienceRename(group)"
+                      @keydown.esc.prevent="cancelPropertyAudienceRename(group)"
+                      @blur="finishPropertyAudienceRename(group)"
+                    />
+                    <span v-else class="property-audience-name">{{ group.name }}</span>
+                    <button
+                      type="button"
+                      class="builder-icon-button property-audience-edit"
+                      :title="`重命名${group.name}`"
+                      :aria-label="`重命名${group.name}`"
+                      @click="beginPropertyAudienceRename(group)"
+                    >
+                      <el-icon><EditPen /></el-icon>
+                    </button>
+                    <button
+                      type="button"
+                      class="builder-icon-button danger property-audience-delete"
+                      :title="`删除${group.name}`"
+                      :aria-label="`删除${group.name}`"
+                      @click="removePropertyAudience(index)"
+                    >
+                      <el-icon><Delete /></el-icon>
+                    </button>
+                  </div>
+                  <div v-if="group.filters.length" class="property-audience-filter-tree">
+                    <BuilderFilterTree
+                      :nodes="group.filters"
+                      :logic="group.filterLogic"
+                      :field-options="eventUserPropertyOptions"
+                      :operator-options="builderFilterOperatorOptions"
+                      :schema-loading="schemaLoading"
+                      picker-mode="filter-property"
+                      :filter-property-tabs="['user']"
+                      :show-toolbar="true"
+                      empty-text="暂无筛选条件"
+                      @update:logic="group.filterLogic = $event"
+                    />
+                  </div>
+                  <div v-else class="property-audience-all-users">全部用户</div>
+                  <div class="builder-inline-actions property-audience-actions">
+                    <button type="button" class="builder-add-link" @click="group.filters.push(emptyBuilderFilter())">
+                      <el-icon><Plus /></el-icon>
+                      <span>筛选条件</span>
+                    </button>
+                  </div>
+                </div>
               </div>
               <div v-else class="group-list">
                 <div v-for="(_, index) in sqlBuilder.groups" :key="index" class="group-row">
@@ -12283,6 +12463,71 @@ function closeDrawer() {
 
 .property-group-empty {
   padding: 18px 0 4px;
+}
+
+.property-audience-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.property-audience-group {
+  padding: 10px 12px 8px;
+  border: 1px solid rgba(31, 35, 41, 0.08);
+  border-radius: 6px;
+  background: #f8f9fb;
+}
+
+.property-audience-head {
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  gap: 6px;
+}
+
+.property-audience-index {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #e8efff;
+  color: #2f6bff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.property-audience-name {
+  flex: 1;
+  min-width: 0;
+  color: #303133;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.property-audience-name-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.property-audience-edit,
+.property-audience-delete {
+  flex: 0 0 auto;
+}
+
+.property-audience-all-users {
+  margin: 8px 0 2px 26px;
+  color: #646a73;
+  font-size: 12px;
+}
+
+.property-audience-filter-tree {
+  margin: 8px 0 0 26px;
+}
+
+.property-audience-actions {
+  margin: 4px 0 0 26px;
 }
 
 .group-list {

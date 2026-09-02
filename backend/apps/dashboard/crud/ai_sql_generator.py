@@ -277,6 +277,13 @@ def _tracking_event_name_from_field(field: Any) -> str:
     return ""
 
 
+def _is_tracking_event_field(field: Any) -> bool:
+    """Return whether a configured field represents an event selector, not an event property."""
+    if isinstance(field, str):
+        return field.startswith("tracking-event:")
+    return isinstance(field, dict) and str(field.get("kind") or "") == "tracking-event"
+
+
 _FORMULA_OPERATORS = {"+", "-", "*", "/"}
 _FORMULA_PRECEDENCE = {"+": 1, "-": 1, "*": 2, "/": 2}
 _SUPPORTED_METRIC_AGGREGATIONS = {"count", "count_distinct", "sum", "avg", "max", "min"}
@@ -788,6 +795,23 @@ def _normalize_manual_config(
                 "timeGrain": grain if grain in {"day", "week", "month"} else "day",
             }
     property_config["groupSettings"] = group_settings
+    raw_audiences = property_config.get("audiences") or property_config.get("audience_groups")
+    audiences: list[dict[str, Any]] = []
+    if isinstance(raw_audiences, list):
+        for index, item in enumerate(raw_audiences):
+            if not isinstance(item, dict):
+                continue
+            filters = item.get("filters") or item.get("filter")
+            filters = dict(filters) if isinstance(filters, dict) else {}
+            logic = str(filters.get("logic") or "and").strip().lower()
+            filters["logic"] = logic if logic in {"and", "or"} else "and"
+            filters["rules"] = filters.get("rules") if isinstance(filters.get("rules"), list) else []
+            audiences.append({
+                "id": str(item.get("id") or f"audience-{index + 1}"),
+                "name": str(item.get("name") or f"人群{index + 1}").strip() or f"人群{index + 1}",
+                "filters": filters,
+            })
+    property_config["audiences"] = audiences
     retention = dict(context.get("retention") or {}) if isinstance(context.get("retention"), dict) else {}
     funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
     if analysis_model == "funnel" or funnel:
@@ -1331,6 +1355,16 @@ def _configured_field_permission_issues(
         issues.extend(_json_subfield_mapping_issues(field, label))
         issues.extend(_field_table_permission_issues(field, label, allowed_tables))
         issues.extend(_field_schema_permission_issues(field, label, allowed_fields_by_table))
+    property_config = normalized_config.get("property") if isinstance(normalized_config.get("property"), dict) else {}
+    if str(property_config.get("groupMode") or "property").strip().lower() == "audience":
+        audiences = property_config.get("audiences") if isinstance(property_config.get("audiences"), list) else []
+        for index, audience in enumerate(audiences):
+            label = str(audience.get("name") or f"人群{index + 1}").strip() or f"人群{index + 1}"
+            for rule_index, field in enumerate(_iter_filter_rule_fields(audience.get("filters"))):
+                rule_label = f"{label}筛选条件{rule_index + 1}"
+                issues.extend(_json_subfield_mapping_issues(field, rule_label))
+                issues.extend(_field_table_permission_issues(field, rule_label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(field, rule_label, allowed_fields_by_table))
     return _unique_text_items(issues)
 
 
@@ -1372,6 +1406,12 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
         table_name = _field_table_name(field)
         if table_name:
             tables.add(table_name)
+    property_config = normalized_config.get("property") if isinstance(normalized_config.get("property"), dict) else {}
+    for audience in property_config.get("audiences") if isinstance(property_config.get("audiences"), list) else []:
+        for field in _iter_filter_rule_fields(audience.get("filters") if isinstance(audience, dict) else None):
+            table_name = _field_table_name(field)
+            if table_name:
+                tables.add(table_name)
     for base_metric in _list_dict_items(formula_ir.get("base_metrics")):
         table_name = str(base_metric.get("table") or "").strip()
         if table_name:
@@ -1555,17 +1595,29 @@ def _deterministic_validate_manual_config(
     if analysis_model == "property":
         property_config = normalized_config.get("property") if isinstance(normalized_config.get("property"), dict) else {}
         if str(property_config.get("groupMode") or "property").strip().lower() == "audience":
-            issues.append("当前工作空间暂未配置可用人群，暂不能按人群分组统计，请切换为属性。")
+            audiences = property_config.get("audiences") if isinstance(property_config.get("audiences"), list) else []
+            if not audiences:
+                issues.append("按人群分析至少需要配置一个人群。")
+            for index, audience in enumerate(audiences):
+                label = str(audience.get("name") or f"人群{index + 1}").strip() or f"人群{index + 1}"
+                filter_config = audience.get("filters") if isinstance(audience.get("filters"), dict) else {}
+                logic = str(filter_config.get("logic") or "and").strip().lower()
+                if logic not in {"and", "or"}:
+                    issues.append(f"{label}筛选逻辑无效。")
+                for rule_index, filter_field in enumerate(_iter_filter_rule_fields(filter_config)):
+                    if not _field_has_resolvable_reference(filter_field):
+                        issues.append(f"{label}筛选条件{rule_index + 1}缺少字段。")
+                    issues.extend(_json_subfield_mapping_issues(filter_field, f"{label}筛选条件{rule_index + 1}"))
         if not metrics:
             issues.append("属性分析至少需要配置一个分析指标。")
         for index, metric in enumerate(metrics):
             label = str(metric.get("alias") or metric.get("label") or f"属性指标{index + 1}").strip()
             field = metric.get("field")
             metric_field = _metric_measure_field(metric)
-            if _tracking_event_name_from_field(field) or _tracking_event_name_from_field(metric_field):
+            if _is_tracking_event_field(field) or _is_tracking_event_field(metric_field):
                 issues.append(f"{label} 必须选择属性字段，不能选择事件。")
         for index, group in enumerate(_list_dict_items(normalized_config.get("groups"))):
-            if _tracking_event_name_from_field(group):
+            if _is_tracking_event_field(group):
                 issues.append(f"属性分析分组{index + 1}必须选择属性字段，不能选择事件。")
 
     if analysis_model == "retention":
@@ -2222,22 +2274,25 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
     attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
     result_contract: dict[str, Any] = {}
     if analysis_model == "property":
+        group_items = normalized_config.get("groups") or []
+        if str(property_config.get("groupMode") or "property").strip().lower() == "audience":
+            group_items = property_config.get("audiences") or []
         required_columns = ["property_date"]
-        required_columns.extend(f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or []))
+        required_columns.extend(f"group_{index + 1}" for index, _ in enumerate(group_items))
         required_columns.extend(f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or []))
         result_contract = {
             "type": "property_table",
             "required_columns": required_columns,
             "date_field": "property_date",
             "group_fields": [
-                f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])
+                f"group_{index + 1}" for index, _ in enumerate(group_items)
             ],
             "metric_fields": [
                 f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or [])
             ],
             "final_grain": [
                 "property_date",
-                *[f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])],
+                *[f"group_{index + 1}" for index, _ in enumerate(group_items)],
             ],
         }
     elif analysis_model == "retention":
@@ -2564,7 +2619,8 @@ def _dashboard_config_prompt(
     if analysis_model == "property":
         property_rules = [
             "当前 analysisModel=property，只能使用 metrics、groups、filters、time 和 property 配置生成属性分析；不得读取或套用事件、留存、漏斗等模型语义。",
-            "property.groupMode=property 时，groups 只能表示属性字段；property.groupMode=audience 时，当前工作空间没有可执行的人群资产，必须提示切换为属性，不得虚构人群表、分群 ID 或筛选条件。",
+            "property.groupMode=property 时，groups 只能表示属性字段；property.groupMode=audience 时，property.audiences 是当前数据源上的用户属性筛选组，每个人群必须按其 filters.logic/rules 生成同一属性分析结果中的人群分组。",
+            "人群筛选只允许使用配置中 field 对象明确提供的用户属性；没有筛选规则的人群表示全部用户。不得虚构人群表、分群 ID、字段或筛选条件，也不得把不同人群的规则互相合并。",
             "metrics[i].field 和 metricField 都是属性字段，不是事件；禁止根据字段名猜测事件条件或补充未配置事件。",
             "聚合规则必须严格按 metrics 顺序执行：count=COUNT(field)，count_distinct=COUNT(DISTINCT metricField)，sum/avg/max/min 分别使用对应 SQL 聚合函数。",
             "最终按当前时间粒度和 groups 聚合，固定输出 property_date、group_1...group_N、property_metric_1...property_metric_N；无 groups 时不得虚构分组列。",
@@ -2951,9 +3007,11 @@ def _property_sql_result_issues(
     if str(normalized_config.get("analysis_model") or "event") != "property":
         return []
     required_aliases = ["property_date"]
-    required_aliases.extend(
-        f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])
-    )
+    property_config = normalized_config.get("property") if isinstance(normalized_config.get("property"), dict) else {}
+    group_items = normalized_config.get("groups") or []
+    if str(property_config.get("groupMode") or "property").strip().lower() == "audience":
+        group_items = property_config.get("audiences") or []
+    required_aliases.extend(f"group_{index + 1}" for index, _ in enumerate(group_items))
     required_aliases.extend(
         f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or [])
     )
@@ -3259,6 +3317,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "FROM aggregated ORDER BY property_date, <groups>。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。\n"
             "属性字段对象提供 expression 时必须使用该 expression；禁止把 JSON 子属性替换为宿主 JSON 列，禁止补充任何事件名条件。\n"
+            "当 property.groupMode=audience 时，group_1、group_2 等分组列分别对应 property.audiences 的顺序；无筛选规则的人群为全部用户，有筛选规则的人群按各自用户属性条件计算。\n"
         )
     elif str(analysis_model or "event") == "retention":
         structure_prompt = (
@@ -4123,7 +4182,10 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
     analysis_model = str(normalized_config.get("analysis_model") or "event")
     response.analysis_model = analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking"} else "event"
     if response.analysis_model == "property":
+        property_config = normalized_config.get("property") if isinstance(normalized_config.get("property"), dict) else {}
         groups = normalized_config.get("groups") or []
+        if str(property_config.get("groupMode") or "property").strip().lower() == "audience":
+            groups = property_config.get("audiences") or []
         metrics = normalized_config.get("metrics") or []
         response.chart_type = "table"
         response.result_config = {

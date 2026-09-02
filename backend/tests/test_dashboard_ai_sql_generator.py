@@ -2100,7 +2100,7 @@ def test_property_config_has_independent_normalization_and_validation() -> None:
     )
 
     assert normalized["analysis_model"] == "property"
-    assert normalized["property"] == {"groupMode": "property", "groupSettings": {}}
+    assert normalized["property"] == {"groupMode": "property", "groupSettings": {}, "audiences": []}
     assert normalized["retention"] == {}
     assert normalized["funnel"] == {}
     assert result.success is True
@@ -2123,8 +2123,18 @@ def test_property_group_settings_are_normalized_for_time_dimensions() -> None:
     }
 
 
-def test_property_audience_group_mode_is_explicitly_blocked_without_audience_assets() -> None:
-    request = _property_request(property={"groupMode": "audience"})
+def test_property_audience_groups_are_normalized_and_validated() -> None:
+    request = _property_request(property={
+        "groupMode": "audience",
+        "audiences": [
+            {"name": "全部用户", "filters": {"logic": "and", "rules": []}},
+            {"name": "付费用户", "filters": {"logic": "and", "rules": [{
+                "field": {"table": "event", "field": "account_id", "value": "event.account_id"},
+                "operator": "eq",
+                "value": "1001",
+            }]}},
+        ],
+    })
     normalized = ai_sql_generator._normalize_manual_config(request)
     result = ai_sql_generator._deterministic_validate_manual_config(
         request,
@@ -2134,9 +2144,46 @@ def test_property_audience_group_mode_is_explicitly_blocked_without_audience_ass
         allowed_fields_by_table={"event": {"dt", "account_id", "country"}},
     )
 
-    assert normalized["property"] == {"groupMode": "audience", "groupSettings": {}}
+    assert normalized["property"]["groupMode"] == "audience"
+    assert len(normalized["property"]["audiences"]) == 2
+    assert normalized["property"]["audiences"][1]["name"] == "付费用户"
+    assert result.success is True
+
+
+def test_property_audience_mode_requires_at_least_one_group() -> None:
+    request = _property_request(property={"groupMode": "audience", "audiences": []})
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"dt", "account_id", "country"}},
+    )
     assert result.success is False
-    assert any("暂不能按人群分组统计" in issue for issue in result.issues)
+    assert any("至少需要配置一个人群" in issue for issue in result.issues)
+
+
+def test_property_prompt_describes_configured_audience_filters() -> None:
+    request = _property_request(property={
+        "groupMode": "audience",
+        "audiences": [{
+            "name": "付费用户",
+            "filters": {"logic": "and", "rules": [{
+                "field": {"table": "event", "field": "account_id", "value": "event.account_id"},
+                "operator": "eq",
+                "value": "1001",
+            }]},
+        }],
+    })
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        datasource=SimpleNamespace(name="测试数据源", type="postgresql", type_name="PostgreSQL"),
+        data_skill="",
+        tracking_config="",
+    )
+    assert "property.audiences" in prompt
+    assert "用户属性筛选组" in prompt
 
 
 def test_property_analysis_rejects_event_fields_and_missing_metrics() -> None:
@@ -2175,6 +2222,41 @@ def test_property_analysis_rejects_event_fields_and_missing_metrics() -> None:
         allowed_fields_by_table={"event": {"dt", "country"}},
     )
     assert "属性分析至少需要配置一个分析指标。" in empty_result.issues
+
+
+def test_property_analysis_accepts_tracking_event_properties() -> None:
+    property_field = {
+        "kind": "tracking-property",
+        "table": "event",
+        "field": "应用版本",
+        "value": "tracking-property:event.event_name:login:应用版本",
+        "eventName": "login",
+        "sourceField": "personal",
+        "jsonPath": "$.app_version",
+        "isJsonSubfield": True,
+        "expression": "personal->>'app_version'",
+        "propertyType": "文本",
+    }
+    request = _property_request(
+        metrics=[{
+            "field": property_field,
+            "metricField": property_field,
+            "aggregation": "count_distinct",
+            "alias": "登录应用版本数",
+        }],
+        groups=[property_field],
+    )
+    normalized = ai_sql_generator._normalize_manual_config(request, datasource_type="postgresql")
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"dt", "account_id", "personal"}},
+    )
+
+    assert result.success is True
+    assert not any("必须选择属性字段" in issue for issue in result.issues)
 
 
 def test_property_prompt_plan_and_result_contract_keep_property_semantics() -> None:

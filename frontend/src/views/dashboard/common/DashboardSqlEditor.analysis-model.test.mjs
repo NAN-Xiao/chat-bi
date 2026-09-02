@@ -117,6 +117,11 @@ test('keeps property analysis isolated with property metrics, filters, and group
   assert.match(source, /\{ label: '属性分析', value: 'property'/)
   assert.match(source, /const isPropertyAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'property'\)/)
   assert.match(source, /const propertyFieldOptions = computed/)
+  assert.match(
+    source,
+    /const propertyFieldOptions = computed[\s\S]*?trackingEventPropertyOptions\.value[\s\S]*?eventUserPropertyOptions\.value/,
+    '属性分析字段需要同时展示对应事件属性和用户属性'
+  )
   assert.match(saveBody, /property:\s*sqlBuilder\.analysisModel === 'property'/)
   assert.match(saveBody, /groupSettings:/)
   assert.match(saveBody, /metrics:\s*sqlBuilder\.metricItems\.map\(serializePropertyMetric\)/)
@@ -133,6 +138,16 @@ test('keeps property analysis isolated with property metrics, filters, and group
   assert.match(source, /label: '属性', value: 'property'/)
   assert.match(source, /class="property-group-mode-select"/)
   assert.match(source, /@change="handlePropertyGroupModeChange"/)
+  assert.match(source, /type SqlBuilderAudienceGroup = \{/)
+  assert.match(source, /audiences: SqlBuilderAudienceGroup\[\]/)
+  assert.match(source, /function ensurePropertyAudienceGroups\(\)/)
+  assert.match(source, /function addPropertyAudience\(\)/)
+  assert.match(source, /function removePropertyAudience\(index: number\)/)
+  assert.match(source, /function beginPropertyAudienceRename\(group: SqlBuilderAudienceGroup\)/)
+  assert.match(source, /class="property-audience-list"/)
+  assert.match(source, /全部用户/)
+  assert.match(source, /<BuilderFilterTree[\s\S]*?group\.filters[\s\S]*?filter-property-tabs="\['user'\]"/)
+  assert.match(source, /audiences: sqlBuilder\.property\.audiences\.map/)
   assert.match(source, /class="property-metric-alias-input"/)
   assert.match(source, /aria-label="`重命名属性指标\$\{index \+ 1\}`"/)
   assert.match(source, /@keydown\.enter\.prevent="finishPropertyMetricRename\(item\)"/)
