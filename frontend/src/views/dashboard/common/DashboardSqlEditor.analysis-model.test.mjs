@@ -45,6 +45,8 @@ test('renders the analysis model selector before event metrics', () => {
   assert.ok(modelIndex < metricIndex, '分析模型必须位于分析指标上方')
   assert.match(source, /事件分析[\s\S]*?留存分析[\s\S]*?漏斗分析[\s\S]*?分布分析/, '分析模型需要提供事件、留存、漏斗和分布分析')
   assert.match(source, /class="analysis-model-row"/)
+  assert.match(source, /value: 'path'[\s\S]*?content:/, '路径分析模型需要提供说明内容')
+  assert.match(source, /class="analysis-model-info-icon"[\s\S]*?<InfoFilled \/>/, '路径分析标题需要展示说明提示')
   assert.match(source, /class="retention-heading-row"/)
   assert.match(
     source,
