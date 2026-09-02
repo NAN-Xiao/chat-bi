@@ -2378,6 +2378,30 @@ def _dashboard_sql_dialect_rules(sql_dialect: str | None, datasource: CoreDataso
     return []
 
 
+def _interval_percentile_dialect_rules(sql_dialect: str | None, datasource: CoreDatasource | None) -> list[str]:
+    """Return the percentile aggregate syntax supported by the target engine."""
+    dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
+    if "analyticdb" in dialect_text:
+        return [
+            "AnalyticDB 间隔分位数必须使用 APPROX_PERCENTILE(interval_seconds, 0.75/0.50/0.25)；禁止使用 PERCENTILE_CONT ... WITHIN GROUP。",
+        ]
+    if any(name in dialect_text for name in ("starrocks", "doris")):
+        return [
+            "StarRocks/Doris 间隔分位数必须使用 PERCENTILE_APPROX(interval_seconds, 0.75/0.50/0.25)；禁止使用 PERCENTILE_CONT ... WITHIN GROUP。",
+        ]
+    if any(name in dialect_text for name in ("mysql", "mariadb")):
+        return [
+            "MySQL/MariaDB 兼容数据源间隔分位数必须使用 APPROX_PERCENTILE(interval_seconds, 0.75/0.50/0.25)；禁止使用 PERCENTILE_CONT ... WITHIN GROUP。",
+        ]
+    if any(name in dialect_text for name in ("postgres", "redshift", "kingbase")):
+        return [
+            "PostgreSQL/Redshift/Kingbase 间隔分位数使用 PERCENTILE_CONT(0.75/0.50/0.25) WITHIN GROUP (ORDER BY interval_seconds)。",
+        ]
+    return [
+        "间隔分位数必须使用当前数据源明确支持的聚合函数；不得猜测 PERCENTILE_CONT ... WITHIN GROUP 语法。",
+    ]
+
+
 def _retention_date_generation_rules(
         parameter_type: str,
         sql_dialect: str | None,
@@ -2596,6 +2620,7 @@ def _dashboard_config_prompt(
             f"当前间隔上限：{interval.get('limitSeconds') or interval.get('limit_seconds') or 3600} 秒。",
             "最终返回 chart_type 必须为 table。",
         ]
+        interval_rules.extend(_interval_percentile_dialect_rules(sql_dialect, datasource))
     revenue = context.get("revenue") if isinstance(context.get("revenue"), dict) else {}
     revenue_rules: list[str] = []
     if analysis_model == "revenue":
@@ -2934,6 +2959,9 @@ def _distribution_sql_result_issues(
 def _interval_sql_result_issues(
         sql: str,
         normalized_config: dict[str, Any],
+        *,
+        sql_dialect: str | None = None,
+        datasource: CoreDatasource | None = None,
 ) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "interval":
         return []
@@ -2958,8 +2986,19 @@ def _interval_sql_result_issues(
     for function_name, label in (("max", "最大值"), ("min", "最小值"), ("avg", "平均值")):
         if not re.search(rf"\b{function_name}\s*\(", normalized_sql):
             issues.append(f"间隔 SQL 缺少{label}聚合。")
-    if not re.search(r"\b(?:percentile|percentile_cont|quantile|quantile_cont|median)\s*\(", normalized_sql):
+    if not re.search(r"\b(?:percentile|percentile_cont|percentile_approx|approx_percentile|quantile|quantile_cont|median)\s*\(", normalized_sql):
         issues.append("间隔 SQL 必须使用当前方言支持的分位数函数计算四分位数。")
+    dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
+    if any(name in dialect_text for name in ("analyticdb", "mysql", "mariadb")):
+        if re.search(r"\bpercentile_cont\s*\([^)]*\)\s*within\s+group\b", normalized_sql):
+            issues.append("当前 MySQL/AnalyticDB 兼容数据源不支持 PERCENTILE_CONT ... WITHIN GROUP；请改用 APPROX_PERCENTILE(interval_seconds, 分位数)。")
+        if not re.search(r"\bapprox_percentile\s*\(", normalized_sql):
+            issues.append("当前 MySQL/AnalyticDB 兼容数据源必须使用 APPROX_PERCENTILE 计算四分位数。")
+    elif any(name in dialect_text for name in ("starrocks", "doris")):
+        if re.search(r"\bpercentile_cont\s*\([^)]*\)\s*within\s+group\b", normalized_sql):
+            issues.append("当前 StarRocks/Doris 数据源不支持 PERCENTILE_CONT ... WITHIN GROUP；请改用 PERCENTILE_APPROX(interval_seconds, 分位数)。")
+        if not re.search(r"\bpercentile_approx\s*\(", normalized_sql):
+            issues.append("当前 StarRocks/Doris 数据源必须使用 PERCENTILE_APPROX 计算四分位数。")
     return _unique_text_items(issues)
 
 
@@ -3135,6 +3174,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "GROUP BY interval_date, <groups>\n"
             "ORDER BY interval_date, <groups>。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；所有时长列必须为数值秒。\n"
+            "分位数函数必须服从数据源方言：AnalyticDB/MySQL 兼容使用 APPROX_PERCENTILE(value, percentile)，StarRocks/Doris 使用 PERCENTILE_APPROX(value, percentile)，PostgreSQL/Redshift/Kingbase 才使用 PERCENTILE_CONT(percentile) WITHIN GROUP (ORDER BY value)；不得跨方言套用。\n"
             "不同事件必须实现最后起点到首个后续终点的最短配对；相同事件必须使用相邻行配对，不能复用不同事件算法导致遗漏或重复。\n"
         )
     elif str(analysis_model or "event") == "distribution":
@@ -3816,6 +3856,8 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     elif interval_issues := _interval_sql_result_issues(
         sql,
         state.get("normalized_config") or {},
+        sql_dialect=state.get("sql_dialect"),
+        datasource=state.get("datasource"),
     ):
         response.success = False
         response.message = "生成 SQL 未满足间隔分析生成要求。"
