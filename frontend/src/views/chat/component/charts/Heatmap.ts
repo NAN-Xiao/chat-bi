@@ -30,6 +30,7 @@ export class Heatmap extends BaseG2Chart {
     const x = axes.x
     const y = axes.y
     const series = axes.series
+    const group = series[1]
     const _data = checkIsPercent(y, data)
 
     const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'cartesian')
@@ -73,6 +74,13 @@ export class Heatmap extends BaseG2Chart {
           itemLabelFontSize: responsive.legendItemFontSize,
         },
       },
+      ...(group ? {
+        facet: {
+          type: 'rect',
+          fields: [group.value],
+          padding: 12,
+        },
+      } : {}),
       labels: this.showLabel
         ? [
             {
@@ -83,7 +91,7 @@ export class Heatmap extends BaseG2Chart {
           ]
         : [],
       tooltip: (datum: any) => ({
-        name: `${datum[series[0].value]} / ${datum[x[0].value]}`,
+        name: `${group ? `${datum[group.value]} / ` : ''}${datum[series[0].value]} / ${datum[x[0].value]}`,
         value: `${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
       }),
     } as G2Spec)

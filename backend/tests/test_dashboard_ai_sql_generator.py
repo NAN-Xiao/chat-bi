@@ -2675,6 +2675,39 @@ def test_retention_repair_prompt_carries_contract_original_sql_and_issues() -> N
     assert "完整重写 SQL" in prompt
 
 
+def test_heatmap_comparison_groups_are_normalized_and_extend_result_contract() -> None:
+    request = DashboardAiSqlGenerateRequest(
+        datasource=1,
+        chart_type="heatmap",
+        context={
+            "analysisModel": "heatmap",
+            "chart": {"type": "heatmap"},
+            "time": {"field": {"table": "event", "field": "dt"}},
+            "heatmap": {
+                "event": {"kind": "tracking-event", "eventTable": "event", "eventName": "move"},
+                "xField": {"table": "event", "field": "x", "value": "event.x"},
+                "yField": {"table": "event", "field": "y", "value": "event.y"},
+                "metric": {"aggregation": "count"},
+                "comparisonGroups": [
+                    {"name": "组1", "filters": {"logic": "or", "rules": [{"field": {"table": "event", "field": "account_id"}, "operator": "eq", "value": "a"}]}},
+                    {"name": "组2", "filters": {"logic": "invalid", "rules": []}},
+                ],
+            },
+        },
+    )
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    groups = normalized["heatmap"]["comparisonGroups"]
+    assert [group["name"] for group in groups] == ["组1", "组2"]
+    assert groups[1]["filters"]["logic"] == "and"
+    plan = ai_sql_generator._build_sql_plan(normalized, ai_sql_generator._build_formula_ir(normalized))
+    contract = plan["result_contract"]
+    assert contract["required_columns"] == ["heatmap_x", "heatmap_y", "heatmap_group", "heatmap_value"]
+    assert contract["group_names"] == ["组1", "组2"]
+    assert "heatmap_group" in ai_sql_generator._heatmap_sql_result_issues(
+        "SELECT heatmap_x, heatmap_y, heatmap_value FROM t", normalized
+    )[0]
+
+
 def test_distribution_repair_prompt_carries_dialect_issue_and_explicit_join_contract() -> None:
     request = _distribution_request()
     normalized = ai_sql_generator._normalize_manual_config(request)

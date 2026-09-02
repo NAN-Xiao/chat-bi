@@ -825,6 +825,23 @@ def _normalize_manual_config(
     attribution = dict(context.get("attribution") or {}) if isinstance(context.get("attribution"), dict) else {}
     ranking = dict(context.get("ranking") or {}) if isinstance(context.get("ranking"), dict) else {}
     heatmap = dict(context.get("heatmap") or {}) if isinstance(context.get("heatmap"), dict) else {}
+    raw_comparison_groups = heatmap.get("comparisonGroups") or heatmap.get("comparison_groups")
+    comparison_groups: list[dict[str, Any]] = []
+    if isinstance(raw_comparison_groups, list):
+        for index, item in enumerate(raw_comparison_groups):
+            if not isinstance(item, dict):
+                continue
+            filters = item.get("filters") or item.get("filter")
+            filters = dict(filters) if isinstance(filters, dict) else {}
+            logic = str(filters.get("logic") or "and").strip().lower()
+            filters["logic"] = logic if logic in {"and", "or"} else "and"
+            filters["rules"] = filters.get("rules") if isinstance(filters.get("rules"), list) else []
+            comparison_groups.append({
+                "id": str(item.get("id") or f"heatmap-group-{index + 1}"),
+                "name": str(item.get("name") or f"组{index + 1}").strip() or f"组{index + 1}",
+                "filters": filters,
+            })
+    heatmap["comparisonGroups"] = comparison_groups
     return {
         "analysis_model": analysis_model,
         "property": property_config,
@@ -1560,6 +1577,8 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
         heatmap_metric.get("field") or heatmap_metric.get("metricField") or heatmap_metric.get("metric_field"),
     ]
     heatmap_fields.extend(_iter_filter_rule_fields(heatmap.get("eventFilters") or heatmap.get("event_filters")))
+    for group in heatmap.get("comparisonGroups") or []:
+        heatmap_fields.extend(_iter_filter_rule_fields(group.get("filters")))
     for field in heatmap_fields:
         table_name = _field_table_name(field)
         if table_name:
@@ -1991,6 +2010,15 @@ def _deterministic_validate_manual_config(
             filter_event_name = _tracking_event_name_from_field(filter_field)
             if filter_event_name and event_name and filter_event_name != event_name:
                 issues.append(f"{label}不属于当前热力事件。")
+        for group_index, group in enumerate(heatmap.get("comparisonGroups") or []):
+            for filter_index, filter_field in enumerate(_iter_filter_rule_fields(group.get("filters"))):
+                label = f"热力地图对比组{group_index + 1}筛选{filter_index + 1}"
+                issues.extend(_json_subfield_mapping_issues(filter_field, label))
+                issues.extend(_field_table_permission_issues(filter_field, label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(filter_field, label, allowed_fields_by_table))
+                filter_event_name = _tracking_event_name_from_field(filter_field)
+                if filter_event_name and event_name and filter_event_name != event_name:
+                    issues.append(f"{label}不属于当前热力事件。")
 
     if analysis_model == "interval":
         interval = normalized_config.get("interval") if isinstance(normalized_config.get("interval"), dict) else {}
@@ -2439,13 +2467,21 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "tie_handling": str(ranking.get("tieHandling") or ranking.get("tie_handling") or "default"),
         }
     elif analysis_model == "heatmap":
+        heatmap = normalized_config.get("heatmap") if isinstance(normalized_config.get("heatmap"), dict) else {}
+        comparison_groups = _list_dict_items(heatmap.get("comparisonGroups") or heatmap.get("comparison_groups"))
+        required_columns = ["heatmap_x", "heatmap_y"]
+        if comparison_groups:
+            required_columns.append("heatmap_group")
+        required_columns.append("heatmap_value")
         result_contract = {
             "type": "heatmap_table",
-            "required_columns": ["heatmap_x", "heatmap_y", "heatmap_value"],
+            "required_columns": required_columns,
             "x_field": "heatmap_x",
             "y_field": "heatmap_y",
+            "group_field": "heatmap_group" if comparison_groups else None,
+            "group_names": [str(item.get("name") or f"组{index + 1}") for index, item in enumerate(comparison_groups)],
             "value_field": "heatmap_value",
-            "final_grain": ["heatmap_x", "heatmap_y"],
+            "final_grain": ["heatmap_x", "heatmap_y"] + (["heatmap_group"] if comparison_groups else []),
             "map_file": (normalized_config.get("heatmap") or {}).get("mapFile") or (normalized_config.get("heatmap") or {}).get("map_file") or None,
             "map_file_name": (normalized_config.get("heatmap") or {}).get("mapFileName") or (normalized_config.get("heatmap") or {}).get("map_file_name") or None,
             "map_width": (normalized_config.get("heatmap") or {}).get("mapWidth") or (normalized_config.get("heatmap") or {}).get("map_width") or None,
@@ -2727,7 +2763,8 @@ def _dashboard_config_prompt(
         heatmap_rules = [
             "当前 analysisModel=heatmap，只能使用 heatmap 配置生成热力地图查询；不得改写为普通事件趋势或明细表。",
             "heatmap.event 定义热力事件，heatmap.xField 与 heatmap.yField 分别定义 X/Y 坐标；必须使用字段对象提供的事件表、事件名字段和事件名。",
-            "按 X/Y 坐标分组聚合 heatmap.metric，固定输出 heatmap_x、heatmap_y、heatmap_value 三列；不得调换坐标或使用未配置字段。",
+            "按 X/Y 坐标分组聚合 heatmap.metric；无 comparisonGroups 时输出 heatmap_x、heatmap_y、heatmap_value 三列，有 comparisonGroups 时额外输出 heatmap_group，并按组顺序分别应用每组 filters.logic/rules。不得调换坐标或使用未配置字段。",
+            f"当前热力地图多组对比配置：{_safe_json(heatmap.get('comparisonGroups') or [])}。",
             f"当前热力指标配置：{_safe_json(metric)}；地图资源仅作为展示元数据，不参与 SQL。",
             "最终返回 chart_type 必须为 heatmap。",
         ]
@@ -3395,11 +3432,13 @@ def _heatmap_sql_result_issues(
 ) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "heatmap":
         return []
-    required_aliases = ["heatmap_x", "heatmap_y", "heatmap_value"]
+    heatmap = normalized_config.get("heatmap", {}) if isinstance(normalized_config.get("heatmap"), dict) else {}
+    has_comparison_groups = bool(_list_dict_items(heatmap.get("comparisonGroups") or heatmap.get("comparison_groups")))
+    required_aliases = ["heatmap_x", "heatmap_y"] + (["heatmap_group"] if has_comparison_groups else []) + ["heatmap_value"]
     normalized_sql = str(sql or "").lower()
     missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
     issues = [f"热力地图 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
-    metric = normalized_config.get("heatmap", {}).get("metric", {}) if isinstance(normalized_config.get("heatmap"), dict) else {}
+    metric = heatmap.get("metric", {}) if isinstance(heatmap.get("metric"), dict) else {}
     aggregation = str(metric.get("aggregation") or "count").strip().lower()
     if aggregation == "count" and not re.search(r"\bcount\s*\(", normalized_sql):
         issues.append("热力地图 SQL 必须统计事件次数。")
@@ -3551,8 +3590,8 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "当前 SQL plan 的 analysis_model=heatmap，必须使用热力地图专用的坐标聚合结构；禁止改写为普通事件趋势或表格明细。\n"
             "热力地图 SQL 结构范式：\n"
             "WITH scoped_events AS (...按配置时间范围、热力事件和筛选条件保留 X/Y 坐标与指标字段...),\n"
-            "aggregated AS (SELECT <x_field> AS heatmap_x, <y_field> AS heatmap_y, <configured_aggregation> AS heatmap_value FROM scoped_events GROUP BY <x_field>, <y_field>)\n"
-            "SELECT heatmap_x, heatmap_y, heatmap_value FROM aggregated ORDER BY heatmap_x, heatmap_y。\n"
+            "无 comparisonGroups 时 aggregated 直接按 X/Y 聚合；有 comparisonGroups 时为每个组建立独立过滤聚合并 UNION ALL，输出该组配置 name 作为 heatmap_group，避免把不同组条件合并或互相覆盖。\n"
+            "SELECT heatmap_x, heatmap_y[, heatmap_group], heatmap_value FROM aggregated ORDER BY heatmap_x, heatmap_y[, heatmap_group]。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；坐标字段必须来自 heatmap.xField 和 heatmap.yField，不能编造字段。\n"
         )
     elif str(analysis_model or "event") == "path":
@@ -4458,11 +4497,14 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         }
     elif response.analysis_model == "heatmap":
         heatmap = normalized_config.get("heatmap") if isinstance(normalized_config.get("heatmap"), dict) else {}
+        comparison_groups = _list_dict_items(heatmap.get("comparisonGroups") or heatmap.get("comparison_groups"))
         response.chart_type = "heatmap"
         response.result_config = {
             "type": "heatmap_table",
             "x_field": "heatmap_x",
             "y_field": "heatmap_y",
+            "group_field": "heatmap_group" if comparison_groups else "",
+            "group_names": [str(item.get("name") or f"组{index + 1}") for index, item in enumerate(comparison_groups)],
             "value_field": "heatmap_value",
             "map_file": heatmap.get("mapFile") or heatmap.get("map_file") or "",
             "map_file_name": heatmap.get("mapFileName") or heatmap.get("map_file_name") or "",

@@ -165,6 +165,7 @@ type DashboardDateParameterType = '' | 'date' | 'yyyymmdd_number' | 'yyyymmdd_te
 const SQL_EDITOR_TIME_FIELD = 'dt'
 const SQL_EDITOR_TIME_GRAIN = 'day'
 const SQL_EDITOR_DATE_PARAMETER_TYPE: DashboardDateParameterType = 'yyyymmdd_number'
+const HEATMAP_GROUP_FIELD = 'heatmap_group'
 type ExecutionDatasourceOption = {
   id: number
   name: string
@@ -321,6 +322,7 @@ type SqlBuilderHeatmapConfig = {
   event: string
   eventFilterLogic: SqlBuilderFilterLogic
   eventFilters: SqlBuilderFilter[]
+  comparisonGroups: SqlBuilderHeatmapComparisonGroup[]
   xField: string
   yField: string
   metric: {
@@ -335,6 +337,12 @@ type SqlBuilderHeatmapConfig = {
     leftBottom: { x: string; y: string }
     rightTop: { x: string; y: string }
   }
+}
+type SqlBuilderHeatmapComparisonGroup = {
+  id: string
+  name: string
+  filterLogic: SqlBuilderFilterLogic
+  filters: SqlBuilderFilter[]
 }
 type SqlBuilderPropertyConfig = {
   groupMode: 'property' | 'audience'
@@ -609,6 +617,7 @@ const sqlBuilder = reactive({
     event: '',
     eventFilterLogic: 'and',
     eventFilters: [],
+    comparisonGroups: [],
     xField: '',
     yField: '',
     metric: { aggregation: 'count', field: '' },
@@ -649,6 +658,8 @@ const intervalFilterExpanded = reactive<Record<IntervalEventTarget, boolean>>({
 })
 const attributionTargetFilterExpanded = ref(false)
 const heatmapFilterExpanded = ref(false)
+const heatmapComparisonGroupAliasEditing = reactive<Record<string, boolean>>({})
+const heatmapComparisonGroupAliasDraft = reactive<Record<string, string>>({})
 const heatmapMapFileName = ref('')
 const heatmapMapDialogVisible = ref(false)
 const heatmapMapStep = ref(1)
@@ -1364,6 +1375,10 @@ const sourceHasPivotGroupValues = computed(() => {
   return Boolean(field && collectPivotGroupValueCounts(field).size > 0)
 })
 const chartPreviewSeriesFields = computed(() => {
+  if (form.chartType === 'heatmap' && form.columns.length >= 4) {
+    const fields = [form.series, form.columns[2]].filter(Boolean)
+    return fields.every((field) => visiblePreviewFields([field], previewDisplayData.value).includes(field)) ? fields : [form.series]
+  }
   const field = form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
   return field && visiblePreviewFields([field], previewDisplayData.value).includes(field) ? [field] : []
 })
@@ -1590,6 +1605,47 @@ function createAudienceGroup(index: number, withDefaultFilter = false): SqlBuild
     filterLogic: 'and',
     filters,
   }
+}
+
+function createHeatmapComparisonGroup(index: number, withDefaultFilter = false): SqlBuilderHeatmapComparisonGroup {
+  const filters = withDefaultFilter ? [emptyBuilderFilter()] : []
+  if (filters[0]) filters[0].field = eventFilterFieldOptions(sqlBuilder.heatmap.event)[0]?.value || ''
+  return {
+    id: nodeId('heatmap-group'),
+    name: `组${index + 1}`,
+    filterLogic: 'and',
+    filters,
+  }
+}
+
+function addHeatmapComparisonGroup() {
+  sqlBuilder.heatmap.comparisonGroups.push(
+    createHeatmapComparisonGroup(sqlBuilder.heatmap.comparisonGroups.length, true),
+  )
+}
+
+function removeHeatmapComparisonGroup(index: number) {
+  const [removed] = sqlBuilder.heatmap.comparisonGroups.splice(index, 1)
+  if (!removed) return
+  delete heatmapComparisonGroupAliasEditing[removed.id]
+  delete heatmapComparisonGroupAliasDraft[removed.id]
+}
+
+function beginHeatmapComparisonGroupRename(group: SqlBuilderHeatmapComparisonGroup) {
+  heatmapComparisonGroupAliasDraft[group.id] = group.name
+  heatmapComparisonGroupAliasEditing[group.id] = true
+}
+
+function finishHeatmapComparisonGroupRename(group: SqlBuilderHeatmapComparisonGroup) {
+  const name = String(heatmapComparisonGroupAliasDraft[group.id] || '').trim()
+  if (name) group.name = name
+  delete heatmapComparisonGroupAliasDraft[group.id]
+  delete heatmapComparisonGroupAliasEditing[group.id]
+}
+
+function cancelHeatmapComparisonGroupRename(group: SqlBuilderHeatmapComparisonGroup) {
+  delete heatmapComparisonGroupAliasDraft[group.id]
+  delete heatmapComparisonGroupAliasEditing[group.id]
 }
 
 function ensurePropertyAudienceGroups() {
@@ -2576,6 +2632,14 @@ function builderConfigForSave() {
         logic: builderLogic(sqlBuilder.heatmap.eventFilterLogic),
         rules: compactBuilderFilters(sqlBuilder.heatmap.eventFilters),
       },
+      comparisonGroups: sqlBuilder.heatmap.comparisonGroups.map((group, index) => ({
+        id: group.id,
+        name: group.name.trim() || `组${index + 1}`,
+        filters: {
+          logic: builderLogic(group.filterLogic),
+          rules: compactBuilderFilters(group.filters),
+        },
+      })),
       xField: sqlBuilder.heatmap.xField,
       yField: sqlBuilder.heatmap.yField,
       metric: {
@@ -2862,6 +2926,13 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.heatmap.event = typeof heatmap.event === 'string' ? heatmap.event : ''
   sqlBuilder.heatmap.eventFilterLogic = builderLogic(heatmap.eventFilters?.logic)
   sqlBuilder.heatmap.eventFilters = restoreBuilderFilters(heatmap.eventFilters?.rules)
+  const rawHeatmapGroups = Array.isArray(heatmap.comparisonGroups) ? heatmap.comparisonGroups : []
+  sqlBuilder.heatmap.comparisonGroups = rawHeatmapGroups.map((item: any, index: number) => ({
+    id: typeof item?.id === 'string' && item.id ? item.id : nodeId('heatmap-group'),
+    name: typeof item?.name === 'string' && item.name.trim() ? item.name : `组${index + 1}`,
+    filterLogic: builderLogic(item?.filters?.logic),
+    filters: restoreBuilderFilters(item?.filters?.rules),
+  }))
   sqlBuilder.heatmap.xField = typeof heatmap.xField === 'string' ? heatmap.xField : ''
   sqlBuilder.heatmap.yField = typeof heatmap.yField === 'string' ? heatmap.yField : ''
   const heatmapMetric = heatmap.metric && typeof heatmap.metric === 'object' ? heatmap.metric : {}
@@ -3483,6 +3554,9 @@ function builderEventScopeIssues() {
       appendEventScopeFieldIssue(sqlBuilder.heatmap.metric.field, 'heatmap.metric.field', issues)
     }
     appendEventScopeFilterIssues(sqlBuilder.heatmap.eventFilters, 'heatmap.event_filter', issues)
+    sqlBuilder.heatmap.comparisonGroups.forEach((group, index) => {
+      appendEventScopeFilterIssues(group.filters, `heatmap.comparison_group[${index}].filter` , issues)
+    })
   }
   sqlBuilder.groups.forEach((field, index) => appendEventScopeFieldIssue(field, `group[${index}]`, issues))
   appendEventScopeFilterIssues(sqlBuilder.globalFilters, 'global_filter', issues)
@@ -3747,6 +3821,9 @@ function resetHeatmapConfig() {
   sqlBuilder.heatmap.event = ''
   sqlBuilder.heatmap.eventFilterLogic = 'and'
   sqlBuilder.heatmap.eventFilters = []
+  sqlBuilder.heatmap.comparisonGroups = []
+  Object.keys(heatmapComparisonGroupAliasEditing).forEach((key) => delete heatmapComparisonGroupAliasEditing[key])
+  Object.keys(heatmapComparisonGroupAliasDraft).forEach((key) => delete heatmapComparisonGroupAliasDraft[key])
   sqlBuilder.heatmap.xField = ''
   sqlBuilder.heatmap.yField = ''
   sqlBuilder.heatmap.metric = { aggregation: 'count', field: '' }
@@ -4724,6 +4801,14 @@ function sanitizeHeatmapConfig() {
   clearInvalid('yField', 'Y 轴属性')
   clearInvalid('metricField', '计算字段')
   if (heatmap.metric.aggregation === 'count') heatmap.metric.field = ''
+  heatmap.comparisonGroups.forEach((group) => {
+    group.filters = group.filters.filter((node) => {
+      if (node.type === 'group') return true
+      if (!node.field || optionExists(node.field, scopedOptions)) return true
+      node.field = ''
+      return true
+    })
+  })
   if (cleared.length) ElMessage.warning(`${unique(cleared).join('、')}在当前数据源中无效，已清除，请重新选择。`)
 }
 
@@ -5205,6 +5290,7 @@ function selectedBuilderFieldValues() {
       sqlBuilder.heatmap.yField,
       sqlBuilder.heatmap.metric.field,
       ...filterFieldValues(sqlBuilder.heatmap.eventFilters),
+      ...sqlBuilder.heatmap.comparisonGroups.flatMap((group) => filterFieldValues(group.filters)),
     ] : []),
     ...(sqlBuilder.analysisModel === 'property' && sqlBuilder.property.groupMode === 'audience'
       ? sqlBuilder.property.audiences.flatMap((group) => filterFieldValues(group.filters))
@@ -5331,6 +5417,14 @@ function collectBuilderAiContext() {
         logic: sqlBuilder.heatmap.eventFilterLogic,
         rules: filterContext(sqlBuilder.heatmap.eventFilters),
       },
+      comparisonGroups: sqlBuilder.heatmap.comparisonGroups.map((group, index) => ({
+        order: index + 1,
+        name: group.name.trim() || `组${index + 1}`,
+        filters: {
+          logic: group.filterLogic,
+          rules: filterContext(group.filters),
+        },
+      })),
       xField: fieldOptionPayload(sqlBuilder.heatmap.xField),
       yField: fieldOptionPayload(sqlBuilder.heatmap.yField),
       metric: {
@@ -6002,7 +6096,8 @@ async function generateBuilderAiSql() {
     form.x = String(resultConfig.x_field || resultConfig.xField || 'heatmap_x')
     form.series = String(resultConfig.y_field || resultConfig.yField || 'heatmap_y')
     form.y = [String(resultConfig.value_field || resultConfig.valueField || 'heatmap_value')]
-    form.columns = [form.x, form.series, form.y[0]]
+    const groupField = String(resultConfig.group_field || resultConfig.groupField || '').trim() || (resultConfig.group_names?.length ? HEATMAP_GROUP_FIELD : '')
+    form.columns = [form.x, form.series, ...(groupField ? [groupField] : []), form.y[0]]
   }
   syncDashboardDateParameterUsage()
   if (result.success) {
@@ -7827,6 +7922,13 @@ function buildChart() {
     return chart
   }
 
+  if (form.chartType === 'heatmap') {
+    chart.xAxis = toAxes([form.x].filter(Boolean) as string[])
+    chart.yAxis = toAxes(form.y, { metrics: true })
+    chart.series = toAxes([form.series, form.columns[2]].filter(Boolean) as string[])
+    return chart
+  }
+
   if (form.chartType === 'donut') {
     chart.yAxis = toAxes(form.y, { metrics: true })
     chart.series = toAxes(donutSeriesFields.value)
@@ -8471,9 +8573,28 @@ function closeDrawer() {
                 picker-mode="filter-property"
                 :filter-property-tabs="['all', 'event', 'user']"
                 empty-text="暂无事件筛选"
-                @update:logic="sqlBuilder.heatmap.eventFilterLogic = $event"
-              />
-            </section>
+               @update:logic="sqlBuilder.heatmap.eventFilterLogic = $event"
+               />
+               <div class="heatmap-comparison-section">
+                 <div class="builder-section-head heatmap-comparison-head">
+                   <div class="builder-section-title"><BuilderSectionIcon class="builder-section-icon" /><span>多组对比</span></div>
+                   <button type="button" class="builder-icon-button" title="添加对比组" aria-label="添加对比组" @click="addHeatmapComparisonGroup"><el-icon><Plus /></el-icon></button>
+                 </div>
+                 <div v-if="sqlBuilder.heatmap.comparisonGroups.length" class="heatmap-comparison-list">
+                   <div v-for="(group, index) in sqlBuilder.heatmap.comparisonGroups" :key="group.id" class="heatmap-comparison-group">
+                     <div class="heatmap-comparison-group-head">
+                       <span class="property-audience-index">{{ index + 1 }}</span>
+                       <el-input v-if="heatmapComparisonGroupAliasEditing[group.id]" v-model="heatmapComparisonGroupAliasDraft[group.id]" size="small" class="property-audience-name-input" :aria-label="`重命名${group.name}`" @keydown.enter.prevent="finishHeatmapComparisonGroupRename(group)" @keydown.esc.prevent="cancelHeatmapComparisonGroupRename(group)" @blur="finishHeatmapComparisonGroupRename(group)" />
+                       <span v-else class="property-audience-name">{{ group.name }}</span>
+                       <button type="button" class="builder-icon-button" :title="`重命名${group.name}`" @click="beginHeatmapComparisonGroupRename(group)"><el-icon><EditPen /></el-icon></button>
+                       <button type="button" class="builder-icon-button danger" :title="`删除${group.name}`" @click="removeHeatmapComparisonGroup(index)"><el-icon><Delete /></el-icon></button>
+                     </div>
+                     <BuilderFilterTree :nodes="group.filters" :logic="group.filterLogic" :field-options="eventFilterFieldOptions(sqlBuilder.heatmap.event)" :operator-options="builderFilterOperatorOptions" :schema-loading="schemaLoading" picker-mode="filter-property" :filter-property-tabs="['all', 'event', 'user']" :show-toolbar="true" empty-text="暂无筛选条件" @update:logic="group.filterLogic = $event" />
+                     <div class="builder-inline-actions property-audience-actions"><button type="button" class="builder-add-link" @click="group.filters.push(emptyBuilderFilter())"><el-icon><Filter /></el-icon><span>筛选条件</span></button></div>
+                   </div>
+                 </div>
+               </div>
+             </section>
 
             <section v-else-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis && !isHeatmapAnalysis" class="builder-section">
               <div class="builder-section-head">
@@ -13004,6 +13125,36 @@ function closeDrawer() {
 
 .property-audience-filter-tree {
   margin: 8px 0 0 26px;
+}
+
+.heatmap-comparison-section {
+  margin-top: 16px;
+  border-top: 1px solid rgba(31, 35, 41, 0.08);
+  padding-top: 12px;
+}
+
+.heatmap-comparison-head {
+  margin-bottom: 8px;
+}
+
+.heatmap-comparison-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heatmap-comparison-group {
+  padding: 10px 12px 8px;
+  border: 1px solid rgba(31, 35, 41, 0.08);
+  border-radius: 6px;
+  background: #f8f9fb;
+}
+
+.heatmap-comparison-group-head {
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  gap: 6px;
 }
 
 .property-audience-actions {
