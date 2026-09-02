@@ -1,9 +1,39 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
-import { axisLabel, type ChartAxis, type ChartData, type ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
+import {
+  axisLabel,
+  type ChartAxis,
+  type ChartData,
+  type ChartMountTarget,
+} from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import { formatNumber, getAxesWithFilter, toNumber } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 import { resolveG2ResponsiveStyle } from '@/views/chat/component/charts/g2Responsive.ts'
+import { ChartValidationError } from '@/views/chat/component/chartValidation.ts'
+
+const SANKEY_NODE_SEPARATOR = '::'
+
+function findStepField(axis: ChartAxis[], reservedFields: Set<string>): string | undefined {
+  return axis.find((item) => {
+    if (reservedFields.has(item.value)) {
+      return false
+    }
+    const text = `${item.value} ${item.name || ''}`.toLowerCase()
+    return (
+      text.includes('path_step') || /(^|[_\s-])step($|[_\s-])/.test(text) || text.includes('步骤')
+    )
+  })?.value
+}
+
+function layeredNodeKey(step: number, label: unknown): string {
+  return `${step}${SANKEY_NODE_SEPARATOR}${String(label)}`
+}
+
+function nodeLabel(key: unknown): string {
+  const text = String(key ?? '')
+  const separatorIndex = text.indexOf(SANKEY_NODE_SEPARATOR)
+  return separatorIndex >= 0 ? text.slice(separatorIndex + SANKEY_NODE_SEPARATOR.length) : text
+}
 
 export class Sankey extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -29,12 +59,27 @@ export class Sankey extends BaseG2Chart {
       }))
       .filter((datum) => datum[source.value] && datum[target.value] && datum[value.value] > 0)
 
+    const stepField = findStepField(this.axis, new Set([source.value, target.value, value.value]))
+    const sankeyData = stepField
+      ? normalizedData.map((datum) => {
+          const step = Number(datum[stepField])
+          if (!Number.isInteger(step) || step < 0) {
+            throw new ChartValidationError('invalid_data')
+          }
+          return {
+            ...datum,
+            [source.value]: layeredNodeKey(step, datum[source.value]),
+            [target.value]: layeredNodeKey(step + 1, datum[target.value]),
+          }
+        })
+      : normalizedData
+
     const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'structure')
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'sankey',
       padding: responsive.padding,
-      data: normalizedData,
+      data: sankeyData,
       encode: {
         source: source.value,
         target: target.value,
@@ -51,7 +96,7 @@ export class Sankey extends BaseG2Chart {
         nodeStroke: '#fff',
         nodeLineWidth: 1,
         linkFillOpacity: 0.36,
-        labelText: this.showLabel ? (datum: any) => datum.key : () => '',
+        labelText: this.showLabel ? (datum: any) => nodeLabel(datum.key) : () => '',
         labelFontSize: responsive.structureLabelFontSize,
         labelFill: '#5b6f95',
       },
@@ -60,13 +105,13 @@ export class Sankey extends BaseG2Chart {
           title: '',
           items: [
             (datum: any) => ({
-              name: `${datum.source.key} -> ${datum.target.key}`,
+              name: `${nodeLabel(datum.source.key)} -> ${nodeLabel(datum.target.key)}`,
               value: formatNumber(datum.value),
             }),
           ],
         },
         node: {
-          title: (datum: any) => datum.key,
+          title: (datum: any) => nodeLabel(datum.key),
           items: [
             (datum: any) => ({
               name: axisLabel(value),
