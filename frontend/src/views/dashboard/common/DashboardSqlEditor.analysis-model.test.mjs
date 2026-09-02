@@ -74,6 +74,24 @@ test('renders the analysis model selector before event metrics', () => {
   )
 })
 
+test('keeps chart type selectable for non-fixed analysis models', () => {
+  assert.match(
+    source,
+    /const persistedChartType = chart\.sourceType \|\| chart\.type[\s\S]*?chartTypes\.some\(\(item\) => item\.value === persistedChartType\)/,
+    '编辑器应优先恢复已保存且有效的图表类型，而不是按分析模型强制改成表格'
+  )
+  assert.match(
+    source,
+    /<el-select v-if="!isFunnelAnalysis && !isPathAnalysis" v-model="form\.chartType"/,
+    '收入、属性、留存等分析模型应显示可选图表类型'
+  )
+  assert.match(
+    source,
+    /<el-input v-else :model-value="isFunnelAnalysis \? '漏斗图' : '桑基图'" disabled \/>/,
+    '仅漏斗和路径分析固定图表类型'
+  )
+})
+
 test('keeps property analysis isolated with property metrics, filters, and grouping', () => {
   const saveBody = source.match(/function builderConfigForSave\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
   const restoreBody = source.match(

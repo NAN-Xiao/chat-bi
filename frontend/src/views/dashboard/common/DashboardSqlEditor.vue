@@ -6867,23 +6867,14 @@ function initEditor() {
   form.primarySource = sourceTypes.includes('external_mcp') && !sourceTypes.includes('sql') ? 'external_mcp' : 'sql'
   form.sql = viewInfo.sql || ''
   form.title = chart.title || ''
-  form.chartType = isPropertyAnalysis.value
-    ? 'table'
-    : isRetentionAnalysis.value
-      ? 'table'
-      : isFunnelAnalysis.value
-      ? 'funnel'
-      : isDistributionAnalysis.value
-        ? 'table'
-      : isIntervalAnalysis.value
-        ? 'table'
-      : isPathAnalysis.value
-        ? 'sankey'
-      : isAttributionAnalysis.value
-        ? 'table'
-      : isRankingAnalysis.value
-        ? 'table'
-      : (chart.sourceType || chart.type || 'table')
+  const persistedChartType = chart.sourceType || chart.type
+  form.chartType = isFunnelAnalysis.value
+    ? 'funnel'
+    : isPathAnalysis.value
+      ? 'sankey'
+      : chartTypes.some((item) => item.value === persistedChartType)
+        ? persistedChartType
+        : 'table'
   form.columns = axisValues(chart.columns)
   form.x = axisValues(chart.xAxis)[0] || ''
   form.y = axisValues(chart.yAxis)
@@ -9808,7 +9799,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-if="!isPropertyAnalysis && !isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
+            <el-select v-if="!isFunnelAnalysis && !isPathAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -9816,7 +9807,7 @@ function closeDrawer() {
                 :value="item.value"
               />
             </el-select>
-            <el-input v-else :model-value="isPropertyAnalysis ? '属性表' : isFunnelAnalysis ? '漏斗图' : isDistributionAnalysis ? '分布表' : isIntervalAnalysis ? '间隔表' : isPathAnalysis ? '桑基图' : isRevenueAnalysis ? '收入表' : isAttributionAnalysis ? '归因表' : isRankingAnalysis ? '排行榜' : '留存表'" disabled />
+            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : '桑基图'" disabled />
           </el-form-item>
         </div>
         <el-form-item v-if="form.chartType === 'table' && !isPropertyAnalysis && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" :label="t('dashboard.sql_editor_columns')">
