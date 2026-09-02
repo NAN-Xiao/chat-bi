@@ -180,8 +180,9 @@ test('includes retention in AI context and preview signature', () => {
   assert.match(signatureBody, /funnel:\s*sqlBuilder\.analysisModel === 'funnel'/)
 })
 
-test('model switching clears incompatible state and fixes retention to table', () => {
+test('retention defaults to a table but permits a user-selected chart type', () => {
   const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const initBody = source.match(/function initEditor\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
 
   assert.match(switchBody, /sqlBuilder\.metricItems = \[\]/)
   assert.match(switchBody, /sqlBuilder\.calculatedMetrics = \[\]/)
@@ -189,6 +190,14 @@ test('model switching clears incompatible state and fixes retention to table', (
   assert.match(switchBody, /resetRetentionConfig\(\)/)
   assert.match(switchBody, /form\.chartType = 'funnel'/)
   assert.match(switchBody, /resetFunnelConfig\(\)/)
+  assert.match(
+    source,
+    /<el-select v-if="!isPropertyAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" v-model="form\.chartType"/,
+    '留存分析应复用可选图表类型下拉框'
+  )
+  assert.doesNotMatch(source, /<el-select v-if="!isRetentionAnalysis/)
+  assert.doesNotMatch(initBody, /form\.chartType = isRetentionAnalysis\.value/)
+  assert.match(initBody, /\(chart\.sourceType \|\| chart\.type \|\| 'table'\)/)
 })
 
 test('allows the same event for initial and return retention roles', () => {

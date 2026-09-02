@@ -6792,9 +6792,7 @@ function initEditor() {
   form.title = chart.title || ''
   form.chartType = isPropertyAnalysis.value
     ? 'table'
-    : isRetentionAnalysis.value
-      ? 'table'
-      : isFunnelAnalysis.value
+    : isFunnelAnalysis.value
       ? 'funnel'
       : isDistributionAnalysis.value
         ? 'table'
@@ -9684,7 +9682,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-if="!isPropertyAnalysis && !isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
+            <el-select v-if="!isPropertyAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis" v-model="form.chartType" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
