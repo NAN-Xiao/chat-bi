@@ -662,6 +662,8 @@ const activeFormulaAtomicMetricKey = ref('')
 const previewVersion = ref(0)
 const lastPreviewSql = ref('')
 const lastPreviewSignature = ref('')
+const initialChartTitle = ref('')
+const initialQuerySignature = ref('')
 const initializedPivotGroupValueField = ref('')
 const dateExpressionConfigError = ref('')
 const PIVOT_GROUP_SELECT_ALL_VALUE = '__dashboard_pivot_group_select_all__'
@@ -1185,6 +1187,15 @@ const mcpChangedAfterPreview = computed(
   () => hasMcpSource.value && !hasSqlSource.value && sourceChangedAfterPreview.value
 )
 const mixedChangedAfterPreview = computed(() => isMixedSource.value && sourceChangedAfterPreview.value)
+const titleOnlyChange = computed(
+  () =>
+    Boolean(props.viewInfo) &&
+    form.title !== initialChartTitle.value &&
+    currentPreviewSignature() === initialQuerySignature.value &&
+    currentPreviewSignature() === lastPreviewSignature.value &&
+    preview.status !== 'failed' &&
+    hasCurrentPreviewData()
+)
 const previewDisplayFields = computed(() => visiblePreviewFields(preview.fields, preview.data))
 const previewTableFields = computed(() => previewDisplayFields.value.slice(0, 10))
 const chartPreviewId = computed(() => `dashboard-sql-preview-${props.viewInfo?.id || 'new'}-${previewVersion.value}`)
@@ -6867,6 +6878,7 @@ function initEditor() {
   form.primarySource = sourceTypes.includes('external_mcp') && !sourceTypes.includes('sql') ? 'external_mcp' : 'sql'
   form.sql = viewInfo.sql || ''
   form.title = chart.title || ''
+  initialChartTitle.value = form.title
   const persistedChartType = chart.sourceType || chart.type
   form.chartType = isFunnelAnalysis.value
     ? 'funnel'
@@ -6917,6 +6929,7 @@ function initEditor() {
   initPivotConfig(normalizedConfig.pivot)
   form.pivotDateParameterType = SQL_EDITOR_DATE_PARAMETER_TYPE
   lastPreviewSignature.value = currentPreviewSignature()
+  initialQuerySignature.value = currentPreviewSignature()
   previewVersion.value += 1
   if (hasMcpSource.value) {
     void loadMcpServers().then(() => loadMcpTools())
@@ -6981,6 +6994,7 @@ async function loadExecutionDatasources(viewInfo: any) {
     }
     if (canRebaseAutoSelectedDatasource) {
       lastPreviewSignature.value = currentPreviewSignature()
+      initialQuerySignature.value = currentPreviewSignature()
     }
     ensureBuilderSchemaLoaded()
   } catch {
@@ -7017,6 +7031,8 @@ function resetExecutionDatasourceDependentState() {
   trackingEventCatalog.value = null
   lastPreviewSql.value = ''
   lastPreviewSignature.value = ''
+  initialChartTitle.value = ''
+  initialQuerySignature.value = ''
   previewVersion.value += 1
 }
 
@@ -7428,26 +7444,27 @@ function validateBeforeApply() {
   if (!validateDonutFieldMapping()) {
     return false
   }
-  if (props.allowStaticApply && !isMaterializedSource.value && !canRunPreview.value) {
+  const requiresPreview = !titleOnlyChange.value
+  if (requiresPreview && props.allowStaticApply && !isMaterializedSource.value && !canRunPreview.value) {
     return true
   }
-  if (sqlChangedAfterPreview.value) {
+  if (requiresPreview && sqlChangedAfterPreview.value) {
     ElMessage.warning(t('dashboard.sql_editor_need_preview'))
     return false
   }
-  if (mcpChangedAfterPreview.value) {
+  if (requiresPreview && mcpChangedAfterPreview.value) {
     ElMessage.warning(mt('mcp_editor_need_preview'))
     return false
   }
-  if (mixedChangedAfterPreview.value) {
+  if (requiresPreview && mixedChangedAfterPreview.value) {
     ElMessage.warning(mt('chart_source_changed'))
     return false
   }
-  if (preview.status === 'failed') {
+  if (requiresPreview && preview.status === 'failed') {
     ElMessage.warning(preview.message || t('dashboard.sql_editor_preview_failed'))
     return false
   }
-  if (!hasCurrentPreviewData()) {
+  if (requiresPreview && !hasCurrentPreviewData()) {
     ElMessage.warning(t('dashboard.sql_editor_run_preview'))
     return false
   }
