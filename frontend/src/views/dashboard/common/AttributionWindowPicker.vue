@@ -126,7 +126,9 @@ function updateMode(mode: AttributionWindowMode) {
 .attribution-window-mode,
 .attribution-window-value,
 .attribution-window-unit {
-  width: 100%;
+  width: 126px;
+  max-width: 126px;
+  flex: 0 1 126px;
 }
 
 :deep(.ed-input__wrapper),
