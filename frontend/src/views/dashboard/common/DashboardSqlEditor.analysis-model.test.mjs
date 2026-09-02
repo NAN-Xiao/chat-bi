@@ -74,6 +74,19 @@ test('renders the analysis model selector before event metrics', () => {
   )
 })
 
+test('keeps the builder loading mask fixed while its content scrolls', () => {
+  assert.match(
+    source,
+    /<div\s+v-if="sqlBuilder\.activeTab === 'builder'"\s+v-loading="schemaLoading \|\| builderLoading"\s+:element-loading-text="builderLoading \? loadingText : ''"\s+class="sql-builder-builder-pane"\s*>/,
+    '加载遮罩应挂在包含滚动区和底部操作栏的容器上'
+  )
+  assert.doesNotMatch(
+    source,
+    /<div\s+v-loading="schemaLoading \|\| builderLoading"[\s\S]*?class="sql-builder-content"/,
+    '可滚动内容节点不应承载加载遮罩'
+  )
+})
+
 test('keeps chart type selectable for non-fixed analysis models', () => {
   assert.match(
     source,

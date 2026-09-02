@@ -7808,7 +7808,12 @@ function closeDrawer() {
             </div>
           </div>
 
-          <div v-if="sqlBuilder.activeTab === 'builder'" class="sql-builder-builder-pane">
+          <div
+            v-if="sqlBuilder.activeTab === 'builder'"
+            v-loading="schemaLoading || builderLoading"
+            :element-loading-text="builderLoading ? loadingText : ''"
+            class="sql-builder-builder-pane"
+          >
             <el-alert
               v-if="eventFieldScope.mode === 'event' && eventFieldScope.status !== 'active'"
               class="event-scope-alert"
@@ -7817,12 +7822,7 @@ function closeDrawer() {
               :closable="false"
               show-icon
             />
-            <div
-              v-loading="schemaLoading || builderLoading"
-              :element-loading-text="builderLoading ? loadingText : ''"
-              class="sql-builder-content"
-              @click="activeFormulaMetricId = ''"
-            >
+            <div class="sql-builder-content" @click="activeFormulaMetricId = ''">
             <section class="builder-section analysis-model-section">
               <div class="analysis-model-row">
                 <div class="builder-section-head">
