@@ -5520,6 +5520,9 @@ async function generateBuilderAiSql() {
     const resultConfig = result.result_config || result.resultConfig || {}
     form.chartType = 'table'
     form.columns = [
+      ...(Array.isArray(resultConfig.group_fields || resultConfig.groupFields)
+        ? (resultConfig.group_fields || resultConfig.groupFields).map(String)
+        : []),
       String(resultConfig.event_field || resultConfig.eventField || 'attribution_event'),
       String(resultConfig.target_count_field || resultConfig.targetCountField || 'target_count'),
       String(resultConfig.attributed_value_field || resultConfig.attributedValueField || 'attributed_value'),
@@ -8952,6 +8955,44 @@ function closeDrawer() {
                 </div>
               </div>
 
+              <div class="attribution-group-block">
+                <div class="attribution-group-heading">
+                  <span class="attribution-config-label">分组项</span>
+                  <button
+                    type="button"
+                    class="builder-icon-button"
+                    title="添加分组"
+                    aria-label="添加分组"
+                    @click="sqlBuilder.groups.push('')"
+                  >
+                    <el-icon><Plus /></el-icon>
+                  </button>
+                </div>
+                <div class="group-list attribution-group-list">
+                  <div v-for="(_, index) in sqlBuilder.groups" :key="index" class="group-row">
+                    <span class="group-index">{{ index + 1 }}</span>
+                    <BuilderFieldPicker
+                      :model-value="sqlBuilder.groups[index]"
+                      :options="builderFieldOptions"
+                      :loading="schemaLoading"
+                      mode="property"
+                      placeholder="分组字段"
+                      @update:modelValue="handlePropertyGroupFieldChange(index, $event)"
+                    />
+                    <button
+                      type="button"
+                      class="builder-icon-button danger"
+                      :title="`删除分组${index + 1}`"
+                      :aria-label="`删除分组${index + 1}`"
+                      @click="removePropertyGroup(index)"
+                    >
+                      <el-icon><Delete /></el-icon>
+                    </button>
+                  </div>
+                  <div v-if="!sqlBuilder.groups.length" class="builder-empty">暂无分组项</div>
+                </div>
+              </div>
+
               <el-checkbox v-model="sqlBuilder.attribution.includeDirect" class="attribution-direct-checkbox">
                 直接转化参与归因计算
                 <el-tooltip content="没有匹配归因事件的目标转化将作为直接转化计入结果。" placement="top">
@@ -9438,7 +9479,7 @@ function closeDrawer() {
               </div>
             </section>
 
-            <section class="builder-section">
+            <section v-if="!isAttributionAnalysis" class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
                   <BuilderSectionIcon class="builder-section-icon" />
@@ -10832,6 +10873,27 @@ function closeDrawer() {
 
 .attribution-event-block {
   min-width: 0;
+}
+
+.attribution-group-block {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #eef0f4;
+}
+
+.attribution-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+}
+
+.attribution-group-heading .attribution-config-label {
+  margin-bottom: 0;
+}
+
+.attribution-group-list {
+  margin-top: 4px;
 }
 
 .revenue-event-flow,

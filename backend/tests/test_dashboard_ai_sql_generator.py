@@ -1950,6 +1950,31 @@ def test_attribution_prompt_plan_and_result_contract_keep_linear_semantics() -> 
     assert any("attributed_value" in issue for issue in invalid)
 
 
+def test_attribution_groups_are_preserved_in_result_contract_and_sql_prompt() -> None:
+    request = _attribution_request(method="first")
+    request.context["groups"] = [{"table": "event", "field": "channel", "value": "event.channel"}]
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    plan = ai_sql_generator._build_sql_plan(normalized, ai_sql_generator._build_formula_ir(normalized))
+    prompt = ai_sql_generator._dashboard_sql_system_prompt("attribution")
+
+    assert plan["result_contract"]["required_columns"] == [
+        "group_1",
+        "attribution_event",
+        "target_count",
+        "attributed_value",
+        "contribution_rate",
+    ]
+    assert plan["result_contract"]["final_grain"] == ["group_1", "attribution_event"]
+    assert "按配置 groups、attribution_event 汇总" in prompt
+    valid_sql = (
+        "SELECT channel AS group_1, attribution_event, COUNT(DISTINCT target_id) AS target_count, "
+        "SUM(target_value) AS attributed_value, "
+        "SUM(target_value) * 100.0 / NULLIF(SUM(target_value), 0) AS contribution_rate "
+        "FROM first_touch GROUP BY channel, attribution_event"
+    )
+    assert ai_sql_generator._attribution_sql_result_issues(valid_sql, normalized) == []
+
+
 def test_attribution_supports_first_and_last_methods() -> None:
     valid_sql = (
         "SELECT attribution_event, COUNT(DISTINCT target_id) AS target_count, "

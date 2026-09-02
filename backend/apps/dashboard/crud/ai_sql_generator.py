@@ -2365,9 +2365,11 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
         window = _normalized_attribution_window(attribution.get("window"))
         window_unit = str(window.get("unit") or "day")
         window_value = int(window.get("value") or 1)
+        groups = _list_dict_items(normalized_config.get("groups"))
         result_contract = {
             "type": "attribution_table",
             "required_columns": [
+                *[f"group_{index + 1}" for index, _ in enumerate(groups)],
                 "attribution_event",
                 "target_count",
                 "attributed_value",
@@ -2377,7 +2379,10 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             if str(attribution.get("method") or "linear").strip().lower() in {"first", "last", "linear"}
             else "linear",
             "window_seconds": 24 * 60 * 60 if window.get("mode") == "same_day" else window_value * ATTRIBUTION_WINDOW_UNIT_SECONDS.get(window_unit, 0),
-            "final_grain": ["attribution_event"],
+            "final_grain": [
+                *[f"group_{index + 1}" for index, _ in enumerate(groups)],
+                "attribution_event",
+            ],
         }
     return {
         "analysis_model": analysis_model,
@@ -3174,7 +3179,14 @@ def _attribution_sql_result_issues(
 ) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "attribution":
         return []
-    required_aliases = ["attribution_event", "target_count", "attributed_value", "contribution_rate"]
+    groups = _list_dict_items(normalized_config.get("groups"))
+    required_aliases = [
+        *[f"group_{index + 1}" for index, _ in enumerate(groups)],
+        "attribution_event",
+        "target_count",
+        "attributed_value",
+        "contribution_rate",
+    ]
     normalized_sql = str(sql or "").lower()
     missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
     issues = [f"归因 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
@@ -3390,11 +3402,12 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "touches AS (...仅保留配置的归因事件，输出 entity_id、touch_time、attribution_event，并应用各自筛选...),\n"
             "matched AS (...按同一主体连接 touch_time <= target_time 且时间差不超过配置 window_seconds 的触点...),\n"
             "weighted AS (...按 attribution.method 选择最早触点、最晚触点或按 target_id 计算匹配触点数并以 linear_weight=1.0/NULLIF(touch_count, 0) 等分；按 includeDirect 处理无触点目标...),\n"
-            "aggregated AS (...按 attribution_event 汇总目标数和 target_value * linear_weight...),\n"
+            "aggregated AS (...按配置 groups、attribution_event 汇总目标数和 target_value * linear_weight...),\n"
+            "当配置 groups 非空时，最终 SELECT 必须先输出 group_1...group_N，并按相同 groups 与 attribution_event 分组；无 groups 时仅按 attribution_event 分组。\n"
             "SELECT attribution_event, COUNT(DISTINCT target_id) AS target_count,\n"
             "       SUM(weighted_target_value) AS attributed_value,\n"
-            "       ROUND(SUM(weighted_target_value) * 100.0 / NULLIF(SUM(SUM(weighted_target_value)) OVER (), 0), 2) AS contribution_rate\n"
-            "FROM weighted GROUP BY attribution_event ORDER BY attributed_value DESC。\n"
+            "       ROUND(SUM(weighted_target_value) * 100.0 / NULLIF(SUM(SUM(weighted_target_value)) OVER (PARTITION BY <configured_groups>), 0), 2) AS contribution_rate\n"
+            "FROM weighted GROUP BY <configured_groups>, attribution_event ORDER BY <configured_groups>, attributed_value DESC。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；触点只能发生在目标之前或同一时刻，且每个目标的线性权重之和必须为 1。\n"
         )
     else:
@@ -4205,9 +4218,11 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         }
     elif response.analysis_model == "attribution":
         attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
+        groups = normalized_config.get("groups") or []
         response.chart_type = "table"
         response.result_config = {
             "type": "attribution_table",
+            "group_fields": [f"group_{index + 1}" for index, _ in enumerate(groups)],
             "event_field": "attribution_event",
             "target_count_field": "target_count",
             "attributed_value_field": "attributed_value",
