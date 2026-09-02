@@ -2446,6 +2446,20 @@ def _dashboard_config_prompt(
             else ["看板日期参数类型缺失，不能生成 SQL。"]
         )
     )
+    if parameter_type in {"yyyymmdd_number", "yyyymmdd_text"}:
+        date_parameter_rules.extend([
+            "当前时间字段和看板日期参数是 YYYYMMDD 编码键，不是 DATE 或 Unix 时间戳；禁止使用 FROM_UNIXTIME、FROM_DAYS 或乘除常数将其解析为时间。",
+            "原始时间字段的范围过滤必须直接使用看板日期参数；用于日期维度、排序、分组或日期运算前，必须先按当前 SQL 方言解析为真实 DATE。",
+        ])
+        dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
+        if any(name in dialect_text for name in ("mysql", "mariadb", "starrocks", "doris", "analyticdb")):
+            date_parameter_rules.append(
+                "MySQL/MariaDB/StarRocks/Doris：YYYYMMDD 转 DATE 必须使用 STR_TO_DATE(CAST(<time_field> AS CHAR), '%Y%m%d')。"
+            )
+        elif any(name in dialect_text for name in ("postgres", "redshift", "kingbase")):
+            date_parameter_rules.append(
+                "PostgreSQL/Redshift/Kingbase：YYYYMMDD 转 DATE 必须使用 TO_DATE(CAST(<time_field> AS TEXT), 'YYYYMMDD')。"
+            )
     analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
     retention = context.get("retention") if isinstance(context.get("retention"), dict) else {}
     retention_rules: list[str] = []
@@ -2660,6 +2674,11 @@ def _dashboard_date_sql_issues(sql: str, time_config: dict[str, Any]) -> list[st
         issues.append("生成 SQL 未使用当前图表日期参数，请重新生成。")
     if _DATABASE_CURRENT_DATE_PATTERN.search(sql):
         issues.append("生成 SQL 使用了数据库当前日期函数，请改用看板日期参数。")
+    if parameter_type in {"yyyymmdd_number", "yyyymmdd_text"}:
+        if re.search(r"\bfrom_unix(?:time|_timestamp)\s*\(", str(sql or ""), flags=re.IGNORECASE):
+            issues.append("生成 SQL 不能使用 FROM_UNIXTIME 解析 YYYYMMDD 时间字段；必须按当前方言转换为 DATE。")
+        if re.search(r"\bfrom_days\s*\(", str(sql or ""), flags=re.IGNORECASE):
+            issues.append("生成 SQL 不能使用 FROM_DAYS 解析 YYYYMMDD 时间字段；必须按当前方言转换为 DATE。")
     return _unique_text_items(issues)
 
 
@@ -2844,6 +2863,9 @@ def _funnel_sql_result_issues(
 def _distribution_sql_result_issues(
         sql: str,
         normalized_config: dict[str, Any],
+        *,
+        sql_dialect: str | None = None,
+        datasource: CoreDatasource | None = None,
 ) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "distribution":
         return []
@@ -2862,6 +2884,21 @@ def _distribution_sql_result_issues(
     normalized_sql = str(sql or "").lower()
     missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
     issues = [f"分布 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    time_config = normalized_config.get("time") if isinstance(normalized_config.get("time"), dict) else {}
+    parameter_type = str(time_config.get("date_parameter_type") or "").strip()
+    if parameter_type in {"yyyymmdd_number", "yyyymmdd_text"}:
+        normalized_sql_text = str(sql or "")
+        if re.search(r"\bfrom_unix(?:time|_timestamp)\s*\(", normalized_sql_text, flags=re.IGNORECASE):
+            issues.append("分布 SQL 不能使用 FROM_UNIXTIME 解析 YYYYMMDD 时间字段；必须按当前方言转换为 DATE。")
+        dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
+        if any(name in dialect_text for name in ("mysql", "mariadb", "starrocks", "doris", "analyticdb")):
+            statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+            nodes = [node for statement in statements for node in statement.walk()]
+            if not any(isinstance(node, exp.StrToDate) for node in nodes):
+                issues.append("分布 SQL 未将 YYYYMMDD 通过 STR_TO_DATE 转换为 DATE。")
+        elif any(name in dialect_text for name in ("postgres", "redshift", "kingbase")):
+            if not re.search(r"\bto_date\s*\(", normalized_sql_text, flags=re.IGNORECASE):
+                issues.append("分布 SQL 未将 YYYYMMDD 通过 TO_DATE 转换为 DATE。")
     if not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
         issues.append("分布 SQL 必须按分析主体去重统计 entity_count。")
     if not re.search(r"\bnullif\s*\(", normalized_sql):
@@ -3709,6 +3746,8 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     elif distribution_issues := _distribution_sql_result_issues(
         sql,
         state.get("normalized_config") or {},
+        sql_dialect=state.get("sql_dialect"),
+        datasource=state.get("datasource"),
     ):
         response.success = False
         response.message = "生成 SQL 未满足分布分析生成要求。"
