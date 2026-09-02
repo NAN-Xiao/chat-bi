@@ -1734,6 +1734,7 @@ def test_interval_prompt_and_result_contract_enforce_pairing_semantics() -> None
     assert "连续出现多个起点时只保留最后一个起点" in prompt
     assert "相同事件" in prompt and "N-1" in prompt
     assert "所有时长列必须为数值秒" in prompt
+    assert "禁止对 dt 使用 FROM_UNIXTIME" in prompt
     assert ai_sql_generator._interval_sql_result_issues(valid_sql, normalized) == []
     invalid_issues = ai_sql_generator._interval_sql_result_issues(
         "SELECT interval_date, COUNT(*) AS interval_count FROM valid_intervals GROUP BY interval_date",
@@ -2284,6 +2285,32 @@ def test_sql_validation_routes_retention_and_distribution_failures_to_one_repair
         "response": failed_response,
         "sql_repair_attempts": 1,
     }) == "explain_advice"
+
+
+def test_sql_validation_routes_interval_failures_to_one_repair() -> None:
+    failed_response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=False,
+        sql="SELECT interval_date FROM valid_intervals",
+        issues=["间隔 SQL 缺少固定结果列：interval_count。"],
+    )
+    assert ai_sql_generator._route_after_sql_validate({
+        "normalized_config": {"analysis_model": "interval"},
+        "response": failed_response,
+        "sql_repair_attempts": 0,
+    }) == "repair_interval_sql"
+
+
+def test_yyyymmdd_date_validation_only_rejects_unix_conversion_of_configured_field() -> None:
+    time_config = {
+        "field": {"table": "event", "field": "dt", "value": "event.dt"},
+        "date_parameter_type": "yyyymmdd_number",
+    }
+    assert ai_sql_generator._sql_uses_unix_time_for_yyyymmdd_field(
+        "SELECT FROM_UNIXTIME(dt * 0.01) AS bad_date", time_config
+    ) is True
+    assert ai_sql_generator._sql_uses_unix_time_for_yyyymmdd_field(
+        "SELECT FROM_UNIXTIME(e.time / 1000) AS event_time", time_config
+    ) is False
 
 
 def test_retention_repair_prompt_carries_contract_original_sql_and_issues() -> None:

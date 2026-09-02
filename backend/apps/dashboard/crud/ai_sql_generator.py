@@ -2448,7 +2448,7 @@ def _dashboard_config_prompt(
     )
     if parameter_type in {"yyyymmdd_number", "yyyymmdd_text"}:
         date_parameter_rules.extend([
-            "当前时间字段和看板日期参数是 YYYYMMDD 编码键，不是 DATE 或 Unix 时间戳；禁止使用 FROM_UNIXTIME、FROM_DAYS 或乘除常数将其解析为时间。",
+            "当前时间字段和看板日期参数是 YYYYMMDD 编码键，不是 Unix 时间戳，也不是 DATE；禁止使用 FROM_UNIXTIME、FROM_DAYS 或乘除常数将其解析为时间。",
             "原始时间字段的范围过滤必须直接使用看板日期参数；用于日期维度、排序、分组或日期运算前，必须先按当前 SQL 方言解析为真实 DATE。",
         ])
         dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
@@ -2583,6 +2583,7 @@ def _dashboard_config_prompt(
         interval_rules = [
             "当前 analysisModel=interval，只能使用 interval 配置生成间隔查询；不得读取或套用事件、留存、漏斗、分布模型的指标语义。",
             "同一分析主体的起点事件和终点事件必须按事件时间顺序配对，最终持续时间统一计算为秒。",
+            "时间字段职责必须严格区分：YYYYMMDD 类型的 dt/分区字段只用于看板日期范围过滤和 interval_date 展示；真实事件时间字段（例如 time 的 Unix 毫秒值）才允许使用 FROM_UNIXTIME(<time_field> / 1000) 转换。禁止对 dt 使用 FROM_UNIXTIME，也不能用 dt 代替事件时间计算间隔。",
             "起点事件与终点事件不同时采用最短间隔原则：连续出现多个起点时只保留最后一个起点，每个起点只匹配其后第一个有效终点；例如 A1,A2,B1,B2 只生成 A2-B1，A1,B1,A2,B2 生成两条间隔。",
             "起点事件与终点事件相同时，按同一主体相邻两条有效事件配对，N 条事件生成 N-1 条间隔；禁止把一条事件与自身配对。",
             "startEventFilters 和 endEventFilters 只应用于各自事件明细；全局筛选和分组项继续使用公共配置，不得交换或合并筛选范围。",
@@ -2675,7 +2676,7 @@ def _dashboard_date_sql_issues(sql: str, time_config: dict[str, Any]) -> list[st
     if _DATABASE_CURRENT_DATE_PATTERN.search(sql):
         issues.append("生成 SQL 使用了数据库当前日期函数，请改用看板日期参数。")
     if parameter_type in {"yyyymmdd_number", "yyyymmdd_text"}:
-        if re.search(r"\bfrom_unix(?:time|_timestamp)\s*\(", str(sql or ""), flags=re.IGNORECASE):
+        if _sql_uses_unix_time_for_yyyymmdd_field(sql, time_config):
             issues.append("生成 SQL 不能使用 FROM_UNIXTIME 解析 YYYYMMDD 时间字段；必须按当前方言转换为 DATE。")
         if re.search(r"\bfrom_days\s*\(", str(sql or ""), flags=re.IGNORECASE):
             issues.append("生成 SQL 不能使用 FROM_DAYS 解析 YYYYMMDD 时间字段；必须按当前方言转换为 DATE。")
@@ -2689,6 +2690,30 @@ def _sqlglot_statements_for_generation_validation(sql: str, sql_dialect: str | N
         return [statement for statement in sqlglot.parse(source_sql, read=dialect) if statement is not None]
     except sqlglot.errors.ParseError:
         return []
+
+
+def _sql_uses_unix_time_for_yyyymmdd_field(sql: str, time_config: dict[str, Any]) -> bool:
+    """仅拦截把配置的 YYYYMMDD 字段传给 Unix 时间转换函数的 SQL。"""
+    field = time_config.get("field") if isinstance(time_config, dict) else None
+    candidates = _schema_field_candidates(field)
+    if not candidates:
+        return False
+    statements = _sqlglot_statements_for_generation_validation(sql, "mysql")
+    for statement in statements:
+        for node in statement.walk():
+            if isinstance(node, exp.UnixToTime):
+                if any(
+                    isinstance(column, exp.Column)
+                    and (
+                        _normalized_identifier(column.name) in candidates
+                        or _normalized_identifier(column.sql()) in candidates
+                    )
+                    for column in node.walk()
+                ):
+                    return True
+    field_patterns = [re.escape(item.split(".")[-1]) for item in candidates]
+    pattern = r"\bfrom_unix(?:time|_timestamp)\s*\([^)]*\b(?:" + "|".join(field_patterns) + r")\b"
+    return bool(re.search(pattern, str(sql or ""), flags=re.IGNORECASE | re.DOTALL))
 
 
 def _expression_mentions_column(expression: exp.Expression | None, fragment: str) -> bool:
@@ -2730,7 +2755,7 @@ def _retention_date_operation_issues(
         isinstance(node, (exp.Add, exp.Sub))
         and isinstance(node.args.get("expression"), exp.Interval)
         for node in nodes
-    ):
+    ) or re.search(r"\b(?:cohort|behavior)?[_a-z0-9.]*dt\b\s*[+-]\s*INTERVAL\b", str(sql or ""), re.IGNORECASE):
         issues.append("留存 SQL 不能让字段直接加减 INTERVAL；必须对转换后的 DATE 使用 DATE_ADD。")
 
     date_diffs = [node for node in nodes if isinstance(node, exp.DateDiff)]
@@ -2888,7 +2913,7 @@ def _distribution_sql_result_issues(
     parameter_type = str(time_config.get("date_parameter_type") or "").strip()
     if parameter_type in {"yyyymmdd_number", "yyyymmdd_text"}:
         normalized_sql_text = str(sql or "")
-        if re.search(r"\bfrom_unix(?:time|_timestamp)\s*\(", normalized_sql_text, flags=re.IGNORECASE):
+        if _sql_uses_unix_time_for_yyyymmdd_field(normalized_sql_text, time_config):
             issues.append("分布 SQL 不能使用 FROM_UNIXTIME 解析 YYYYMMDD 时间字段；必须按当前方言转换为 DATE。")
         dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
         if any(name in dialect_text for name in ("mysql", "mariadb", "starrocks", "doris", "analyticdb")):
@@ -3622,6 +3647,7 @@ def _dashboard_sql_repair_user_prompt(state: DashboardManualChartGraphState) -> 
     analysis_label = {
         "retention": "留存",
         "distribution": "分布",
+        "interval": "间隔",
     }.get(analysis_model, "分析")
     return "\n".join([
         _dashboard_sql_user_prompt(state),
@@ -3675,6 +3701,24 @@ async def _async_node_repair_distribution_sql(state: DashboardManualChartGraphSt
     }
 
 
+async def _async_node_repair_interval_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
+    response = await _async_invoke_llm_json(llm, [
+        SystemMessage(content=(
+            _dashboard_sql_system_prompt("interval")
+            + "\n你正在修复一条未通过间隔 SQL 协议、日期字段语义或方言校验的查询。必须完整重写 SQL，并逐项消除校验错误；不能放宽或绕过校验。"
+        )),
+        HumanMessage(content=_dashboard_sql_repair_user_prompt(state)),
+    ], node="repair_interval_sql")
+    response.analysis_model = "interval"
+    return {
+        "response": response,
+        "sql_repair_attempts": int(state.get("sql_repair_attempts") or 0) + 1,
+        "graph_trace": _append_trace(state, "repair_interval_sql"),
+        "last_node": "repair_interval_sql",
+    }
+
+
 def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
     sql = (response.sql or "").strip()
@@ -3724,7 +3768,23 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.success = False
         response.message = "生成 SQL 未满足看板日期参数要求。"
         response.advice = "请使用当前图表配置的起止日期参数重新生成。"
-        response.issues = _unique_text_items(list(response.issues or []) + date_issues)
+        model_issues: list[str] = []
+        normalized_config = state.get("normalized_config") or {}
+        if str(normalized_config.get("analysis_model") or "event") == "retention":
+            model_issues = _retention_sql_result_issues(
+                sql,
+                normalized_config,
+                sql_dialect=state.get("sql_dialect"),
+                datasource=state.get("datasource"),
+            )
+        elif str(normalized_config.get("analysis_model") or "event") == "distribution":
+            model_issues = _distribution_sql_result_issues(
+                sql,
+                normalized_config,
+                sql_dialect=state.get("sql_dialect"),
+                datasource=state.get("datasource"),
+            )
+        response.issues = _unique_text_items(list(response.issues or []) + date_issues + model_issues)
     elif retention_issues := _retention_sql_result_issues(
         sql,
         state.get("normalized_config") or {},
@@ -3839,6 +3899,8 @@ def _route_after_sql_validate(state: DashboardManualChartGraphState) -> str:
             return "repair_retention_sql"
         if analysis_model == "distribution":
             return "repair_distribution_sql"
+        if analysis_model == "interval":
+            return "repair_interval_sql"
     return "explain_advice"
 
 
@@ -4007,6 +4069,10 @@ def _build_manual_chart_graph():
         "repair_distribution_sql",
         _timed_node("repair_distribution_sql", _async_node_repair_distribution_sql),
     )
+    graph.add_node(
+        "repair_interval_sql",
+        _timed_node("repair_interval_sql", _async_node_repair_interval_sql),
+    )
     graph.add_node("explain_advice", _timed_node("explain_advice", _node_explain_advice))
     graph.add_node("finalize_response", _timed_node("finalize_response", _node_finalize_response))
     graph.set_entry_point("collect_context")
@@ -4019,6 +4085,7 @@ def _build_manual_chart_graph():
     graph.add_conditional_edges("validate_sql", _route_after_sql_validate)
     graph.add_edge("repair_retention_sql", "validate_sql")
     graph.add_edge("repair_distribution_sql", "validate_sql")
+    graph.add_edge("repair_interval_sql", "validate_sql")
     graph.add_edge("explain_advice", "finalize_response")
     graph.add_edge("finalize_response", END)
     return graph.compile()
