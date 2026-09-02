@@ -8113,7 +8113,8 @@ function closeDrawer() {
                     />
                     <DistributionIntervalSettings
                       :model-value="sqlBuilder.distribution.interval"
-                      :disabled="!sqlBuilder.distribution.event || sqlBuilder.distribution.metric.kind === 'count'"
+                      :disabled="!sqlBuilder.distribution.event"
+                      :discrete-only="sqlBuilder.distribution.metric.kind === 'count'"
                       @update:modelValue="updateDistributionInterval"
                     />
                     <button
