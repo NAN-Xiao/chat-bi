@@ -1544,6 +1544,48 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
     assert any("total_entities" in issue for issue in invalid)
 
 
+def test_distribution_prompt_requires_typed_yyyymmdd_date_operations() -> None:
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        _distribution_request(),
+        SimpleNamespace(name="测试", type="starrocks", type_name="StarRocks"),
+        "",
+        "",
+        sql_dialect="mysql",
+    )
+
+    assert "不是 Unix 时间戳" in prompt
+    assert "禁止使用 FROM_UNIXTIME" in prompt
+    assert "STR_TO_DATE(CAST(<time_field> AS CHAR), '%Y%m%d')" in prompt
+
+
+def test_distribution_sql_validation_rejects_untyped_yyyymmdd_date_operations() -> None:
+    normalized = ai_sql_generator._normalize_manual_config(_distribution_request())
+    invalid_sql = """
+    WITH base_events AS (
+        SELECT dt, uid, event FROM event
+        WHERE event = 'UserLogin'
+          AND dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+    ), entity_values AS (
+        SELECT DATE_FORMAT(FROM_UNIXTIME(dt * 0.01), '%Y-%m-%d') AS distribution_date,
+               uid AS entity_id, COUNT(*) AS distribution_value
+        FROM base_events GROUP BY dt, uid
+    )
+    SELECT distribution_date, 1 AS total_entities, 1 AS interval_order,
+           '1' AS interval_label, COUNT(DISTINCT entity_id) AS entity_count,
+           100 AS entity_rate
+    FROM entity_values GROUP BY distribution_date
+    """
+    issues = ai_sql_generator._distribution_sql_result_issues(
+        invalid_sql,
+        normalized,
+        sql_dialect="mysql",
+        datasource=SimpleNamespace(name="测试", type="mysql", type_name="MySQL"),
+    )
+
+    assert any("FROM_UNIXTIME" in issue for issue in issues)
+    assert any("STR_TO_DATE" in issue for issue in issues)
+
+
 def test_distribution_sql_validation_rejects_adb_correlated_subquery_before_execution() -> None:
     request = _distribution_request(simultaneous={
         "enabled": True,
