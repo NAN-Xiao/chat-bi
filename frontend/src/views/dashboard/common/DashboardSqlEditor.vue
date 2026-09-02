@@ -500,7 +500,7 @@ const sqlBuilder = reactive({
       aggregation: 'sum',
     },
     interval: {
-      mode: 'discrete',
+      mode: 'auto',
       customBounds: [],
     },
     simultaneous: {
@@ -2279,9 +2279,9 @@ function builderConfigForSave() {
         aggregation: sqlBuilder.distribution.metric.aggregation,
       },
       interval: {
-        mode: effectiveDistributionInterval().mode,
-        customBounds: effectiveDistributionInterval().mode === 'custom'
-          ? [...effectiveDistributionInterval().customBounds]
+        mode: sqlBuilder.distribution.interval.mode,
+        customBounds: sqlBuilder.distribution.interval.mode === 'custom'
+          ? [...sqlBuilder.distribution.interval.customBounds]
           : [],
       },
       simultaneous: {
@@ -2485,9 +2485,6 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.distribution.interval.customBounds = Array.isArray(distributionInterval.customBounds)
     ? distributionInterval.customBounds.map(Number).filter(Number.isFinite)
     : []
-  if (sqlBuilder.distribution.metric.kind === 'count') {
-    sqlBuilder.distribution.interval = { mode: 'discrete', customBounds: [] }
-  }
   const distributionSimultaneous = distribution.simultaneous && typeof distribution.simultaneous === 'object'
     ? distribution.simultaneous
     : {}
@@ -3382,7 +3379,7 @@ function resetDistributionConfig() {
   sqlBuilder.distribution.eventFilterLogic = 'and'
   sqlBuilder.distribution.eventFilters = []
   sqlBuilder.distribution.metric = { kind: 'count', field: '', aggregation: 'sum' }
-  sqlBuilder.distribution.interval = { mode: 'discrete', customBounds: [] }
+  sqlBuilder.distribution.interval = { mode: 'auto', customBounds: [] }
   sqlBuilder.distribution.simultaneous.enabled = false
   sqlBuilder.distribution.simultaneous.event = ''
   sqlBuilder.distribution.simultaneous.aggregation = 'count'
@@ -3680,23 +3677,7 @@ function handleDistributionEventChange(eventValue: string) {
 }
 
 function updateDistributionMetric(metric: DistributionMetricConfig) {
-  const previousKind = sqlBuilder.distribution.metric.kind
   sqlBuilder.distribution.metric = { ...metric }
-  if (metric.kind === 'count') {
-    sqlBuilder.distribution.interval = { mode: 'discrete', customBounds: [] }
-  } else if (previousKind === 'count') {
-    sqlBuilder.distribution.interval = { mode: 'auto', customBounds: [] }
-  }
-}
-
-function effectiveDistributionInterval(): DistributionIntervalConfig {
-  if (sqlBuilder.distribution.metric.kind === 'count') {
-    return { mode: 'discrete', customBounds: [] }
-  }
-  return {
-    mode: sqlBuilder.distribution.interval.mode,
-    customBounds: [...sqlBuilder.distribution.interval.customBounds],
-  }
 }
 
 function updateDistributionInterval(interval: DistributionIntervalConfig) {
@@ -4674,8 +4655,8 @@ function collectBuilderAiContext() {
         aggregation: sqlBuilder.distribution.metric.aggregation,
       },
       interval: {
-        mode: effectiveDistributionInterval().mode,
-        customBounds: [...effectiveDistributionInterval().customBounds],
+        mode: sqlBuilder.distribution.interval.mode,
+        customBounds: [...sqlBuilder.distribution.interval.customBounds],
       },
       simultaneous: {
         enabled: sqlBuilder.distribution.simultaneous.enabled,
@@ -8114,7 +8095,6 @@ function closeDrawer() {
                     <DistributionIntervalSettings
                       :model-value="sqlBuilder.distribution.interval"
                       :disabled="!sqlBuilder.distribution.event"
-                      :discrete-only="sqlBuilder.distribution.metric.kind === 'count'"
                       @update:modelValue="updateDistributionInterval"
                     />
                     <button

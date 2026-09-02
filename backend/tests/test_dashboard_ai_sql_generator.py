@@ -1497,7 +1497,7 @@ def test_distribution_rejects_invalid_interval_metric_and_simultaneous_config() 
     assert "分布分析使用同时展示时请选择参与事件。" in result.issues
 
 
-def test_distribution_count_metric_always_uses_discrete_intervals() -> None:
+def test_distribution_count_metric_preserves_interval_settings() -> None:
     request = _distribution_request(
         metric={"kind": "count", "field": None, "aggregation": "sum"},
         interval={"mode": "auto", "customBounds": [0, 10, 100]},
@@ -1505,7 +1505,7 @@ def test_distribution_count_metric_always_uses_discrete_intervals() -> None:
 
     normalized = ai_sql_generator._normalize_manual_config(request)
 
-    assert normalized["distribution"]["interval"] == {"mode": "discrete", "customBounds": []}
+    assert normalized["distribution"]["interval"] == {"mode": "auto", "customBounds": [0, 10, 100]}
 
 
 def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analysis() -> None:

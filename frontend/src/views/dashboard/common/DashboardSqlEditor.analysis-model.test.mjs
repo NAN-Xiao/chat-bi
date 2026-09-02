@@ -255,11 +255,6 @@ test('keeps distribution analysis configuration and controls isolated from other
     /<DistributionIntervalSettings[\s\S]*?:disabled="!sqlBuilder\.distribution\.event"/,
     '分布区间设置只应在未选择参与事件时禁用，次数指标仍需可打开查看离散规则'
   )
-  assert.match(
-    source,
-    /<DistributionIntervalSettings[\s\S]*?:discrete-only="sqlBuilder\.distribution\.metric\.kind === 'count'"/,
-    '次数指标打开区间设置时只应展示有效的离散模式'
-  )
   assert.doesNotMatch(
     source,
     /:disabled="!sqlBuilder\.distribution\.event \|\| sqlBuilder\.distribution\.metric\.kind === 'count'"/,
@@ -280,8 +275,7 @@ test('keeps distribution analysis configuration and controls isolated from other
   assert.doesNotMatch(distributionMetricPickerSource, /grid-template-columns:\s*repeat\(3/)
   assert.match(distributionMetricPickerSource, /distribution-metric-popper[\s\S]*?max-width:\s*calc\(100vw - 24px\)/)
   assert.match(distributionIntervalSettingsSource, /distribution-interval-popper[\s\S]*?max-width:\s*calc\(100vw - 24px\)/)
-  assert.match(distributionIntervalSettingsSource, /const visibleTabs = computed\(\(\) => props\.discreteOnly/)
-  assert.match(distributionIntervalSettingsSource, /v-for="tab in visibleTabs"/)
+  assert.match(distributionIntervalSettingsSource, /v-for="tab in tabs"/)
 })
 
 test('keeps distribution simultaneous event and aggregation on the same row', () => {

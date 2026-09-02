@@ -7,7 +7,6 @@ import type { DistributionIntervalConfig, DistributionIntervalMode } from './dis
 const props = defineProps<{
   modelValue: DistributionIntervalConfig
   disabled?: boolean
-  discreteOnly?: boolean
 }>()
 
 const emits = defineEmits<{
@@ -24,16 +23,10 @@ const tabs: Array<{ label: string; value: DistributionIntervalMode }> = [
   { label: '自定义区间', value: 'custom' },
 ]
 
-const visibleTabs = computed(() => (
-  props.discreteOnly ? tabs.filter((item) => item.value === 'discrete') : tabs
-))
-const activeLabel = computed(() => (
-  visibleTabs.value.find((item) => item.value === props.modelValue.mode)?.label
-    || (props.discreteOnly ? '离散数字' : '默认区间')
-))
+const activeLabel = computed(() => tabs.find((item) => item.value === props.modelValue.mode)?.label || '默认区间')
 
 function resetDraft() {
-  draftMode.value = props.discreteOnly ? 'discrete' : (props.modelValue.mode || 'auto')
+  draftMode.value = props.modelValue.mode || 'auto'
   customBoundsText.value = (props.modelValue.customBounds || []).join(', ')
 }
 
@@ -94,7 +87,7 @@ function applySettings() {
     <div class="distribution-interval-settings">
       <div class="distribution-interval-tabs" role="tablist" aria-label="分布区间模式">
         <button
-          v-for="tab in visibleTabs"
+          v-for="tab in tabs"
           :key="tab.value"
           type="button"
           role="tab"
