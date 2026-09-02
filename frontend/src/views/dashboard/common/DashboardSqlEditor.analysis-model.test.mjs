@@ -47,6 +47,10 @@ test('renders the analysis model selector before event metrics', () => {
   assert.match(source, /class="analysis-model-row"/)
   assert.match(source, /value: 'path'[\s\S]*?content:/, '路径分析模型需要提供说明内容')
   assert.match(source, /class="analysis-model-info-icon"[\s\S]*?<InfoFilled \/>/, '路径分析标题需要展示说明提示')
+  for (const modelLabel of ['排行榜', '分布分析', '间隔分析', '路径分析', '收入分析', '归因分析', '漏斗分析', '留存分析']) {
+    const headingPattern = new RegExp(`<span>${modelLabel}</span>[\\s\\S]*?class="analysis-model-info-icon"`)
+    assert.match(source, headingPattern, `${modelLabel}标题需要展示说明提示`)
+  }
   assert.match(source, /class="retention-heading-row"/)
   assert.match(
     source,

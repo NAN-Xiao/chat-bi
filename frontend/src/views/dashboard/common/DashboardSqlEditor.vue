@@ -7915,6 +7915,7 @@ function closeDrawer() {
                   <div class="builder-section-title">
                     <BuilderSectionIcon class="builder-section-icon" />
                     <span>排行榜</span>
+                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
                   </div>
                 </div>
                 <div class="ranking-subject-line">
@@ -8056,6 +8057,7 @@ function closeDrawer() {
                   <div class="builder-section-title">
                     <BuilderSectionIcon class="builder-section-icon" />
                     <span>分布分析</span>
+                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
                   </div>
                 </div>
                 <div class="distribution-subject-line">
@@ -8178,6 +8180,7 @@ function closeDrawer() {
                   <div class="builder-section-title">
                     <BuilderSectionIcon class="builder-section-icon" />
                     <span>间隔分析</span>
+                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
                   </div>
                 </div>
                 <div class="interval-subject-line">
@@ -8371,6 +8374,7 @@ function closeDrawer() {
                   <div class="builder-section-title">
                     <BuilderSectionIcon class="builder-section-icon" />
                     <span>收入分析</span>
+                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
                   </div>
                 </div>
                 <div class="revenue-subject-line">
@@ -8484,6 +8488,7 @@ function closeDrawer() {
                   <div class="builder-section-title">
                     <BuilderSectionIcon class="builder-section-icon" />
                     <span>归因分析</span>
+                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
                   </div>
                 </div>
                 <div class="attribution-subject-line">
@@ -8644,6 +8649,7 @@ function closeDrawer() {
                   <div class="builder-section-title">
                     <BuilderSectionIcon class="builder-section-icon" />
                     <span>漏斗分析</span>
+                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
                   </div>
                 </div>
                 <div class="funnel-subject-line">
@@ -8783,6 +8789,7 @@ function closeDrawer() {
                   <div class="builder-section-title">
                     <BuilderSectionIcon class="builder-section-icon" />
                     <span>留存分析</span>
+                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
                   </div>
                 </div>
                 <div class="retention-subject-line">
