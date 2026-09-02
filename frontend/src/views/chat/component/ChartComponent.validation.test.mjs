@@ -25,15 +25,33 @@ test('radial validation errors use the shared chart validation contract', () => 
 })
 
 test('validation failure clears the old chart and skips render retries', () => {
-  assert.match(component, /if \(isChartValidationError\(error\)\) \{[\s\S]*?clearActiveChart\(\)[\s\S]*?chartValidationErrorCode\.value = error\.code[\s\S]*?return/)
+  assert.match(
+    component,
+    /if \(isChartValidationError\(error\)\) \{[\s\S]*?clearActiveChart\(\)[\s\S]*?chartValidationErrorCode\.value = error\.code[\s\S]*?return/
+  )
 
-  const validationBranch = component.match(/if \(isChartValidationError\(error\)\) \{([\s\S]*?)\n\s*\}/)
+  const validationBranch = component.match(
+    /if \(isChartValidationError\(error\)\) \{([\s\S]*?)\n\s*\}/
+  )
   assert.ok(validationBranch)
   assert.doesNotMatch(validationBranch[1], /scheduleRenderChart/)
-  assert.match(component, /if \(retry < maxRenderRetries\) \{\s*scheduleRenderChart\(160, retry \+ 1\)/)
+  assert.match(
+    component,
+    /if \(retry < maxRenderRetries\) \{\s*scheduleRenderChart\(160, retry \+ 1\)/
+  )
 })
 
 test('validation failure renders a localized explicit error state', () => {
   assert.match(component, /const chartValidationMessage = computed/)
-  assert.match(component, /v-if="chartValidationErrorCode"[\s\S]*?role="alert"[\s\S]*?chartValidationMessage/)
+  assert.match(
+    component,
+    /v-if="chartValidationErrorCode"[\s\S]*?role="alert"[\s\S]*?chartValidationMessage/
+  )
+})
+
+test('ordinary render failures leave the loading state after retries are exhausted', () => {
+  assert.match(
+    component,
+    /if \(retry < maxRenderRetries\) \{[\s\S]*?scheduleRenderChart\(160, retry \+ 1\)[\s\S]*?return[\s\S]*?\}[\s\S]*?if \(!activeLayerRef\.value\) \{[\s\S]*?chartValidationErrorCode\.value = 'invalid_data'[\s\S]*?showInitialLoading\.value = false/
+  )
 })

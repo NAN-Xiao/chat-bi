@@ -166,7 +166,7 @@ function hasRenderedOutput(element = activeLayerRef.value || chartRenderHostRef.
   if (params.type === 'table') {
     return Boolean(
       element.querySelector('canvas, svg, .s2-table, .s2-spreadsheet, .s2-container') ||
-        element.children.length > 0
+      element.children.length > 0
     )
   }
   return Boolean(element.querySelector('canvas, svg'))
@@ -174,9 +174,7 @@ function hasRenderedOutput(element = activeLayerRef.value || chartRenderHostRef.
 
 function hasActiveRenderedLayer() {
   return Boolean(
-    activeLayerRef.value &&
-      !stagingLayerRef.value &&
-      hasRenderedOutput(activeLayerRef.value)
+    activeLayerRef.value && !stagingLayerRef.value && hasRenderedOutput(activeLayerRef.value)
   )
 }
 
@@ -320,6 +318,12 @@ function handleAtomicRenderError(
   console.warn('[ChartComponent] chart render failed, retrying if possible', error)
   if (retry < maxRenderRetries) {
     scheduleRenderChart(160, retry + 1)
+    return
+  }
+  if (!activeLayerRef.value) {
+    clearActiveChart()
+    chartValidationErrorCode.value = 'invalid_data'
+    showInitialLoading.value = false
   }
 }
 
@@ -503,11 +507,7 @@ function handleVisibilityChange() {
 
 <template>
   <div :id="chartId" ref="chartContainerRef" class="chart-container">
-    <div
-      v-if="chartValidationErrorCode"
-      class="chart-component-validation-error"
-      role="alert"
-    >
+    <div v-if="chartValidationErrorCode" class="chart-component-validation-error" role="alert">
       {{ chartValidationMessage }}
     </div>
     <div
