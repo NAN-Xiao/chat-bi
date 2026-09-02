@@ -1744,6 +1744,36 @@ def test_interval_prompt_and_result_contract_enforce_pairing_semantics() -> None
     assert any("分位数" in issue for issue in invalid_issues)
 
 
+def test_interval_percentile_functions_follow_mysql_compatible_dialect() -> None:
+    request = _interval_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    datasource = SimpleNamespace(name="测试", type="mysql", type_name="MySQL")
+    prompt = ai_sql_generator._dashboard_config_prompt(request, datasource, "", "", sql_dialect="mysql")
+    assert "APPROX_PERCENTILE" in prompt
+    assert "PERCENTILE_CONT" in prompt and "禁止使用 PERCENTILE_CONT" in prompt
+
+    invalid_sql = (
+        "SELECT interval_date, COUNT(DISTINCT entity_id) AS entity_count, COUNT(*) AS interval_count, "
+        "MAX(interval_seconds) AS max_interval_seconds, "
+        "PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY interval_seconds) AS p75_interval_seconds, "
+        "PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY interval_seconds) AS median_interval_seconds, "
+        "PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY interval_seconds) AS p25_interval_seconds, "
+        "MIN(interval_seconds) AS min_interval_seconds, AVG(interval_seconds) AS avg_interval_seconds "
+        "FROM valid_intervals GROUP BY interval_date"
+    )
+    issues = ai_sql_generator._interval_sql_result_issues(
+        invalid_sql, normalized, sql_dialect="mysql", datasource=datasource
+    )
+    assert any("APPROX_PERCENTILE" in issue for issue in issues)
+
+    valid_sql = invalid_sql.replace("PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY interval_seconds)", "APPROX_PERCENTILE(interval_seconds, 0.75)")
+    valid_sql = valid_sql.replace("PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY interval_seconds)", "APPROX_PERCENTILE(interval_seconds, 0.50)")
+    valid_sql = valid_sql.replace("PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY interval_seconds)", "APPROX_PERCENTILE(interval_seconds, 0.25)")
+    assert ai_sql_generator._interval_sql_result_issues(
+        valid_sql, normalized, sql_dialect="mysql", datasource=datasource
+    ) == []
+
+
 def test_funnel_config_uses_ordered_steps_and_deterministic_validation() -> None:
     request = _funnel_request()
     normalized = ai_sql_generator._normalize_manual_config(request)
