@@ -1286,6 +1286,12 @@ const titleOnlyChange = computed(
 )
 const previewDisplayFields = computed(() => visiblePreviewFields(preview.fields, preview.data))
 const previewTableFields = computed(() => previewDisplayFields.value.slice(0, 10))
+const chartPreviewColumns = computed(() => {
+  if (form.chartType === 'table') {
+    return previewTableFields.value
+  }
+  return form.chartType === 'sankey' ? form.columns : []
+})
 const chartPreviewId = computed(() => `dashboard-sql-preview-${props.viewInfo?.id || 'new'}-${previewVersion.value}`)
 const showXAxis = computed(() =>
   !['table', 'metric'].includes(form.chartType) && !isRadialPartitionChartType(form.chartType)
@@ -7912,6 +7918,10 @@ function buildChart() {
     return chart
   }
 
+  if (form.chartType === 'sankey') {
+    chart.columns = toAxes(form.columns)
+  }
+
   if (form.chartType === 'heatmap') {
     chart.xAxis = toAxes([form.x].filter(Boolean) as string[])
     chart.yAxis = toAxes(form.y, { metrics: true })
@@ -8954,7 +8964,7 @@ const analysisModelFormContext = {
           :key="chartPreviewId"
           :id="chartPreviewId"
           :type="form.chartType"
-          :columns="form.chartType === 'table' ? toAxes(previewTableFields) : []"
+          :columns="toAxes(chartPreviewColumns)"
           :x="form.chartType !== 'table' && form.chartType !== 'metric' && !isRadialPartitionChartType(form.chartType) ? toAxes([form.x]) : []"
           :y="toAxes(chartPreviewYFields, { metrics: true })"
           :series="toAxes(chartPreviewSeriesFields)"
