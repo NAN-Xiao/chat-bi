@@ -12998,6 +12998,11 @@ function closeDrawer() {
   transition: background-color 0.16s ease;
 }
 
+/* Keep the metric index aligned with the controls when no alias row is shown. */
+.property-metric-editor:not(.has-alias):not(.is-active) {
+  padding-top: 0;
+}
+
 .property-metric-editor:hover,
 .property-metric-editor:focus-within,
 .property-metric-editor.is-active {
