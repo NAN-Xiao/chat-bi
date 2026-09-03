@@ -11180,10 +11180,11 @@ function closeDrawer() {
 }
 
 .builder-section-title {
-  min-width: 0;
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 7px;
+  white-space: nowrap;
 }
 
 .builder-section-icon {
@@ -11210,7 +11211,7 @@ function closeDrawer() {
 }
 
 .analysis-model-row .builder-section-head {
-  flex: 0 0 96px;
+  flex: 0 0 120px;
   margin-bottom: 0;
 }
 
@@ -11243,7 +11244,7 @@ function closeDrawer() {
 }
 
 .ranking-heading-row .builder-section-head {
-  flex: 0 0 96px;
+  flex: 0 0 120px;
   margin-bottom: 0;
 }
 
@@ -11571,7 +11572,7 @@ function closeDrawer() {
 }
 
 .revenue-heading-row .builder-section-head {
-  flex: 0 0 96px;
+  flex: 0 0 120px;
   margin-bottom: 0;
 }
 
@@ -11583,7 +11584,7 @@ function closeDrawer() {
 }
 
 .attribution-heading-row .builder-section-head {
-  flex: 0 0 96px;
+  flex: 0 0 120px;
   margin-bottom: 0;
 }
 
@@ -11806,7 +11807,7 @@ function closeDrawer() {
 }
 
 .distribution-heading-row .builder-section-head {
-  flex: 0 0 96px;
+  flex: 0 0 120px;
   margin-bottom: 0;
 }
 
@@ -11903,7 +11904,7 @@ function closeDrawer() {
 }
 
 .funnel-heading-row .builder-section-head {
-  flex: 0 0 96px;
+  flex: 0 0 120px;
   margin-bottom: 0;
 }
 
@@ -12074,7 +12075,7 @@ function closeDrawer() {
 }
 
 .retention-heading-row .builder-section-head {
-  flex: 0 0 96px;
+  flex: 0 0 120px;
   margin-bottom: 0;
 }
 

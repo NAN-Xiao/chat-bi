@@ -59,6 +59,30 @@ test('renders the analysis model selector before event metrics', () => {
   )
   assert.match(
     source,
+    /\.builder-section-title\s*\{[\s\S]*?white-space:\s*nowrap;/,
+    '分析模型标题必须单行展示'
+  )
+  for (const headingClass of [
+    'analysis-model-row',
+    'ranking-heading-row',
+    'revenue-heading-row',
+    'attribution-heading-row',
+    'distribution-heading-row',
+    'funnel-heading-row',
+    'retention-heading-row',
+  ]) {
+    const headingHeadPattern = new RegExp(
+      `\\.${headingClass} \\.builder-section-head\\s*\\{[\\s\\S]*?flex:\\s*0 0 120px;`
+    )
+    assert.match(source, headingHeadPattern, `${headingClass} 标题列固定宽度必须为 120px，避免四字标题换行`)
+    assert.doesNotMatch(
+      source,
+      new RegExp(`\\.${headingClass} \\.builder-section-head\\s*\\{[\\s\\S]*?flex:\\s*0 0 96px;`),
+      `${headingClass} 标题列不得继续使用过窄的 96px`
+    )
+  }
+  assert.match(
+    source,
     /\.retention-subject-line\s*\{[\s\S]*?width:\s*auto;[\s\S]*?grid-template-columns:\s*auto minmax\(160px, 280px\) auto;/,
     '分析主体选择器必须使用紧凑宽度'
   )
