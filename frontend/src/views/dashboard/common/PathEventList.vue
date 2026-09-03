@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Check, Close, FolderOpened, Operation, Plus, Search } from '@element-plus/icons-vue'
+import { Check, Close, FolderOpened, Minus, Operation, Plus, Search } from '@element-plus/icons-vue'
 import BuilderFieldPicker from './BuilderFieldPicker.vue'
 import { fieldOptionDisplayName } from './builderFieldPickerOptions'
 import type { PathAnalysisEvent } from './pathAnalysis'
@@ -21,6 +21,7 @@ const maxEvents = computed(() => props.maxEvents || 30)
 const eventPickerVisible = ref(false)
 const draftSplitVisible = ref(false)
 const keyword = ref('')
+const activeEventCategory = ref('')
 
 const selectedEventValues = computed(() =>
   props.modelValue.map((item) => item.event).filter(Boolean)
@@ -54,9 +55,69 @@ const filteredEventOptions = computed(() => {
   )
 })
 
+const eventGroups = computed(() => {
+  const groups = new Map<string, Array<any>>()
+  filteredEventOptions.value.forEach((option) => {
+    const category = option.eventCategory || option.category || '默认分组'
+    if (!groups.has(category)) groups.set(category, [])
+    groups.get(category)?.push(option)
+  })
+  return Array.from(groups.entries()).map(([name, items]) => ({
+    name,
+    items: items.sort((a, b) =>
+      fieldOptionDisplayName(a, a.value).localeCompare(
+        fieldOptionDisplayName(b, b.value),
+        undefined,
+        { numeric: true, sensitivity: 'base' }
+      )
+    ),
+  }))
+})
+
+const activeEventGroup = computed(
+  () =>
+    eventGroups.value.find((group) => group.name === activeEventCategory.value) ||
+    eventGroups.value[0]
+)
+
+const activeEventItems = computed(() => activeEventGroup.value?.items || [])
+
+const filteredEventValues = computed(() => filteredEventOptions.value.map((option) => option.value))
+const selectedFilteredEventCount = computed(
+  () => filteredEventValues.value.filter((value) => isEventSelected(value)).length
+)
+const allFilteredEventsSelected = computed(
+  () =>
+    filteredEventValues.value.length > 0 &&
+    selectedFilteredEventCount.value === filteredEventValues.value.length
+)
+const someFilteredEventsSelected = computed(
+  () => selectedFilteredEventCount.value > 0 && !allFilteredEventsSelected.value
+)
+const filteredSelectionValues = computed(() =>
+  Array.from(new Set([...selectedEventValues.value, ...filteredEventValues.value]))
+)
+const selectingAllWouldExceedLimit = computed(
+  () => !allFilteredEventsSelected.value && filteredSelectionValues.value.length > maxEvents.value
+)
+
 watch(availableSplitEventOptions, (options) => {
   if (!options.length) draftSplitVisible.value = false
 })
+
+watch(
+  eventGroups,
+  (groups) => {
+    if (!groups.length) {
+      activeEventCategory.value = ''
+      return
+    }
+    if (!groups.some((group) => group.name === activeEventCategory.value)) {
+      activeEventCategory.value = groups[0].name
+    }
+  },
+  { immediate: true }
+)
 
 function isEventSelected(value: string) {
   return selectedEventValues.value.includes(value)
@@ -88,6 +149,19 @@ function toggleEvent(value: string) {
     ? selectedEventValues.value.filter((event) => event !== value)
     : [...selectedEventValues.value, value]
   updateSelectedEvents(nextValues)
+}
+
+function toggleAllFilteredEvents() {
+  const visibleValues = filteredEventValues.value
+  if (!visibleValues.length) return
+  if (allFilteredEventsSelected.value) {
+    updateSelectedEvents(
+      selectedEventValues.value.filter((event) => !visibleValues.includes(event))
+    )
+    return
+  }
+  if (selectingAllWouldExceedLimit.value) return
+  updateSelectedEvents(filteredSelectionValues.value)
 }
 
 function splitEventOptions(currentEvent: string) {
@@ -142,7 +216,7 @@ function removeSplitItem(event: string) {
   <div class="path-event-list">
     <el-popover
       v-model:visible="eventPickerVisible"
-      width="360"
+      width="440"
       trigger="click"
       placement="bottom-start"
       popper-class="path-event-picker-popper"
@@ -163,32 +237,66 @@ function removeSplitItem(event: string) {
       <div class="path-event-picker">
         <div class="path-event-picker-search">
           <el-icon><Search /></el-icon>
-          <input v-model="keyword" placeholder="搜索事件" />
+          <input v-model="keyword" placeholder="请输入搜索" />
+        </div>
+        <button
+          type="button"
+          class="path-event-picker-select-all"
+          :aria-pressed="allFilteredEventsSelected"
+          :disabled="filteredEventOptions.length === 0 || selectingAllWouldExceedLimit"
+          @click="toggleAllFilteredEvents"
+        >
+          <span
+            class="path-event-picker-check"
+            :class="{ 'is-selected': allFilteredEventsSelected || someFilteredEventsSelected }"
+          >
+            <el-icon v-if="allFilteredEventsSelected"><Check /></el-icon>
+            <el-icon v-else-if="someFilteredEventsSelected"><Minus /></el-icon>
+          </span>
+          <span>全选</span>
+        </button>
+        <div class="path-event-picker-tabs">
+          <button type="button" class="active">事件</button>
         </div>
         <div v-if="loading" class="path-event-picker-empty">加载中...</div>
-        <div v-else-if="filteredEventOptions.length === 0" class="path-event-picker-empty">
-          暂无事件
-        </div>
-        <div v-else class="path-event-picker-options">
-          <button
-            v-for="option in filteredEventOptions"
-            :key="option.value"
-            type="button"
-            class="path-event-picker-option"
-            :disabled="!isEventSelected(option.value) && selectedEventCount >= maxEvents"
-            @click="toggleEvent(option.value)"
-          >
-            <span
-              class="path-event-picker-check"
-              :class="{ 'is-selected': isEventSelected(option.value) }"
+        <div v-else-if="eventGroups.length === 0" class="path-event-picker-empty">暂无事件</div>
+        <div v-else class="path-event-picker-columns">
+          <div class="path-event-category-list">
+            <button
+              v-for="group in eventGroups"
+              :key="group.name"
+              type="button"
+              :class="{ active: activeEventCategory === group.name }"
+              :aria-pressed="activeEventCategory === group.name"
+              @click="activeEventCategory = group.name"
             >
-              <el-icon v-if="isEventSelected(option.value)"><Check /></el-icon>
-            </span>
-            <span class="path-event-picker-option-text">
-              <span>{{ fieldOptionDisplayName(option, option.value) }}</span>
-              <small v-if="option.eventName">{{ option.eventName }}</small>
-            </span>
-          </button>
+              {{ group.name }}
+            </button>
+          </div>
+          <div class="path-event-picker-options">
+            <div class="path-event-picker-group-title">{{ activeEventGroup?.name }}</div>
+            <button
+              v-for="option in activeEventItems"
+              :key="option.value"
+              type="button"
+              class="path-event-picker-option"
+              :class="{ active: isEventSelected(option.value) }"
+              :aria-pressed="isEventSelected(option.value)"
+              :disabled="!isEventSelected(option.value) && selectedEventCount >= maxEvents"
+              @click="toggleEvent(option.value)"
+            >
+              <span
+                class="path-event-picker-check"
+                :class="{ 'is-selected': isEventSelected(option.value) }"
+              >
+                <el-icon v-if="isEventSelected(option.value)"><Check /></el-icon>
+              </span>
+              <span class="path-event-picker-option-text">
+                <span>{{ fieldOptionDisplayName(option, option.value) }}</span>
+                <small v-if="option.eventName">{{ option.eventName }}</small>
+              </span>
+            </button>
+          </div>
         </div>
         <p v-if="selectedEventCount >= maxEvents" class="path-event-limit-hint">
           最多选择 {{ maxEvents }} 个事件
@@ -307,6 +415,7 @@ function removeSplitItem(event: string) {
 }
 
 .path-event-picker {
+  min-height: 330px;
   color: #1f2633;
   font-size: 12px;
 }
@@ -329,10 +438,108 @@ function removeSplitItem(event: string) {
   font-size: 12px;
 }
 
+.path-event-picker-select-all {
+  display: flex;
+  width: 100%;
+  height: 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid #edf0f5;
+  color: #1f2633;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.path-event-picker-select-all:hover:not(:disabled) {
+  background: #f4f6fa;
+}
+
+.path-event-picker-select-all:disabled {
+  color: #b5bbc6;
+  cursor: not-allowed;
+}
+
+.path-event-picker-tabs {
+  display: flex;
+  height: 38px;
+  align-items: flex-end;
+  padding: 0 12px;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.path-event-picker-tabs button {
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: #5f687a;
+  background: transparent;
+  font-size: 12px;
+}
+
+.path-event-picker-tabs button.active {
+  border-color: #315cff;
+  color: #1f2633;
+  font-weight: 600;
+}
+
+.path-event-picker-columns {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  min-height: 224px;
+}
+
+.path-event-category-list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 7px 6px;
+  border-right: 1px solid #edf0f5;
+}
+
+.path-event-category-list button {
+  display: block;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  color: #374151;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path-event-category-list button:hover,
+.path-event-category-list button.active {
+  color: #315cff;
+  background: #eef1f7;
+  font-weight: 600;
+}
+
 .path-event-picker-options {
   max-height: 280px;
   overflow-y: auto;
-  padding: 6px;
+  padding: 7px 8px;
+}
+
+.path-event-picker-group-title {
+  height: 28px;
+  padding: 0 8px;
+  color: #5f687a;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .path-event-picker-option {
@@ -340,8 +547,8 @@ function removeSplitItem(event: string) {
   width: 100%;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 5px 8px;
+  min-height: 32px;
+  padding: 4px 8px;
   border: 0;
   border-radius: 6px;
   color: #1f2633;
@@ -352,6 +559,10 @@ function removeSplitItem(event: string) {
 
 .path-event-picker-option:hover:not(:disabled) {
   background: #f4f6fa;
+}
+
+.path-event-picker-option.active {
+  background: #eef1f7;
 }
 
 .path-event-picker-option:disabled {
@@ -398,6 +609,10 @@ function removeSplitItem(event: string) {
 }
 
 .path-event-picker-empty {
+  display: flex;
+  min-height: 224px;
+  align-items: center;
+  justify-content: center;
   padding: 22px 12px;
   color: #9aa2af;
   text-align: center;
