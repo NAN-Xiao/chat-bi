@@ -32,7 +32,11 @@ export function normalizeTableFilterValue(value: unknown): TableFilterKey {
   return `${valueType}:${String(value)}`
 }
 
-export function collectTableFilterOptions(rows: TableRow[], field: string): TableFilterOption[] {
+export function collectTableFilterOptions(
+  rows: TableRow[],
+  field: string,
+  formatLabel: (value: unknown) => string = String
+): TableFilterOption[] {
   const options = new Map<TableFilterKey, TableFilterOption>()
 
   rows.forEach((row) => {
@@ -47,7 +51,7 @@ export function collectTableFilterOptions(rows: TableRow[], field: string): Tabl
     const isEmpty = key === EMPTY_FILTER_VALUE
     options.set(key, {
       key,
-      label: isEmpty ? '（空值）' : String(value),
+      label: isEmpty ? '（空值）' : formatLabel(value),
       count: 1,
       isEmpty,
     })

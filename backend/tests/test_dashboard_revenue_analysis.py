@@ -118,9 +118,45 @@ def test_revenue_prompt_plan_and_result_contract_keep_cohort_semantics():
     assert "同期 Cohort" in prompt
     assert plan["analysis_model"] == "revenue"
     assert plan["result_contract"]["type"] == "revenue_cohort_table"
+    assert plan["result_contract"]["date_field"] == "cohort_date"
     assert plan["result_contract"]["required_columns"] == [
         "cohort_date", "cohort_size", "day_0", "day_1", "day_2", "day_3",
         "day_4", "day_5", "day_6", "day_7",
     ]
     assert ai_sql_generator._revenue_sql_result_issues(valid_sql, normalized) == []
     assert ai_sql_generator._revenue_sql_result_issues("SELECT cohort_date FROM event", normalized)
+
+
+def test_revenue_prompt_and_validation_require_displayable_cohort_date():
+    request = _revenue_request(observationDays=1)
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    datasource = SimpleNamespace(name="测试", type="mysql", type_name="MySQL")
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        datasource,
+        "",
+        "",
+        sql_dialect="mysql",
+    ) + "\n" + ai_sql_generator._dashboard_sql_system_prompt("revenue")
+    remaining_columns = "COUNT(DISTINCT user_id) AS cohort_size, SUM(amount) AS day_0, 0 AS day_1"
+    invalid_sql = f"SELECT dt AS cohort_date, {remaining_columns} FROM event GROUP BY dt"
+    valid_sql = f"""
+        SELECT STR_TO_DATE(CAST(dt AS CHAR), '%Y%m%d') AS cohort_date, {remaining_columns}
+        FROM event
+        GROUP BY STR_TO_DATE(CAST(dt AS CHAR), '%Y%m%d')
+    """
+
+    assert "cohort_date 必须输出真实 DATE 或 YYYY-MM-DD 日期文本" in prompt
+    invalid_issues = ai_sql_generator._revenue_sql_result_issues(
+        invalid_sql,
+        normalized,
+        sql_dialect="mysql",
+        datasource=datasource,
+    )
+    assert any("cohort_date" in issue and "YYYYMMDD" in issue for issue in invalid_issues)
+    assert ai_sql_generator._revenue_sql_result_issues(
+        valid_sql,
+        normalized,
+        sql_dialect="mysql",
+        datasource=datasource,
+    ) == []
