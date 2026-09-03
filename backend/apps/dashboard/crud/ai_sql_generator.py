@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from sqlglot import exp
+from sqlglot.lineage import lineage as build_sql_lineage
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
@@ -3094,13 +3095,13 @@ def _retention_simultaneous_aggregation_issues(
     if aggregation not in _SUPPORTED_METRIC_AGGREGATIONS:
         return []
     statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
-    aliases = [
-        node
+    if not any(
+        isinstance(select, exp.Alias)
+        and _normalized_identifier(select.alias_or_name) == "simultaneous_value"
         for statement in statements
-        for node in statement.find_all(exp.Alias)
-        if _normalized_identifier(node.alias) == "simultaneous_value"
-    ]
-    if not aliases:
+        if isinstance(statement, exp.Query)
+        for select in statement.selects
+    ):
         return []
 
     aggregate_type_by_name: dict[str, type[exp.Expression]] = {
@@ -3110,8 +3111,8 @@ def _retention_simultaneous_aggregation_issues(
         "min": exp.Min,
     }
 
-    def matches(alias: exp.Alias) -> bool:
-        aggregate_nodes = list(alias.this.walk())
+    def matches(expression: exp.Expression) -> bool:
+        aggregate_nodes = list(expression.walk())
         if aggregation == "count_distinct":
             return any(
                 isinstance(node, exp.Count) and isinstance(node.this, exp.Distinct)
@@ -3125,8 +3126,67 @@ def _retention_simultaneous_aggregation_issues(
         expected_type = aggregate_type_by_name.get(aggregation)
         return expected_type is not None and any(isinstance(node, expected_type) for node in aggregate_nodes)
 
-    if any(matches(alias) for alias in aliases):
-        return []
+    def source_query_has_aggregate(query: exp.Expression) -> bool:
+        return any(isinstance(node, exp.AggFunc) for node in query.walk())
+
+    def aggregate_cte_reachable_from_query(query: exp.Query) -> bool:
+        ctes = {
+            str(cte.alias_or_name or "").strip().lower(): cte.this
+            for cte in query.find_all(exp.CTE)
+            if str(cte.alias_or_name or "").strip()
+        }
+        if not ctes:
+            return False
+        reachable: set[str] = set()
+        pending: list[str] = []
+        from_clause = query.args.get("from_")
+        if from_clause is not None:
+            for table in from_clause.find_all(exp.Table):
+                name = str(table.name or "").strip().lower()
+                if name in ctes and name not in reachable:
+                    pending.append(name)
+        while pending:
+            name = pending.pop()
+            if name in reachable:
+                continue
+            reachable.add(name)
+            cte_query = ctes[name]
+            if source_query_has_aggregate(cte_query):
+                return True
+            for table in cte_query.find_all(exp.Table):
+                dependency = str(table.name or "").strip().lower()
+                if dependency in ctes and dependency not in reachable:
+                    pending.append(dependency)
+        return False
+
+    for statement in statements:
+        if not isinstance(statement, exp.Query):
+            continue
+        try:
+            output_lineage = build_sql_lineage("simultaneous_value", statement)
+        except sqlglot.errors.SqlglotError:
+            continue
+        lineage_nodes = list(output_lineage.walk())
+        if not lineage_nodes:
+            continue
+        output_expression = lineage_nodes[0].expression
+        upstream_expressions = [node.expression for node in lineage_nodes[1:]]
+        upstream_has_aggregate = any(
+            isinstance(node, exp.AggFunc)
+            for expression in upstream_expressions
+            for node in expression.walk()
+        )
+        if matches(output_expression):
+            if aggregation != "count" or (
+                not upstream_has_aggregate and not aggregate_cte_reachable_from_query(statement)
+            ):
+                return []
+            continue
+        if aggregation == "count" and any(
+            isinstance(node, exp.Sum)
+            for node in output_expression.walk()
+        ) and any(matches(expression) for expression in upstream_expressions):
+            return []
     aggregation_labels = {
         "count": "COUNT",
         "count_distinct": "COUNT(DISTINCT ...)",

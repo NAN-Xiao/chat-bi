@@ -2960,6 +2960,89 @@ def test_retention_sql_validates_simultaneous_aggregation_function() -> None:
     assert any("simultaneous_value" in issue and "SUM" in issue for issue in invalid_issues)
 
 
+def test_retention_sql_accepts_count_aggregated_in_cte_then_summed() -> None:
+    request = _retention_request(simultaneous={
+        "enabled": True,
+        "event": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "login", "field": "event_name",
+        },
+        "aggregation": "count",
+        "metricField": None,
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    retention = normalized["retention"]
+    fixed_columns = ", ".join(["cohort_date", "cohort_size"] + [f"day_{day}" for day in range(8)])
+    sql = f"""
+    WITH simultaneous_events AS (
+        SELECT user_id, event_date, COUNT(*) AS sim_count
+        FROM event
+        GROUP BY user_id, event_date
+    ), matched AS (
+        SELECT retention_result.*, simultaneous_events.sim_count
+        FROM retention_result
+        LEFT JOIN simultaneous_events
+          ON retention_result.user_id = simultaneous_events.user_id
+         AND retention_result.event_date = simultaneous_events.event_date
+    )
+    SELECT {fixed_columns}, SUM(sim_count) AS simultaneous_value
+    FROM matched
+    GROUP BY cohort_date, cohort_size
+    """
+
+    assert ai_sql_generator._retention_simultaneous_aggregation_issues(
+        sql,
+        retention,
+        sql_dialect="mysql",
+    ) == []
+    result_issues = ai_sql_generator._retention_sql_result_issues(
+        sql,
+        normalized,
+        sql_dialect="mysql",
+    )
+    assert not any("simultaneous_value" in issue and "COUNT" in issue for issue in result_issues)
+
+
+@pytest.mark.parametrize("output_expression", ["COUNT(sim_count)", "COUNT(*)", "COUNT(user_id)"])
+def test_retention_sql_rejects_counting_preaggregated_count_rows(output_expression: str) -> None:
+    request = _retention_request(simultaneous={
+        "enabled": True,
+        "event": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "login", "field": "event_name",
+        },
+        "aggregation": "count",
+        "metricField": None,
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    retention = normalized["retention"]
+    fixed_columns = ", ".join(["cohort_date", "cohort_size"] + [f"day_{day}" for day in range(8)])
+    sql = f"""
+    WITH simultaneous_events AS (
+        SELECT user_id, event_date, COUNT(*) AS sim_count
+        FROM event
+        GROUP BY user_id, event_date
+    ), matched AS (
+        SELECT retention_result.*, simultaneous_events.sim_count
+        FROM retention_result
+        LEFT JOIN simultaneous_events
+          ON retention_result.user_id = simultaneous_events.user_id
+         AND retention_result.event_date = simultaneous_events.event_date
+    )
+    SELECT {fixed_columns}, {output_expression} AS simultaneous_value
+    FROM matched
+    GROUP BY cohort_date, cohort_size
+    """
+
+    issues = ai_sql_generator._retention_simultaneous_aggregation_issues(
+        sql,
+        retention,
+        sql_dialect="mysql",
+    )
+
+    assert any("simultaneous_value" in issue and "COUNT" in issue for issue in issues)
+
+
 def test_retention_event_aliases_and_filters_keep_event_identity_and_validate_scope() -> None:
     request = _retention_request(
         initialEventAlias="新增用户",
