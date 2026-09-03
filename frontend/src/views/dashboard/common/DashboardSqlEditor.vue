@@ -63,6 +63,7 @@ import {
   isNumericFieldOption,
   isSelectableFieldOption,
   isTimeFieldOption,
+  propertyAnalysisFieldOptions,
 } from '@/views/dashboard/common/builderFieldPickerOptions.ts'
 import { metricFilterRecoveryCandidates } from '@/views/dashboard/common/metricFilterRecovery.ts'
 import {
@@ -1162,21 +1163,11 @@ const attributionMethodOptions: Array<{ label: string; value: AttributionMethod 
 const isRankingAnalysis = computed(() => sqlBuilder.analysisModel === 'ranking')
 const isHeatmapAnalysis = computed(() => sqlBuilder.analysisModel === 'heatmap')
 const propertyFieldOptions = computed<SchemaFieldOption[]>(() => {
-  if (eventFieldScope.value.status !== 'active') return builderFieldOptions.value as SchemaFieldOption[]
-  const options = [
-    ...trackingEventPropertyOptions.value,
-    ...eventUserPropertyOptions.value,
-  ] as SchemaFieldOption[]
-  const uniqueOptions = new Map<string, SchemaFieldOption>()
-  options.forEach((option) => {
-    if (!uniqueOptions.has(option.value)) uniqueOptions.set(option.value, option)
+  return propertyAnalysisFieldOptions({
+    eventScopeActive: eventFieldScope.value.status === 'active',
+    builderFields: builderFieldOptions.value as SchemaFieldOption[],
+    userProperties: eventUserPropertyOptions.value,
   })
-  const dedupedOptions = Array.from(uniqueOptions.values())
-  const known = new Set(dedupedOptions.map((option) => option.value))
-  ;(builderFieldOptions.value as SchemaFieldOption[]).forEach((option) => {
-    if (isTimeFieldOption(option) && !known.has(option.value)) dedupedOptions.push(option)
-  })
-  return dedupedOptions
 })
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)

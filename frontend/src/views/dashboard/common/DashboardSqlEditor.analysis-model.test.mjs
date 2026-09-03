@@ -137,15 +137,16 @@ test('keeps property analysis isolated with property metrics, filters, and group
   const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
   const signatureBody = source.match(/function currentPreviewSignature\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
   const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const propertyFieldOptionsBody = source.match(
+    /const propertyFieldOptions = computed[\s\S]*?\(\(\) => \{([\s\S]*?)\r?\n\}\)\r?\nconst retentionEntityFieldOptions/
+  )?.[1] || ''
 
   assert.match(source, /\{ label: '属性分析', value: 'property'/)
   assert.match(source, /const isPropertyAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'property'\)/)
   assert.match(source, /const propertyFieldOptions = computed/)
-  assert.match(
-    source,
-    /const propertyFieldOptions = computed[\s\S]*?trackingEventPropertyOptions\.value[\s\S]*?eventUserPropertyOptions\.value/,
-    '属性分析字段需要同时展示对应事件属性和用户属性'
-  )
+  assert.match(propertyFieldOptionsBody, /propertyAnalysisFieldOptions/)
+  assert.match(propertyFieldOptionsBody, /eventUserPropertyOptions\.value/)
+  assert.doesNotMatch(propertyFieldOptionsBody, /trackingEventPropertyOptions\.value/)
   assert.match(saveBody, /property:\s*sqlBuilder\.analysisModel === 'property'/)
   assert.match(saveBody, /groupSettings:/)
   assert.match(saveBody, /metrics:\s*sqlBuilder\.metricItems\.map\(serializePropertyMetric\)/)

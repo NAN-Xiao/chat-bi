@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   eventScopedPropertyOptions,
+  propertyAnalysisFieldOptions,
   type FieldOption,
 } from '../src/views/dashboard/common/builderFieldPickerOptions.ts'
 
@@ -81,4 +82,45 @@ test('properties are unavailable outside the active event table', () => {
     userProperties: [fieldOption({})],
     activeEventTable: 'event',
   }), [])
+})
+
+test('property analysis only exposes user properties for an active event scope', () => {
+  const eventProperty = fieldOption({
+    value: 'tracking-property:event.event:Login:resolution',
+    field: 'resolution',
+    kind: 'tracking-property',
+    eventName: 'Login',
+  })
+  const userProperty = fieldOption({
+    value: 'event.userinfo.channel',
+    field: 'userinfo.channel',
+    sourceField: 'userinfo',
+    jsonPath: '$.channel',
+    isJsonSubfield: true,
+  })
+  const timeField = fieldOption({
+    value: 'event.event_time',
+    field: 'event_time',
+    type: 'timestamp',
+  })
+
+  assert.deepEqual(propertyAnalysisFieldOptions({
+    eventScopeActive: true,
+    builderFields: [eventProperty, userProperty, timeField],
+    userProperties: [userProperty],
+  }), [userProperty])
+})
+
+test('property analysis retains datasource fields when event scope is inactive', () => {
+  const field = fieldOption({
+    value: 'orders.status',
+    table: 'orders',
+    field: 'status',
+  })
+
+  assert.deepEqual(propertyAnalysisFieldOptions({
+    eventScopeActive: false,
+    builderFields: [field],
+    userProperties: [],
+  }), [field])
 })

@@ -202,6 +202,19 @@ export function isEventUserPropertyOption(option: FieldOption, eventTable = 'eve
   )
 }
 
+export function propertyAnalysisFieldOptions(input: {
+  eventScopeActive: boolean
+  builderFields: FieldOption[]
+  userProperties: FieldOption[]
+}) {
+  if (!input.eventScopeActive) {
+    return input.builderFields
+  }
+  return Array.from(
+    new Map(input.userProperties.map((option) => [option.value, option])).values()
+  )
+}
+
 export function eventScopedPropertyOptions(input: {
   eventOption?: FieldOption
   eventProperties?: FieldOption[]
