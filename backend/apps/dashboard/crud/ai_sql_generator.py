@@ -70,6 +70,19 @@ ATTRIBUTION_WINDOW_UNIT_SECONDS = {
     "minute": 60,
 }
 ATTRIBUTION_WINDOW_MAX_SECONDS = 365 * 24 * 60 * 60
+ANALYSIS_MODEL_LABELS = {
+    "event": "事件",
+    "property": "属性",
+    "retention": "留存",
+    "funnel": "漏斗",
+    "distribution": "分布",
+    "interval": "间隔",
+    "path": "路径",
+    "revenue": "收入",
+    "attribution": "归因",
+    "ranking": "排行",
+    "heatmap": "热力地图",
+}
 
 
 def _normalized_attribution_window(window: Any) -> dict[str, Any]:
@@ -777,7 +790,7 @@ def _normalize_manual_config(
     ).strip()
     time_config["date_expression"] = time_config.get("dateExpression") or time_config.get("date_expression")
     analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
-    if analysis_model not in {"event", "property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking", "heatmap"}:
+    if analysis_model not in ANALYSIS_MODEL_LABELS:
         analysis_model = "event"
     property_config = dict(context.get("property") or {}) if isinstance(context.get("property"), dict) else {}
     property_group_mode = str(
@@ -2420,6 +2433,22 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
                 *(["related_property"] if "related_property" in required_columns else []),
             ],
         }
+    elif analysis_model == "funnel":
+        funnel = normalized_config.get("funnel") if isinstance(normalized_config.get("funnel"), dict) else {}
+        result_contract = {
+            "type": "funnel_table",
+            "required_columns": [
+                "step_order",
+                "step_name",
+                "step_count",
+                "step_rate",
+                "step_conversion_rate",
+                "step_dropoff_rate",
+            ],
+            "step_count": len(_list_dict_items(funnel.get("steps"))),
+            "window": _normalized_funnel_window(funnel),
+            "final_grain": ["step_order", "step_name"],
+        }
     elif analysis_model == "distribution":
         distribution = normalized_config.get("distribution") if isinstance(normalized_config.get("distribution"), dict) else {}
         simultaneous = distribution.get("simultaneous") if isinstance(distribution.get("simultaneous"), dict) else {}
@@ -2577,6 +2606,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
         "path": normalized_config.get("path") or {},
         "revenue": revenue,
         "attribution": attribution,
+        "ranking": normalized_config.get("ranking") or {},
         "heatmap": normalized_config.get("heatmap") or {},
         "result_contract": result_contract,
         "time": time_config,
@@ -2632,6 +2662,7 @@ def _dashboard_sql_dialect_rules(sql_dialect: str | None, datasource: CoreDataso
         return [
             "MySQL/MariaDB 方言约束：不能使用 FULL OUTER JOIN；MySQL 不支持该语法。",
             "MySQL/AnalyticDB 兼容数据源生成 SQL 时统一使用 CAST(... AS SIGNED)；禁止生成 CAST(... AS UNSIGNED) 或 AS UNSIGNED，以兼容实际执行引擎。",
+            "MySQL/AnalyticDB 兼容数据源禁止在 JOIN ON 中使用 EXISTS、IN 或标量子查询读取日期边界、连接键或聚合值；必须先把数据整理为 CTE 或派生表，再通过显式 JOIN/CROSS JOIN 后直接引用来源别名限定的列。",
             "如果需要合并两个按日期/维度聚合的结果集，优先用一个 key_set CTE 通过 UNION/UNION ALL 去重收集日期或维度键，再分别 LEFT JOIN 各聚合结果；也可以在同一事实表中用 SUM/COUNT(DISTINCT CASE WHEN ...) 做条件聚合。",
         ]
     return []
@@ -3574,6 +3605,25 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "period_offset 只能作为中间计算字段，不能出现在基础 Cohort 最终结果中。\n"
             "day_0 到 day_7 都表示对应周期回访人数占 cohort_size 的比例；不得输出长表 matched_rate 代替这些固定列。\n"
         )
+    elif str(analysis_model or "event") == "funnel":
+        structure_prompt = (
+            "当前 SQL plan 的 analysis_model=funnel，必须使用漏斗专用的逐步匹配结构；禁止改写为彼此独立的事件人数统计。\n"
+            "漏斗 SQL 结构范式：\n"
+            "WITH bounds AS (...仅一行时间边界...),\n"
+            "scoped_steps AS (...仅保留配置步骤事件，输出 entity_id、step_order、event_time、关联属性和步骤筛选结果；通过显式 JOIN/CROSS JOIN bounds 应用日期边界...),\n"
+            "step_1 AS (...按 entity_id 选择步骤 1 的首次有效发生时间...),\n"
+            "step_2 AS (...显式 JOIN step_1 与步骤 2 明细，要求 step_2_time >= step_1_time，并选择首次有效步骤 2...),\n"
+            "...按 funnel.steps 配置顺序继续建立 step_N，每一步都必须发生在前一步之后，并满足相对步骤 1 的 funnel.window...,\n"
+            "step_counts AS (...按配置顺序输出每一步完成主体数...),\n"
+            "SELECT step_order, step_name, step_count,\n"
+            "       <step_count / first_step_count> AS step_rate,\n"
+            "       <step_count / previous_step_count> AS step_conversion_rate,\n"
+            "       <(previous_step_count - step_count) / previous_step_count> AS step_dropoff_rate\n"
+            "FROM step_counts ORDER BY step_order。\n"
+            "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，一行只能对应一个配置步骤。\n"
+            "禁止让后续步骤只与步骤 1 独立关联；步骤 N 必须建立在步骤 N-1 已完成的主体集合上。\n"
+            "MySQL/AnalyticDB 下禁止在 JOIN ON 中使用标量子查询读取 bounds 或上一步聚合值；先显式 JOIN/CROSS JOIN 对应 CTE，再用来源别名限定字段。\n"
+        )
     elif str(analysis_model or "event") == "interval":
         structure_prompt = (
             "当前 SQL plan 的 analysis_model=interval，必须使用间隔分析专用的事件排序、配对、上限过滤和统计结构。\n"
@@ -4107,7 +4157,7 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
         SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ], node="generate_sql")
-    response.analysis_model = analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking", "heatmap"} else "event"
+    response.analysis_model = analysis_model if analysis_model in ANALYSIS_MODEL_LABELS else "event"
     validation = state.get("validation_result")
     if validation:
         response.intent = response.intent or validation.intent
@@ -4121,11 +4171,7 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
 def _dashboard_sql_repair_user_prompt(state: DashboardManualChartGraphState) -> str:
     response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
     analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
-    analysis_label = {
-        "retention": "留存",
-        "distribution": "分布",
-        "interval": "间隔",
-    }.get(analysis_model, "分析")
+    analysis_label = ANALYSIS_MODEL_LABELS.get(analysis_model, "分析")
     return "\n".join([
         _dashboard_sql_user_prompt(state),
         "",
@@ -4142,57 +4188,27 @@ def _dashboard_sql_repair_user_prompt(state: DashboardManualChartGraphState) -> 
     ])
 
 
-async def _async_node_repair_retention_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
+async def _async_node_repair_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
+    if analysis_model not in ANALYSIS_MODEL_LABELS:
+        analysis_model = "event"
+    analysis_label = ANALYSIS_MODEL_LABELS[analysis_model]
+    node_name = f"repair_{analysis_model}_sql"
     llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
     response = await _async_invoke_llm_json(llm, [
         SystemMessage(content=(
-            _dashboard_sql_system_prompt("retention")
-            + "\n你正在修复一条未通过留存 SQL 协议校验的查询。必须完整重写 SQL，并逐项消除校验错误；不能放宽或绕过校验。"
+            _dashboard_sql_system_prompt(analysis_model)
+            + f"\n你正在修复一条未通过{analysis_label} SQL 协议、结果契约或方言校验的查询。"
+              "必须完整重写 SQL，并逐项消除校验错误；不能放宽或绕过校验。"
         )),
         HumanMessage(content=_dashboard_sql_repair_user_prompt(state)),
-    ], node="repair_retention_sql")
-    response.analysis_model = "retention"
+    ], node=node_name)
+    response.analysis_model = analysis_model
     return {
         "response": response,
         "sql_repair_attempts": int(state.get("sql_repair_attempts") or 0) + 1,
-        "graph_trace": _append_trace(state, "repair_retention_sql"),
-        "last_node": "repair_retention_sql",
-    }
-
-
-async def _async_node_repair_distribution_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
-    response = await _async_invoke_llm_json(llm, [
-        SystemMessage(content=(
-            _dashboard_sql_system_prompt("distribution")
-            + "\n你正在修复一条未通过分布 SQL 协议或方言校验的查询。必须完整重写 SQL，并逐项消除校验错误；不能放宽或绕过校验。"
-        )),
-        HumanMessage(content=_dashboard_sql_repair_user_prompt(state)),
-    ], node="repair_distribution_sql")
-    response.analysis_model = "distribution"
-    return {
-        "response": response,
-        "sql_repair_attempts": int(state.get("sql_repair_attempts") or 0) + 1,
-        "graph_trace": _append_trace(state, "repair_distribution_sql"),
-        "last_node": "repair_distribution_sql",
-    }
-
-
-async def _async_node_repair_interval_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
-    response = await _async_invoke_llm_json(llm, [
-        SystemMessage(content=(
-            _dashboard_sql_system_prompt("interval")
-            + "\n你正在修复一条未通过间隔 SQL 协议、日期字段语义或方言校验的查询。必须完整重写 SQL，并逐项消除校验错误；不能放宽或绕过校验。"
-        )),
-        HumanMessage(content=_dashboard_sql_repair_user_prompt(state)),
-    ], node="repair_interval_sql")
-    response.analysis_model = "interval"
-    return {
-        "response": response,
-        "sql_repair_attempts": int(state.get("sql_repair_attempts") or 0) + 1,
-        "graph_trace": _append_trace(state, "repair_interval_sql"),
-        "last_node": "repair_interval_sql",
+        "graph_trace": _append_trace(state, node_name),
+        "last_node": node_name,
     }
 
 
@@ -4267,6 +4283,14 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
                 datasource=state.get("datasource"),
             )
         response.issues = _unique_text_items(list(response.issues or []) + date_issues + model_issues)
+    elif property_issues := _property_sql_result_issues(
+        sql,
+        state.get("normalized_config") or {},
+    ):
+        response.success = False
+        response.message = "生成 SQL 未满足属性分析生成要求。"
+        response.advice = "请按属性字段、聚合方式和固定结果列重新生成属性查询。"
+        response.issues = _unique_text_items(list(response.issues or []) + property_issues)
     elif retention_issues := _retention_sql_result_issues(
         sql,
         state.get("normalized_config") or {},
@@ -4387,12 +4411,8 @@ def _route_after_sql_validate(state: DashboardManualChartGraphState) -> str:
         and bool(response.issues)
         and int(state.get("sql_repair_attempts") or 0) < 1
     ):
-        if analysis_model == "retention":
-            return "repair_retention_sql"
-        if analysis_model == "distribution":
-            return "repair_distribution_sql"
-        if analysis_model == "interval":
-            return "repair_interval_sql"
+        if analysis_model in ANALYSIS_MODEL_LABELS:
+            return "repair_sql"
     return "explain_advice"
 
 
@@ -4588,18 +4608,7 @@ def _build_manual_chart_graph():
     graph.add_node("build_sql_plan", _timed_node("build_sql_plan", _node_build_sql_plan))
     graph.add_node("generate_sql", _timed_node("generate_sql", _async_node_generate_sql))
     graph.add_node("validate_sql", _timed_node("validate_sql", _node_validate_sql))
-    graph.add_node(
-        "repair_retention_sql",
-        _timed_node("repair_retention_sql", _async_node_repair_retention_sql),
-    )
-    graph.add_node(
-        "repair_distribution_sql",
-        _timed_node("repair_distribution_sql", _async_node_repair_distribution_sql),
-    )
-    graph.add_node(
-        "repair_interval_sql",
-        _timed_node("repair_interval_sql", _async_node_repair_interval_sql),
-    )
+    graph.add_node("repair_sql", _timed_node("repair_sql", _async_node_repair_sql))
     graph.add_node("explain_advice", _timed_node("explain_advice", _node_explain_advice))
     graph.add_node("finalize_response", _timed_node("finalize_response", _node_finalize_response))
     graph.set_entry_point("collect_context")
@@ -4610,9 +4619,7 @@ def _build_manual_chart_graph():
     graph.add_edge("build_sql_plan", "generate_sql")
     graph.add_edge("generate_sql", "validate_sql")
     graph.add_conditional_edges("validate_sql", _route_after_sql_validate)
-    graph.add_edge("repair_retention_sql", "validate_sql")
-    graph.add_edge("repair_distribution_sql", "validate_sql")
-    graph.add_edge("repair_interval_sql", "validate_sql")
+    graph.add_edge("repair_sql", "validate_sql")
     graph.add_edge("explain_advice", "finalize_response")
     graph.add_edge("finalize_response", END)
     return graph.compile()

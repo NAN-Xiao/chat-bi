@@ -228,6 +228,8 @@ def test_dashboard_prompt_for_mysql_forbids_full_outer_join() -> None:
 
     assert "FULL OUTER JOIN" in prompt
     assert "不能使用" in prompt
+    assert "禁止在 JOIN ON 中使用 EXISTS、IN 或标量子查询" in prompt
+    assert "显式 JOIN/CROSS JOIN" in prompt
     assert "UNION" in prompt
     assert "条件聚合" in prompt
 
@@ -2421,11 +2423,19 @@ def test_funnel_prompt_and_result_validation_require_fixed_columns() -> None:
         "SELECT step_order, step_name, step_count, step_rate, step_conversion_rate, step_dropoff_rate FROM funnel_result",
         normalized,
     )
+    plan = ai_sql_generator._build_sql_plan(normalized, ai_sql_generator._build_formula_ir(normalized))
+    system_prompt = ai_sql_generator._dashboard_sql_system_prompt("funnel")
 
     assert "按同一分析主体去重计数" in prompt
     assert "funnel.window.mode=same_day" in prompt
     assert "1 天：按精确经过时长计算" in prompt
     assert "step_conversion_rate" in prompt
+    assert plan["result_contract"]["type"] == "funnel_table"
+    assert plan["result_contract"]["required_columns"] == [
+        "step_order", "step_name", "step_count", "step_rate", "step_conversion_rate", "step_dropoff_rate",
+    ]
+    assert "步骤 N 必须建立在步骤 N-1 已完成的主体集合上" in system_prompt
+    assert "禁止在 JOIN ON 中使用标量子查询读取 bounds" in system_prompt
     assert invalid and "step_order" in invalid[0]
     assert valid == []
 
@@ -2577,56 +2587,107 @@ def test_retention_system_prompt_uses_wide_result_without_changing_event_prompt(
     assert "留存专用 Cohort 宽表结构" not in event_prompt
 
 
-def test_sql_validation_routes_retention_and_distribution_failures_to_one_repair() -> None:
+@pytest.mark.parametrize("analysis_model", ai_sql_generator.ANALYSIS_MODEL_LABELS)
+def test_sql_validation_routes_every_analysis_model_failure_to_one_repair(analysis_model: str) -> None:
     failed_response = ai_sql_generator.DashboardAiSqlGenerateResponse(
         success=False,
         sql="SELECT cohort_date FROM matched",
-        issues=["留存 SQL 缺少固定结果列：cohort_size、day_0。"],
+        issues=["SQL 未通过当前分析模型的结果契约。"],
     )
 
     assert ai_sql_generator._route_after_sql_validate({
-        "normalized_config": {"analysis_model": "retention"},
+        "normalized_config": {"analysis_model": analysis_model},
         "response": failed_response,
         "sql_repair_attempts": 0,
-    }) == "repair_retention_sql"
+    }) == "repair_sql"
     assert ai_sql_generator._route_after_sql_validate({
-        "normalized_config": {"analysis_model": "retention"},
-        "response": failed_response,
-        "sql_repair_attempts": 1,
-    }) == "explain_advice"
-    assert ai_sql_generator._route_after_sql_validate({
-        "normalized_config": {"analysis_model": "event"},
-        "response": failed_response,
-        "sql_repair_attempts": 0,
-    }) == "explain_advice"
-    assert ai_sql_generator._route_after_sql_validate({
-        "normalized_config": {"analysis_model": "funnel"},
-        "response": failed_response,
-        "sql_repair_attempts": 0,
-    }) == "explain_advice"
-    assert ai_sql_generator._route_after_sql_validate({
-        "normalized_config": {"analysis_model": "distribution"},
-        "response": failed_response,
-        "sql_repair_attempts": 0,
-    }) == "repair_distribution_sql"
-    assert ai_sql_generator._route_after_sql_validate({
-        "normalized_config": {"analysis_model": "distribution"},
+        "normalized_config": {"analysis_model": analysis_model},
         "response": failed_response,
         "sql_repair_attempts": 1,
     }) == "explain_advice"
 
 
-def test_sql_validation_routes_interval_failures_to_one_repair() -> None:
-    failed_response = ai_sql_generator.DashboardAiSqlGenerateResponse(
-        success=False,
-        sql="SELECT interval_date FROM valid_intervals",
-        issues=["间隔 SQL 缺少固定结果列：interval_count。"],
+def test_funnel_join_subquery_dialect_failure_routes_to_repair() -> None:
+    request = _funnel_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    sql = """
+    WITH bounds AS (
+        SELECT
+            {{dashboard_start_yyyymmdd}} AS start_dt_val,
+            {{dashboard_end_yyyymmdd}} AS end_dt_val
+    ),
+    step1_users AS (
+        SELECT e.user_id AS entity_id
+        FROM event e
+        CROSS JOIN bounds b
+        WHERE e.dt BETWEEN b.start_dt_val AND b.end_dt_val
+    ),
+    funnel_steps AS (
+        SELECT s1.entity_id
+        FROM step1_users s1
+        LEFT JOIN event e2
+          ON e2.user_id = s1.entity_id
+         AND e2.dt BETWEEN (SELECT start_dt_val FROM bounds) AND (SELECT end_dt_val FROM bounds)
     )
+    SELECT 1 AS step_order, '注册' AS step_name, COUNT(DISTINCT entity_id) AS step_count,
+           100 AS step_rate, 100 AS step_conversion_rate, 0 AS step_dropoff_rate
+    FROM funnel_steps
+    """
+    validated = ai_sql_generator._node_validate_sql({
+        "response": ai_sql_generator.DashboardAiSqlGenerateResponse(
+            success=True,
+            sql=sql,
+            chart_type="funnel",
+            analysis_model="funnel",
+        ),
+        "normalized_config": normalized,
+        "datasource": SimpleNamespace(type="mysql"),
+        "sql_dialect": "mysql",
+        "graph_trace": [],
+    })["response"]
+
+    assert validated.success is False
+    assert any("JOIN 条件不能使用引用外层列的关联子查询" in issue for issue in validated.issues)
     assert ai_sql_generator._route_after_sql_validate({
-        "normalized_config": {"analysis_model": "interval"},
-        "response": failed_response,
+        "normalized_config": normalized,
+        "response": validated,
         "sql_repair_attempts": 0,
-    }) == "repair_interval_sql"
+    }) == "repair_sql"
+
+
+@pytest.mark.parametrize("analysis_model, analysis_label", ai_sql_generator.ANALYSIS_MODEL_LABELS.items())
+def test_repair_node_uses_current_analysis_model_contract(
+    analysis_model: str,
+    analysis_label: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def _fake_create_llm(_model_id: int | None = None):
+        return "fake-llm"
+
+    async def _fake_invoke(_llm: Any, messages: list[Any], **kwargs: Any):
+        captured["messages"] = messages
+        captured["node"] = kwargs.get("node")
+        return ai_sql_generator.DashboardAiSqlGenerateResponse(sql="SELECT 1")
+
+    monkeypatch.setattr(ai_sql_generator, "_create_dashboard_ai_sql_llm", _fake_create_llm)
+    monkeypatch.setattr(ai_sql_generator, "_async_invoke_llm_json", _fake_invoke)
+    monkeypatch.setattr(ai_sql_generator, "_dashboard_sql_system_prompt", lambda model: f"system:{model}")
+    monkeypatch.setattr(ai_sql_generator, "_dashboard_sql_repair_user_prompt", lambda _state: "repair-user-prompt")
+
+    result = asyncio.run(ai_sql_generator._async_node_repair_sql({
+        "normalized_config": {"analysis_model": analysis_model},
+        "sql_repair_attempts": 0,
+        "graph_trace": [],
+    }))
+
+    assert captured["node"] == f"repair_{analysis_model}_sql"
+    assert captured["messages"][0].content.startswith(f"system:{analysis_model}")
+    assert f"未通过{analysis_label} SQL" in captured["messages"][0].content
+    assert result["response"].analysis_model == analysis_model
+    assert result["sql_repair_attempts"] == 1
+    assert result["last_node"] == f"repair_{analysis_model}_sql"
 
 
 def test_yyyymmdd_date_validation_only_rejects_unix_conversion_of_configured_field() -> None:
