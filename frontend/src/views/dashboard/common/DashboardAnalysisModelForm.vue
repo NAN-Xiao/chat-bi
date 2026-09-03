@@ -49,6 +49,7 @@ const {
   isPropertyAnalysis, isRankingAnalysis, isRetentionAnalysis, isRevenueAnalysis, metricFilterFieldOptions,
   metricMeasureFieldOptions, metricTitle, openHeatmapMapDialog, optionExists, pathEventOptions, pathEventPropertyOptions,
   pathInitialEventOptions, propertyAudienceAliasDraft, propertyAudienceAliasEditing, propertyFieldOptions,
+  propertyMetricFieldOptions,
   propertyGroupModeOptions, propertyGroupSetting, propertyGroupSettingsVisible, propertyGroupSupportsTimeSettings,
   propertyGroupTimeGrainOptions, propertyMetricAliasDraft, propertyMetricAliasEditing, rankingEntityFieldOptions,
   rankingEventOptions, rankingMetricFieldOptions, removeAttributionEvent, removeCalculatedMetricItem, removeFunnelStep,
@@ -133,7 +134,7 @@ const {
                       <div class="property-metric-main-row">
                         <BuilderFieldPicker
                           v-model="item.field"
-                          :options="propertyFieldOptions"
+                          :options="propertyMetricFieldOptions"
                           :loading="schemaLoading"
                           mode="property"
                           placeholder="选择属性"

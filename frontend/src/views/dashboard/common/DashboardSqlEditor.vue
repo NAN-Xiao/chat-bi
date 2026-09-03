@@ -1170,6 +1170,7 @@ const propertyFieldOptions = computed<SchemaFieldOption[]>(() => {
   })
 })
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
+const propertyMetricFieldOptions = retentionEntityFieldOptions
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
 const funnelEntityFieldOptions = computed(() => builderFieldOptions.value)
 const funnelEventOptions = computed(() => trackingEventCatalogOptions.value)
@@ -1702,7 +1703,7 @@ function emptyCalculatedMetricItem(): SqlBuilderCalculatedMetricItem {
 function addMetricItem() {
   const item = emptyMetricItem()
   const availableFields: SchemaFieldOption[] = isPropertyAnalysis.value
-    ? propertyFieldOptions.value
+    ? propertyMetricFieldOptions.value
     : analysisFieldOptions.value as SchemaFieldOption[]
   const numericField = availableFields.find(isNumericFieldOption)
   item.field = availableFields[0]?.value || ''
@@ -4029,7 +4030,7 @@ function propertyBlockingIssues() {
   if (!sqlBuilder.metricItems.length) issues.push('属性分析至少需要配置一个分析指标。')
   sqlBuilder.metricItems.forEach((item, index) => {
     if (!item.field) issues.push(`属性分析请先选择指标${index + 1}属性。`)
-    if (!optionExists(item.field, propertyFieldOptions.value)) {
+    if (!optionExists(item.field, propertyMetricFieldOptions.value)) {
       issues.push(`属性分析指标${index + 1}不属于当前可用属性。`)
     }
   })
@@ -4799,7 +4800,7 @@ function sanitizePropertyConfig() {
     sqlBuilder.property.groupMode = 'property'
   }
   sqlBuilder.metricItems.forEach((item) => {
-    if (!optionExists(item.field, propertyFieldOptions.value)) {
+    if (!optionExists(item.field, propertyMetricFieldOptions.value)) {
       item.field = ''
       item.metric = ''
     } else {
@@ -8343,6 +8344,7 @@ const analysisModelFormContext = {
   isPropertyAnalysis, isRankingAnalysis, isRetentionAnalysis, isRevenueAnalysis, metricFilterFieldOptions,
   metricMeasureFieldOptions, metricTitle, openHeatmapMapDialog, optionExists, pathEventOptions, pathEventPropertyOptions,
   pathInitialEventOptions, propertyAudienceAliasDraft, propertyAudienceAliasEditing, propertyFieldOptions,
+  propertyMetricFieldOptions,
   propertyGroupModeOptions, propertyGroupSetting, propertyGroupSettingsVisible, propertyGroupSupportsTimeSettings,
   propertyGroupTimeGrainOptions, propertyMetricAliasDraft, propertyMetricAliasEditing, rankingEntityFieldOptions,
   rankingEventOptions, rankingMetricFieldOptions, removeAttributionEvent, removeCalculatedMetricItem, removeFunnelStep,
