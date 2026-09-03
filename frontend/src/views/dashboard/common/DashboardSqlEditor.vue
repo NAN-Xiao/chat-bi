@@ -8522,13 +8522,33 @@ function closeDrawer() {
               </div>
               <div class="heatmap-config-grid">
                 <label class="builder-field-label">热力事件</label>
-                <BuilderFieldPicker
-                  v-model="sqlBuilder.heatmap.event"
-                  :options="trackingEventCatalogOptions"
-                  :loading="schemaLoading"
-                  mode="tracking-event"
-                  placeholder="选择事件"
-                />
+                <div class="heatmap-event-config">
+                  <div class="heatmap-event-row">
+                    <BuilderFieldPicker
+                      v-model="sqlBuilder.heatmap.event"
+                      :options="trackingEventCatalogOptions"
+                      :loading="schemaLoading"
+                      mode="tracking-event"
+                      placeholder="选择事件"
+                    />
+                    <button type="button" class="builder-add-link" @click="heatmapFilterExpanded = !heatmapFilterExpanded">
+                      <el-icon><Filter /></el-icon><span>筛选条件</span>
+                    </button>
+                  </div>
+                  <BuilderFilterTree
+                    v-if="heatmapFilterExpanded"
+                    class="heatmap-event-filter-tree"
+                    :nodes="sqlBuilder.heatmap.eventFilters"
+                    :logic="sqlBuilder.heatmap.eventFilterLogic"
+                    :field-options="eventFilterFieldOptions(sqlBuilder.heatmap.event)"
+                    :operator-options="builderFilterOperatorOptions"
+                    :schema-loading="schemaLoading"
+                    picker-mode="filter-property"
+                    :filter-property-tabs="['all', 'event', 'user']"
+                    empty-text="暂无事件筛选"
+                    @update:logic="sqlBuilder.heatmap.eventFilterLogic = $event"
+                  />
+                </div>
                 <label class="builder-field-label">计算</label>
                 <div class="heatmap-metric-row">
                   <span>总次数</span>
@@ -8558,23 +8578,6 @@ function closeDrawer() {
                   <BuilderFieldPicker v-model="sqlBuilder.heatmap.yField" :options="eventFilterFieldOptions(sqlBuilder.heatmap.event)" :loading="schemaLoading" mode="property" placeholder="选择 Y 坐标" />
                 </div>
               </div>
-              <div class="builder-inline-actions">
-                <button type="button" class="builder-add-link" @click="heatmapFilterExpanded = !heatmapFilterExpanded">
-                  <el-icon><Filter /></el-icon><span>筛选条件</span>
-                </button>
-              </div>
-              <BuilderFilterTree
-                v-if="heatmapFilterExpanded"
-                :nodes="sqlBuilder.heatmap.eventFilters"
-                :logic="sqlBuilder.heatmap.eventFilterLogic"
-                :field-options="eventFilterFieldOptions(sqlBuilder.heatmap.event)"
-                :operator-options="builderFilterOperatorOptions"
-                :schema-loading="schemaLoading"
-                picker-mode="filter-property"
-                :filter-property-tabs="['all', 'event', 'user']"
-                empty-text="暂无事件筛选"
-               @update:logic="sqlBuilder.heatmap.eventFilterLogic = $event"
-               />
                <div class="heatmap-comparison-section">
                  <div class="builder-section-head heatmap-comparison-head">
                    <div class="builder-section-title"><BuilderSectionIcon class="builder-section-icon" /><span>多组对比</span></div>
@@ -13486,6 +13489,25 @@ function closeDrawer() {
 .heatmap-config-grid :deep(.el-input),
 .heatmap-config-grid :deep(.el-select) {
   width: 100%;
+}
+
+.heatmap-event-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.heatmap-event-config {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.heatmap-event-row :deep(.builder-field-picker-trigger) {
+  width: 50%;
+  flex: 0 1 50%;
 }
 
 .heatmap-metric-row,
