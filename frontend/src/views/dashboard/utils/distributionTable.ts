@@ -245,6 +245,12 @@ export function syncDistributionTableColumns(viewInfo: any, fields: string[]) {
 }
 
 export function normalizeDistributionTableViewInfo(viewInfo: any) {
+  if (isDistributionTableContext(viewInfo) && viewInfo?.pivot?.enabled === true) {
+    viewInfo.pivot = {
+      ...viewInfo.pivot,
+      enabled: false,
+    }
+  }
   if (!viewInfo || typeof viewInfo !== 'object' || !viewInfo.data || typeof viewInfo.data !== 'object') {
     return viewInfo
   }

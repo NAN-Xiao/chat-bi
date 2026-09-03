@@ -1292,7 +1292,12 @@ const showXAxis = computed(() =>
 )
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
-const supportsPivotConfig = computed(() => hasSqlSource.value && !hasMcpSource.value && !['table', 'metric', 'heatmap'].includes(form.chartType))
+const supportsPivotConfig = computed(() =>
+  hasSqlSource.value
+  && !hasMcpSource.value
+  && !isDistributionAnalysis.value
+  && !['table', 'metric', 'heatmap'].includes(form.chartType)
+)
 const dateExpressionEnabled = computed(
   () => hasSqlSource.value && sqlBuilder.dateExpressionPickerEnabled === true && shouldUseDashboardDateParameters()
 )
@@ -5997,6 +6002,9 @@ async function generateBuilderAiSql() {
   if (sqlBuilder.analysisModel === 'distribution' || result.analysis_model === 'distribution') {
     form.chartType = 'table'
     form.columns = [DISTRIBUTION_DATE_COLUMN, DISTRIBUTION_TOTAL_COLUMN]
+    form.pivotEnabled = false
+    form.pivotTimeField = ''
+    form.pivotGroupField = ''
   }
   if (sqlBuilder.analysisModel === 'interval' || result.analysis_model === 'interval') {
     const resultConfig = result.result_config || result.resultConfig || {}

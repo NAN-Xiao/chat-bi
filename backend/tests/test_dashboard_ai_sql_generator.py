@@ -1530,6 +1530,9 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
     assert "只使用 distribution 配置" in prompt or "只能使用 distribution 配置" in prompt
     assert "主体必须先聚合再分桶" in prompt
     assert "不得按日期或分组分别计算" in prompt
+    assert "最大值必须归入第 12 个区间" in prompt
+    assert "interval_order 不得出现 13" in prompt
+    assert "禁止只拼接 Range 和 interval_order" in prompt
     assert "YYYY-MM-DD" in prompt
     assert "simultaneous_entity_value" in prompt
     assert "显式 LEFT JOIN" in prompt
@@ -1544,6 +1547,40 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
     assert invalid
     assert any("distribution_date" in issue for issue in invalid)
     assert any("total_entities" in issue for issue in invalid)
+
+
+def test_distribution_auto_bucket_rejects_unclamped_thirteenth_interval() -> None:
+    normalized = ai_sql_generator._normalize_manual_config(_distribution_request(
+        interval={"mode": "auto", "customBounds": []},
+    ))
+    unsafe_sql = """
+    WITH entity_values AS (
+        SELECT distribution_date, entity_id, distribution_value FROM distribution_source
+    ), bounds AS (
+        SELECT MIN(distribution_value) AS min_val, MAX(distribution_value) AS max_val FROM entity_values
+    ), bucketed AS (
+        SELECT distribution_date, entity_id,
+               FLOOR((distribution_value - min_val) * 12.0 / NULLIF(max_val - min_val, 0)) + 1 AS interval_order
+        FROM entity_values CROSS JOIN bounds
+    )
+    SELECT distribution_date, 1 AS total_entities, interval_order,
+           CONCAT('Range ', interval_order) AS interval_label,
+           COUNT(DISTINCT entity_id) AS entity_count,
+           COUNT(DISTINCT entity_id) * 100.0 / NULLIF(1, 0) AS entity_rate
+    FROM bucketed GROUP BY distribution_date, interval_order
+    """
+
+    issues = ai_sql_generator._distribution_sql_result_issues(unsafe_sql, normalized)
+    assert any("第 13 桶" in issue for issue in issues)
+    assert any("Range 和桶序号" in issue for issue in issues)
+
+    safe_sql = unsafe_sql.replace(
+        "FLOOR((distribution_value - min_val) * 12.0 / NULLIF(max_val - min_val, 0)) + 1",
+        "LEAST(12, FLOOR((distribution_value - min_val) * 12.0 / NULLIF(max_val - min_val, 0)) + 1)",
+    ).replace("CONCAT('Range ', interval_order)", "CONCAT('1-', interval_order)")
+    safe_issues = ai_sql_generator._distribution_sql_result_issues(safe_sql, normalized)
+    assert not any("第 13 桶" in issue for issue in safe_issues)
+    assert not any("Range 和桶序号" in issue for issue in safe_issues)
 
 
 def test_distribution_prompt_requires_typed_yyyymmdd_date_operations() -> None:

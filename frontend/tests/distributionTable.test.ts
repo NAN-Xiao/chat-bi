@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  normalizeDistributionTableViewInfo,
   shapeDistributionTableResult,
 } from '../src/views/dashboard/utils/distributionTable.ts'
 
@@ -71,4 +72,23 @@ test('同一日期和分组的重复区间会显式报错', () => {
 
   assert.equal(result.status, 'failed')
   assert.match(result.message, /出现多条记录/)
+})
+
+test('旧分布图禁用会改变主体分布口径的通用透视聚合', () => {
+  const viewInfo = {
+    pivot: {
+      enabled: true,
+      time_field: '事件发生时间',
+      metric_fields: ['1次', '2次'],
+    },
+    sourceConfig: {
+      sql: {
+        builder: countContext,
+      },
+    },
+  }
+
+  normalizeDistributionTableViewInfo(viewInfo)
+
+  assert.equal(viewInfo.pivot.enabled, false)
 })

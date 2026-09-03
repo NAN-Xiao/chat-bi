@@ -2872,7 +2872,7 @@ def _dashboard_config_prompt(
             "distribution.metric.kind=count 时 distribution_value 是主体当期事件次数；days 时是主体发生事件的去重自然日数；hours 时是主体发生事件的去重小时数；property 时必须按 metric.field 和 metric.aggregation 聚合。",
             "property 的 percentile_XX 表示对应百分位数，median 表示中位数，variance/stddev 表示方差/标准差；必须使用当前 SQL 方言支持的函数，不能降级成平均值或其他聚合。",
             "distribution.eventFilters 只应用于参与事件明细；全局筛选和分组项继续使用公共配置，不得互换筛选范围。",
-            "distribution.interval.mode=discrete 时每个 distribution_value 单独成区间；mode=custom 时严格按 customBounds 生成完整互斥区间；mode=auto 时差值小于 12 使用离散值，否则划分 12 个等宽区间。auto 的最小值、最大值和区间边界必须基于窗口期内全部 entity_values 统一计算，不得按日期或分组分别计算，保证同一 interval_order 在所有结果行中含义一致。",
+            "distribution.interval.mode=discrete 时每个 distribution_value 单独成区间；mode=custom 时严格按 customBounds 生成完整互斥区间；mode=auto 时差值小于 12 使用离散值，否则划分 12 个等宽区间。auto 的最小值、最大值和区间边界必须基于窗口期内全部 entity_values 统一计算，不得按日期或分组分别计算，保证同一 interval_order 在所有结果行中含义一致；最大值必须归入第 12 个区间，interval_order 只能是 1 到 12，不能因 FLOOR(... * 12 ...) + 1 产生第 13 个区间。interval_label 必须展示实际离散值或实际区间上下界，禁止只拼接 Range 和 interval_order 作为占位标签。",
             "最终返回的 distribution_date 必须按当前 SQL 方言转换为 YYYY-MM-DD 日期值或文本，不得直接返回 YYYYMMDD 数字或文本分区值。",
             "最终结果按日期、分组和区间输出固定长表列 distribution_date、interval_order、interval_label、entity_count、entity_rate；entity_rate 是当前日期及分组内区间主体数占参与事件主体总数的比例。",
             "distribution.simultaneous.enabled=true 时，先按日期、主体和分组对 simultaneous.event、aggregation、metricField 计算 simultaneous_entity_value，再使用日期、主体和全部分组键把它显式 LEFT JOIN 到已保留 entity_id 的 bucketed 主体区间明细，最后按区间聚合为 simultaneous_value；不得把同时展示指标用于划分主区间。",
@@ -3318,6 +3318,87 @@ def _funnel_sql_result_issues(
     return [f"漏斗 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
 
 
+def _sql_number_literal(expression: exp.Expression | None) -> float | None:
+    if not isinstance(expression, exp.Literal) or expression.is_string:
+        return None
+    try:
+        return float(str(expression.this))
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_auto_twelve_bucket_add(expression: exp.Expression) -> bool:
+    if not isinstance(expression, exp.Add):
+        return False
+    operands = [expression.args.get("this"), expression.args.get("expression")]
+    floor = next((item for item in operands if isinstance(item, exp.Floor)), None)
+    increment = next((_sql_number_literal(item) for item in operands if not isinstance(item, exp.Floor)), None)
+    if floor is None or increment != 1:
+        return False
+    return any(
+        isinstance(node, exp.Mul)
+        and 12 in {
+            _sql_number_literal(node.args.get("this")),
+            _sql_number_literal(node.args.get("expression")),
+        }
+        for node in floor.walk()
+    )
+
+
+def _is_clamped_to_twelve(expression: exp.Expression) -> bool:
+    parent = expression.parent
+    while parent is not None and not isinstance(parent, (exp.Select, exp.Case)):
+        if isinstance(parent, exp.Least) and any(
+            _sql_number_literal(item) == 12
+            for item in [parent.args.get("this"), *parent.expressions]
+        ):
+            return True
+        parent = parent.parent
+    return False
+
+
+def _expression_alias_name(expression: exp.Expression) -> str:
+    parent = expression.parent
+    while parent is not None and not isinstance(parent, exp.Select):
+        if isinstance(parent, exp.Alias):
+            return str(parent.alias or "").strip().lower()
+        parent = parent.parent
+    return ""
+
+
+def _has_unclamped_auto_twelve_bucket(sql: str, sql_dialect: str | None) -> bool:
+    statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+    return any(
+        _expression_alias_name(node) == "interval_order"
+        and _is_auto_twelve_bucket_add(node)
+        and not _is_clamped_to_twelve(node)
+        for statement in statements
+        for node in statement.walk()
+    )
+
+
+def _has_placeholder_distribution_interval_label(sql: str, sql_dialect: str | None) -> bool:
+    statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+    for statement in statements:
+        for alias in statement.find_all(exp.Alias):
+            if str(alias.alias or "").strip().lower() != "interval_label":
+                continue
+            expression = alias.args.get("this")
+            columns = {
+                str(node.name or "").strip().lower()
+                for node in expression.walk()
+                if isinstance(node, exp.Column)
+            }
+            labels = " ".join(
+                str(node.this or "").strip().lower()
+                for node in expression.walk()
+                if isinstance(node, exp.Literal) and node.is_string
+            )
+            if columns == {"interval_order"} and "range" in labels:
+                return True
+    return False
+
+
 def _distribution_sql_result_issues(
         sql: str,
         normalized_config: dict[str, Any],
@@ -3361,6 +3442,24 @@ def _distribution_sql_result_issues(
         issues.append("分布 SQL 必须按分析主体去重统计 entity_count。")
     if not re.search(r"\bnullif\s*\(", normalized_sql):
         issues.append("分布 SQL 的 entity_rate 必须使用 NULLIF 保护分母。")
+    if _has_placeholder_distribution_interval_label(sql, sql_dialect):
+        issues.append(
+            "分布 SQL 的 interval_label 不能只显示 Range 和桶序号；"
+            "必须展示实际分布值或实际区间上下界。"
+        )
+    interval_config = distribution.get("interval") if isinstance(distribution.get("interval"), dict) else {}
+    if str(interval_config.get("mode") or "auto").strip().lower() == "auto":
+        max_value_guard = re.search(
+            r"\bwhen\b.{0,300}?(?:distribution_value.{0,120}?max_val|max_val.{0,120}?distribution_value)"
+            r".{0,120}?\bthen\s+12\b",
+            normalized_sql,
+            flags=re.DOTALL,
+        )
+        if _has_unclamped_auto_twelve_bucket(sql, sql_dialect) and not max_value_guard:
+            issues.append(
+                "分布 SQL 的自动 12 桶公式会让最大值落入第 13 桶；"
+                "必须将 interval_order 限制在 1 到 12，并让最大值归入第 12 桶。"
+            )
     return _unique_text_items(issues)
 
 
@@ -3665,7 +3764,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "    FROM base_events\n"
             "    GROUP BY distribution_date, entity_id, <groups>\n"
             "),\n"
-            "bucketed AS (...按 distribution.interval 生成互斥且完整的 interval_order 与 interval_label...),\n"
+            "bucketed AS (...按 distribution.interval 生成互斥且完整的 interval_order 与 interval_label；自动 12 桶必须把最大值归入第 12 桶，interval_order 不得出现 13；interval_label 必须展示实际值或区间上下界，不得使用 Range + 桶序号占位...),\n"
             "totals AS (...按 distribution_date 与 groups 统计参与事件的主体总数...),\n"
             "simultaneous_entity_values AS (...启用同时展示时，按 distribution_date、entity_id 与 groups 聚合 simultaneous_entity_value...),\n"
             "bucketed_metrics AS (...bucketed 通过 distribution_date、entity_id 与全部 groups 显式 LEFT JOIN simultaneous_entity_values...)\n"
