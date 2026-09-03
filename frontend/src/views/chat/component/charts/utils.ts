@@ -7,6 +7,7 @@ import {
   type G2ResponsiveStyle,
 } from '@/views/chat/component/charts/g2Responsive.ts'
 import { endsWith, replace } from 'lodash-es'
+import { formatCompactDateByAxis } from '@/views/chat/component/charts/compactDate.ts'
 
 const AUTO_VALUE_FIELD = 'shuzhi_auto_quota'
 const AUTO_COUNT_VALUE_FIELD = 'shuzhi_auto_count_quota'
@@ -156,6 +157,10 @@ export function formatValueByAxis(
 ): string | number {
   if (isIdentifierAxis(axis)) {
     return value
+  }
+  const compactDate = formatCompactDateByAxis(value, axis)
+  if (compactDate !== null) {
+    return compactDate
   }
   return formatNumber(value)
 }

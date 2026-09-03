@@ -2566,6 +2566,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "type": "revenue_cohort_table",
             "observation_days": observation_days,
             "required_columns": required_columns,
+            "date_field": "cohort_date",
             "final_grain": [
                 "cohort_date",
                 *[f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])],
@@ -2950,6 +2951,7 @@ def _dashboard_config_prompt(
             "metric.method=count 表示付费事件总次数；entity_count 表示触发付费事件的主体去重数；per_entity_count 表示总次数除以触发主体数；property_sum/property_avg 必须使用 metric.field。",
             "period_cumulative_count 和 period_cumulative_entity_count 分别对每日总次数或每日触发主体数做从 day_0 起的周期累计总和；period_average_count 和 period_average_entity_count 分别输出截至当日的周期累计均值。",
             f"观察时长为 {observation_days} 天，最终结果必须按 Cohort 日期输出 cohort_date、cohort_size 和 day_0 到 day_{observation_days} 的宽表列；不得改成长表 period_offset 结果。",
+            "cohort_date 必须输出真实 DATE 或 YYYY-MM-DD 日期文本；当原始时间字段是 YYYYMMDD 编码键时，必须先按当前 SQL 方言解析，禁止直接输出 YYYYMMDD 数值或文本。",
             "全局 filters 只筛选配置允许的用户属性，groups 只增加 Cohort 分组粒度；不得把全局筛选改成初始事件或付费事件的隐式字段筛选。",
             "cost.enabled=true 时使用 cost.field 按 Cohort 统计成本并额外输出 cost_value；不得猜测成本字段、成本口径或跨数据源关联关系。",
             f"当前收入口径配置：{_safe_json(metric)}。",
@@ -3528,9 +3530,48 @@ def _path_sql_result_issues(
     return _unique_text_items(issues)
 
 
+def _revenue_date_output_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+        *,
+        sql_dialect: str | None = None,
+        datasource: CoreDatasource | None = None,
+) -> list[str]:
+    time_config = normalized_config.get("time") if isinstance(normalized_config.get("time"), dict) else {}
+    parameter_type = str(time_config.get("date_parameter_type") or "").strip()
+    if parameter_type not in {"yyyymmdd_number", "yyyymmdd_text"}:
+        return []
+
+    dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
+    if not any(
+        name in dialect_text
+        for name in ("mysql", "mariadb", "starrocks", "doris", "analyticdb", "postgres", "redshift", "kingbase")
+    ):
+        return []
+
+    statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+    for statement in statements:
+        if not isinstance(statement, exp.Query):
+            continue
+        try:
+            output_lineage = build_sql_lineage("cohort_date", statement)
+        except sqlglot.errors.SqlglotError:
+            continue
+        if any(
+            isinstance(node, exp.StrToDate)
+            for lineage_node in output_lineage.walk()
+            for node in lineage_node.expression.walk()
+        ):
+            return []
+    return ["收入 SQL 的 cohort_date 必须将 YYYYMMDD 编码键转换为 DATE 或 YYYY-MM-DD 日期文本。"]
+
+
 def _revenue_sql_result_issues(
         sql: str,
         normalized_config: dict[str, Any],
+        *,
+        sql_dialect: str | None = None,
+        datasource: CoreDatasource | None = None,
 ) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "revenue":
         return []
@@ -3548,7 +3589,14 @@ def _revenue_sql_result_issues(
         required_aliases.append("cost_value")
     normalized_sql = str(sql or "").lower()
     missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
-    issues = [f"收入 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    issues = _revenue_date_output_issues(
+        sql,
+        normalized_config,
+        sql_dialect=sql_dialect,
+        datasource=datasource,
+    )
+    if missing:
+        issues.append(f"收入 SQL 缺少固定结果列：{'、'.join(missing)}。")
     if not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
         issues.append("收入 SQL 必须按分析主体去重计算 cohort_size。")
     metric = revenue.get("metric") if isinstance(revenue.get("metric"), dict) else {}
@@ -3832,6 +3880,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "       <启用成本时输出 cost_value>\n"
             "FROM ... GROUP BY cohort_date, <groups> ORDER BY cohort_date, <groups>。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。\n"
+            "最终 cohort_date 必须是可展示的 DATE 或 YYYY-MM-DD 日期文本，不能保留为 YYYYMMDD 编码值。\n"
             "day_offset 只能作为中间计算字段；day_0 到 day_N 的值必须遵守 metric_method，不得输出回访比例或主体留存率。\n"
             "只允许使用 sql-plan.revenue，禁止读取 retention、funnel、distribution、interval 或 path 配置。\n"
         )
@@ -4439,6 +4488,8 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     elif revenue_issues := _revenue_sql_result_issues(
         sql,
         state.get("normalized_config") or {},
+        sql_dialect=state.get("sql_dialect"),
+        datasource=state.get("datasource"),
     ):
         response.success = False
         response.message = "生成 SQL 未满足收入分析生成要求。"

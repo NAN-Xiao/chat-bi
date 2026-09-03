@@ -267,7 +267,12 @@ export class Table extends BaseChart {
 
     this.closeFilterPopup()
 
-    const options = collectTableFilterOptions(this.filterSourceData, field)
+    const fieldAxis = this.axis?.find((axisItem) => axisItem.value === field)
+    const options = collectTableFilterOptions(
+      this.filterSourceData,
+      field,
+      (value) => resolveTableDisplayValue(value, fieldAxis)
+    )
     const allOptionKeys = new Set(options.map((option) => option.key))
     let selectedValues = this.tableFilters.has(field)
       ? new Set(this.tableFilters.get(field))
@@ -281,7 +286,6 @@ export class Table extends BaseChart {
     const header = document.createElement('div')
     header.className = 'table-column-filter__header'
 
-    const fieldAxis = this.axis?.find((axisItem) => axisItem.value === field)
     const title = document.createElement('strong')
     title.className = 'table-column-filter__title'
     title.textContent = fieldAxis ? axisLabel(fieldAxis) : field
