@@ -309,6 +309,7 @@ watch(
         class="builder-field-picker-trigger"
         :class="{ 'is-empty': !selectedLabel }"
         :disabled="disabled"
+        @click.stop
       >
         <span>{{ selectedLabel || placeholder }}</span>
         <span class="builder-field-picker-arrow" aria-hidden="true">
