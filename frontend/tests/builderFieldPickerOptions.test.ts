@@ -55,7 +55,7 @@ test('retention events without dedicated properties still expose common user pro
   assert.deepEqual(eventScopedPropertyOptions({
     eventOption,
     eventProperties: [],
-    userProperties: [userProperty],
+    publicProperties: [userProperty],
     activeEventTable: 'event',
   }), [userProperty])
 })
@@ -81,7 +81,7 @@ test('event and user properties are merged without duplicate values', () => {
   assert.deepEqual(eventScopedPropertyOptions({
     eventOption,
     eventProperties: [eventProperty],
-    userProperties: [duplicate],
+    publicProperties: [duplicate],
     activeEventTable: 'event',
   }), [eventProperty])
 })
@@ -98,7 +98,7 @@ test('properties are unavailable outside the active event table', () => {
 
   assert.deepEqual(eventScopedPropertyOptions({
     eventOption,
-    userProperties: [fieldOption({})],
+    publicProperties: [fieldOption({})],
     activeEventTable: 'event',
   }), [])
 })
