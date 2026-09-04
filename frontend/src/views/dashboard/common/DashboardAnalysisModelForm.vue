@@ -210,7 +210,6 @@ const {
                     :schema-loading="schemaLoading"
                     picker-mode="filter-property"
                     :filter-property-tabs="['all', 'event', 'user']"
-                    :filter-property-labels="{ user: '公共属性' }"
                     empty-text="暂无事件筛选"
                     @update:logic="sqlBuilder.heatmap.eventFilterLogic = $event"
                   />
@@ -258,7 +257,7 @@ const {
                        <button type="button" class="builder-icon-button" :title="`重命名${group.name}`" @click="beginHeatmapComparisonGroupRename(group)"><el-icon><EditPen /></el-icon></button>
                        <button type="button" class="builder-icon-button danger" :title="`删除${group.name}`" @click="removeHeatmapComparisonGroup(index)"><el-icon><Delete /></el-icon></button>
                      </div>
-                     <BuilderFilterTree :nodes="group.filters" :logic="group.filterLogic" :field-options="eventFilterFieldOptions(sqlBuilder.heatmap.event)" :operator-options="builderFilterOperatorOptions" :schema-loading="schemaLoading" picker-mode="filter-property" :filter-property-tabs="['all', 'event', 'user']" :filter-property-labels="{ user: '公共属性' }" :show-toolbar="true" empty-text="暂无筛选条件" @update:logic="group.filterLogic = $event" />
+                     <BuilderFilterTree :nodes="group.filters" :logic="group.filterLogic" :field-options="eventFilterFieldOptions(sqlBuilder.heatmap.event)" :operator-options="builderFilterOperatorOptions" :schema-loading="schemaLoading" picker-mode="filter-property" :filter-property-tabs="['all', 'event', 'user']" :show-toolbar="true" empty-text="暂无筛选条件" @update:logic="group.filterLogic = $event" />
                      <div class="builder-inline-actions property-audience-actions"><button type="button" class="builder-add-link" @click="group.filters.push(emptyBuilderFilter())"><el-icon><Filter /></el-icon><span>筛选条件</span></button></div>
                    </div>
                  </div>
@@ -343,7 +342,6 @@ const {
                       :schema-loading="schemaLoading"
                       picker-mode="filter-property"
                       :filter-property-tabs="['all', 'event', 'user']"
-                      :filter-property-labels="{ user: '公共属性' }"
                       :show-toolbar="false"
                       empty-text="暂无指标筛选"
                       @update:logic="item.filterLogic = $event"
@@ -509,7 +507,6 @@ const {
                                 :schema-loading="schemaLoading"
                                 picker-mode="filter-property"
                                 :filter-property-tabs="['all', 'event', 'user']"
-                                :filter-property-labels="{ user: '公共属性' }"
                                 :show-toolbar="true"
                                 empty-text="暂无事件筛选"
                                 @update:logic="token.metric.filterLogic = $event"
@@ -816,7 +813,6 @@ const {
                     :schema-loading="schemaLoading"
                     picker-mode="filter-property"
                     :filter-property-tabs="['all', 'event', 'user']"
-                    :filter-property-labels="{ user: '公共属性' }"
                     :show-toolbar="true"
                     empty-text="暂无参与事件筛选"
                     @update:logic="sqlBuilder.distribution.eventFilterLogic = $event"
@@ -927,7 +923,6 @@ const {
                       :schema-loading="schemaLoading"
                       picker-mode="filter-property"
                       :filter-property-tabs="['all', 'event', 'user']"
-                      :filter-property-labels="{ user: '公共属性' }"
                       :show-toolbar="true"
                       empty-text="暂无起点事件筛选"
                       @update:logic="sqlBuilder.interval.startEventFilterLogic = $event"
@@ -970,7 +965,6 @@ const {
                       :schema-loading="schemaLoading"
                       picker-mode="filter-property"
                       :filter-property-tabs="['all', 'event', 'user']"
-                      :filter-property-labels="{ user: '公共属性' }"
                       :show-toolbar="true"
                       empty-text="暂无终点事件筛选"
                       @update:logic="sqlBuilder.interval.endEventFilterLogic = $event"
@@ -1272,7 +1266,6 @@ const {
                     :schema-loading="schemaLoading"
                     picker-mode="filter-property"
                     :filter-property-tabs="['all', 'event', 'user']"
-                    :filter-property-labels="{ user: '公共属性' }"
                     :show-toolbar="true"
                     empty-text="暂无目标事件筛选"
                     @update:logic="sqlBuilder.attribution.targetEventFilterLogic = $event"
@@ -1370,7 +1363,6 @@ const {
                         :schema-loading="schemaLoading"
                         picker-mode="filter-property"
                         :filter-property-tabs="['all', 'event', 'user']"
-                        :filter-property-labels="{ user: '公共属性' }"
                         :show-toolbar="true"
                         :empty-text="`暂无归因事件${index + 1}筛选`"
                         @update:logic="item.filterLogic = $event"
@@ -1488,7 +1480,6 @@ const {
                         :schema-loading="schemaLoading"
                         picker-mode="filter-property"
                         :filter-property-tabs="['all', 'event', 'user']"
-                        :filter-property-labels="{ user: '公共属性' }"
                         :show-toolbar="true"
                         :empty-text="`暂无步骤${index + 1}筛选`"
                         @update:logic="step.filterLogic = $event"
@@ -1630,7 +1621,6 @@ const {
                       :schema-loading="schemaLoading"
                       picker-mode="filter-property"
                       :filter-property-tabs="['all', 'event', 'user']"
-                      :filter-property-labels="{ user: '公共属性' }"
                       :show-toolbar="true"
                       empty-text="暂无初始事件筛选"
                       @update:logic="sqlBuilder.retention.initialEventFilterLogic = $event"
@@ -1713,7 +1703,6 @@ const {
                       :schema-loading="schemaLoading"
                       picker-mode="filter-property"
                       :filter-property-tabs="['all', 'event', 'user']"
-                      :filter-property-labels="{ user: '公共属性' }"
                       :show-toolbar="true"
                       empty-text="暂无回访事件筛选"
                       @update:logic="sqlBuilder.retention.returnEventFilterLogic = $event"
@@ -1835,7 +1824,6 @@ const {
                 :schema-loading="schemaLoading"
                 :picker-mode="isPropertyAnalysis && eventFieldScope.status !== 'active' ? 'property' : 'filter-property'"
                 :filter-property-tabs="['user']"
-                :filter-property-labels="{ user: '公共属性' }"
                 :show-toolbar="false"
                 empty-text="暂无全局筛选"
                 @update:logic="sqlBuilder.globalFilterLogic = $event"
@@ -1924,7 +1912,6 @@ const {
                       :schema-loading="schemaLoading"
                       picker-mode="filter-property"
                       :filter-property-tabs="['user']"
-                      :filter-property-labels="{ user: '公共属性' }"
                       :show-toolbar="true"
                       empty-text="暂无筛选条件"
                       @update:logic="group.filterLogic = $event"
