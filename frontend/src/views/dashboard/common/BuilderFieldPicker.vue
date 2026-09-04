@@ -297,7 +297,7 @@ watch(
   <el-popover
     v-model:visible="visible"
     width="460"
-    trigger="click"
+    trigger="manual"
     placement="bottom-start"
     popper-class="builder-field-picker-popper"
     :popper-style="{ zIndex: 5001 }"
@@ -309,7 +309,7 @@ watch(
         class="builder-field-picker-trigger"
         :class="{ 'is-empty': !selectedLabel }"
         :disabled="disabled"
-        @click.stop
+        @click.stop="visible = !visible"
       >
         <span>{{ selectedLabel || placeholder }}</span>
         <span class="builder-field-picker-arrow" aria-hidden="true">

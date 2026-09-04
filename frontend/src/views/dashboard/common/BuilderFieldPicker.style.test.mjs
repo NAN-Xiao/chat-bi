@@ -39,8 +39,8 @@ assert.match(
 )
 assert.match(
   source,
-  /class="builder-field-picker-trigger"[\s\S]*?@click\.stop[\s\S]*?>/,
-  '字段选择器触发点击不得冒泡到其他 Popover 的点击外部处理，否则切换下拉需要点击两次'
+  /<el-popover[\s\S]*?trigger="manual"[\s\S]*?>[\s\S]*?class="builder-field-picker-trigger"[\s\S]*?@click\.stop="visible = !visible"[\s\S]*?>/,
+  '字段选择器应由自身显式切换弹层，避免自动触发与外层点击处理冲突'
 )
 assert.doesNotMatch(source, /builder-field-picker-arrow">⌄/, '字段选择器不应继续使用带基线偏移的字符箭头')
 
