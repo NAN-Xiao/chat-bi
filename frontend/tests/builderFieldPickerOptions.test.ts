@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   eventRelatedPropertyOptions,
   eventScopedPropertyOptions,
+  preferredBuilderEntityField,
   propertyAnalysisFieldOptions,
   type FieldOption,
 } from '../src/views/dashboard/common/builderFieldPickerOptions.ts'
@@ -17,6 +18,23 @@ function fieldOption(overrides: Partial<FieldOption>): FieldOption {
     ...overrides,
   }
 }
+
+test('preferred entity field uses the configured subject role', () => {
+  const namedUidWithoutRole = fieldOption({
+    label: '用户 ID',
+    value: 'event.uid_alias',
+    field: 'uid_alias',
+  })
+  const subjectField = fieldOption({
+    label: '用户 ID',
+    value: 'event.uid',
+    field: 'uid',
+    fieldRole: 'subject_id',
+  })
+
+  assert.equal(preferredBuilderEntityField([namedUidWithoutRole, subjectField]), 'event.uid')
+  assert.equal(preferredBuilderEntityField([namedUidWithoutRole]), '')
+})
 
 test('retention events without dedicated properties still expose common user properties', () => {
   const eventOption = fieldOption({
