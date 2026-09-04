@@ -571,6 +571,18 @@ def _list_dict_items(value: Any) -> list[dict[str, Any]]:
     return [item for item in value if isinstance(item, dict)]
 
 
+def _event_analysis_tracking_fields(normalized_config: dict[str, Any]) -> list[Any]:
+    fields = [metric.get("field") for metric in _list_dict_items(normalized_config.get("metrics"))]
+    for formula in _list_dict_items(normalized_config.get("formula_metrics")):
+        tokens = formula.get("tokens") if isinstance(formula.get("tokens"), list) else []
+        for token in tokens:
+            if not isinstance(token, dict) or token.get("type") != "atomicMetric":
+                continue
+            metric = token.get("metric") if isinstance(token.get("metric"), dict) else {}
+            fields.append(metric.get("field"))
+    return [field for field in fields if _is_tracking_event_field(field)]
+
+
 def _normalized_funnel_window(funnel: dict[str, Any]) -> dict[str, Any]:
     window = funnel.get("window")
     if isinstance(window, dict):
@@ -3215,7 +3227,8 @@ def _dashboard_config_prompt(
         "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段；必须使用字段对象的 expression，不得把用户属性改为 user 表或其他表的同名字段。",
         "字段对象包含 sourceField、jsonPath 和 expression 时，JSON 子字段必须使用 expression；不得自行改写 JSON 宿主列或路径。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
-         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/property/retention/funnel/distribution/interval/path/revenue/attribution/ranking/heatmap 字段信息生成 SQL；不要编造未提供字段。",
+        "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters/property/retention/funnel/distribution/interval/path/revenue/attribution/ranking/heatmap 字段信息生成 SQL；不要编造未提供字段。",
+        "selectedFields 只是其他配置项所引用字段的去重索引，不代表额外指标、筛选、分组或事件；不得仅因为字段出现在 selectedFields 中就把它加入 SQL。",
         *property_rules,
         *retention_rules,
         *funnel_rules,
@@ -3451,6 +3464,66 @@ def _retention_simultaneous_aggregation_issues(
         "留存 SQL 的 simultaneous_value 未按同时展示配置使用 "
         f"{aggregation_labels[aggregation]} 聚合。"
     ]
+
+
+def _event_analysis_sql_result_issues(
+        sql: str,
+        normalized_config: dict[str, Any],
+        *,
+        sql_dialect: str | None = None,
+) -> list[str]:
+    if str(normalized_config.get("analysis_model") or "event") != "event":
+        return []
+
+    tracking_fields = _event_analysis_tracking_fields(normalized_config)
+    expected_events = {
+        event_name
+        for field in tracking_fields
+        if (event_name := _tracking_event_name_from_field(field))
+    }
+    event_name_fields = {
+        candidate.split(".")[-1]
+        for field in tracking_fields
+        for candidate in _schema_field_candidates(field)
+        if candidate
+    }
+    if not expected_events or not event_name_fields:
+        return []
+
+    referenced_events: set[str] = set()
+
+    def is_event_name_column(expression: exp.Expression | None) -> bool:
+        return (
+            isinstance(expression, exp.Column)
+            and _normalized_identifier(expression.name) in event_name_fields
+        )
+
+    def add_literal(expression: exp.Expression | None) -> None:
+        if isinstance(expression, exp.Literal) and expression.is_string:
+            referenced_events.add(str(expression.this))
+
+    for statement in _sqlglot_statements_for_generation_validation(sql, sql_dialect):
+        for predicate in statement.find_all(exp.EQ):
+            left = predicate.this
+            right = predicate.expression
+            if is_event_name_column(left):
+                add_literal(right)
+            elif is_event_name_column(right):
+                add_literal(left)
+        for predicate in statement.find_all(exp.In):
+            if not is_event_name_column(predicate.this):
+                continue
+            for value in predicate.expressions:
+                add_literal(value)
+
+    issues: list[str] = []
+    unexpected_events = sorted(referenced_events - expected_events)
+    missing_events = sorted(expected_events - referenced_events)
+    if unexpected_events:
+        issues.append(f"事件分析 SQL 引用了未配置事件：{'、'.join(unexpected_events)}。")
+    if missing_events:
+        issues.append(f"事件分析 SQL 未引用配置事件：{'、'.join(missing_events)}。")
+    return issues
 
 
 def _property_sql_result_issues(
@@ -4630,7 +4703,13 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.advice = "请使用当前图表配置的起止日期参数重新生成。"
         model_issues: list[str] = []
         normalized_config = state.get("normalized_config") or {}
-        if str(normalized_config.get("analysis_model") or "event") == "property":
+        if str(normalized_config.get("analysis_model") or "event") == "event":
+            model_issues = _event_analysis_sql_result_issues(
+                sql,
+                normalized_config,
+                sql_dialect=state.get("sql_dialect"),
+            )
+        elif str(normalized_config.get("analysis_model") or "event") == "property":
             model_issues = _property_sql_result_issues(
                 sql,
                 normalized_config,
@@ -4650,6 +4729,15 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
                 datasource=state.get("datasource"),
             )
         response.issues = _unique_text_items(list(response.issues or []) + date_issues + model_issues)
+    elif event_analysis_issues := _event_analysis_sql_result_issues(
+        sql,
+        state.get("normalized_config") or {},
+        sql_dialect=state.get("sql_dialect"),
+    ):
+        response.success = False
+        response.message = "生成 SQL 引用了与事件分析配置不一致的事件。"
+        response.advice = "请严格按当前分析指标中的事件重新生成 SQL。"
+        response.issues = _unique_text_items(list(response.issues or []) + event_analysis_issues)
     elif property_issues := _property_sql_result_issues(
         sql,
         state.get("normalized_config") or {},

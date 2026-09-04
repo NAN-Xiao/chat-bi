@@ -1757,6 +1757,14 @@ function addMetricItem() {
   sqlBuilder.metricItems.push(item)
 }
 
+function handleMetricEventChange(item: SqlBuilderMetricItem, eventValue: string) {
+  if (item.field === eventValue) return
+  item.field = eventValue
+  item.metric = item.aggregation === 'count' ? eventValue : ''
+  item.filterLogic = 'and'
+  item.filters = []
+}
+
 function serializePropertyMetric(item: SqlBuilderMetricItem) {
   return {
     id: item.id,
@@ -5323,7 +5331,7 @@ function selectedBuilderFieldValues() {
     ...(sqlBuilder.analysisModel === 'property' && sqlBuilder.property.groupMode === 'audience'
       ? sqlBuilder.property.audiences.flatMap((group) => filterFieldValues(group.filters))
       : []),
-    ...sqlBuilder.metricItems.flatMap((item) => [item.field, item.metric]),
+    ...sqlBuilder.metricItems.flatMap((item) => [item.field, metricMeasureField(item)]),
     ...sqlBuilder.calculatedMetrics.flatMap((item) => [item.pendingEventField, item.pendingMetricField]),
     ...formulaFields,
     ...sqlBuilder.groups,
@@ -8399,6 +8407,7 @@ const analysisModelFormContext = {
   handleDistributionSimultaneousToggle, handleFormulaDisplayClick, handleFormulaEditorFocusout, handleFormulaEditorKeydown,
   handleFunnelRelatedPropertyToggle, handleFunnelStepEventChange, handleIntervalEventChange, handleIntervalRelatedPropertyToggle,
   handleIntervalStartPropertyChange, handlePropertyGroupFieldChange, handlePropertyGroupModeChange, handleRankingMetricChange,
+  handleMetricEventChange,
   handleRetentionEventPropertyChange, handleRetentionRelatedPropertyToggle, handleRetentionSimultaneousToggle, handleRevenueCostToggle,
   handleRevenuePaymentEventChange, hasEffectiveBuilderFilters, heatmapComparisonGroupAliasDraft, heatmapComparisonGroupAliasEditing,
   heatmapFilterExpanded, heatmapMapFileName, intervalEndPropertyOptions, intervalEntityFieldOptions,

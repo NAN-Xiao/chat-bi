@@ -40,7 +40,7 @@ const {
   handleAttributionEventChange, handleAttributionTargetEventChange, handleDistributionEventChange,
   handleDistributionSimultaneousToggle, handleFormulaDisplayClick, handleFormulaEditorFocusout, handleFormulaEditorKeydown,
   handleFunnelRelatedPropertyToggle, handleFunnelStepEventChange, handleIntervalEventChange, handleIntervalRelatedPropertyToggle,
-  handleIntervalStartPropertyChange, handlePropertyGroupFieldChange, handlePropertyGroupModeChange, handleRankingMetricChange,
+  handleIntervalStartPropertyChange, handleMetricEventChange, handlePropertyGroupFieldChange, handlePropertyGroupModeChange, handleRankingMetricChange,
   handleRetentionEventPropertyChange, handleRetentionRelatedPropertyToggle, handleRetentionSimultaneousToggle, handleRevenueCostToggle,
   handleRevenuePaymentEventChange, hasEffectiveBuilderFilters, heatmapComparisonGroupAliasDraft, heatmapComparisonGroupAliasEditing,
   heatmapFilterExpanded, heatmapMapFileName, intervalEndPropertyOptions, intervalEntityFieldOptions,
@@ -299,12 +299,13 @@ const {
                       :class="{ 'has-metric-field': item.aggregation !== 'count' }"
                     >
                       <BuilderFieldPicker
-                        v-model="item.field"
+                        :model-value="item.field"
                         class="metric-field-select"
                         :options="analysisFieldOptions"
                         :loading="schemaLoading"
                         :mode="analysisFieldPickerMode"
                         :placeholder="formulaFieldPickerPlaceholder"
+                        @update:modelValue="handleMetricEventChange(item, $event)"
                       />
                       <span class="metric-of">的</span>
                         <el-select
