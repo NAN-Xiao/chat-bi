@@ -2624,6 +2624,76 @@ def test_retention_system_prompt_uses_wide_result_without_changing_event_prompt(
     assert "留存专用 Cohort 宽表结构" not in event_prompt
 
 
+@pytest.mark.parametrize(
+    ("analysis_model", "config", "expected"),
+    [
+        (
+            "event",
+            {
+                "time": {"field": {"field": "dt", "displayName": "日期"}},
+                "groups": [{"field": "channel", "displayName": "渠道"}],
+                "metrics": [{"alias": "active_users", "label": "活跃用户数"}],
+            },
+            {"dt": "日期", "channel": "渠道", "active_users": "活跃用户数"},
+        ),
+        ("property", {"metrics": [{"alias": "账号数"}]}, {"property_date": "日期", "property_metric_1": "账号数"}),
+        ("retention", {}, {"cohort_date": "同期群日期", "cohort_size": "同期群人数", "day_1": "第1日留存率"}),
+        ("funnel", {}, {"step_name": "步骤名称", "step_count": "转化人数"}),
+        ("distribution", {}, {"interval_label": "分布区间", "entity_rate": "主体占比"}),
+        ("interval", {}, {"interval_count": "有效间隔数", "median_interval_seconds": "中位间隔（秒）"}),
+        ("path", {}, {"path_source": "来源步骤", "path_value": "路径数量"}),
+        (
+            "revenue",
+            {"revenue": {"observationDays": 2, "metric": {"method": "count"}}},
+            {"cohort_date": "同期群日期", "day_2": "第2日事件次数"},
+        ),
+        ("attribution", {}, {"attribution_event": "归因事件", "contribution_rate": "贡献率"}),
+        (
+            "ranking",
+            {"ranking": {"metric": {"alias": "登录次数"}}},
+            {"rank": "名次", "ranking_value": "登录次数"},
+        ),
+        (
+            "heatmap",
+            {"heatmap": {"xField": {"displayName": "地图横坐标"}}},
+            {"heatmap_x": "地图横坐标", "heatmap_value": "热力值"},
+        ),
+    ],
+)
+def test_analysis_model_result_display_names_cover_every_model(
+    analysis_model: str,
+    config: dict,
+    expected: dict[str, str],
+) -> None:
+    normalized = {"analysis_model": analysis_model, **config}
+
+    display_names = ai_sql_generator._analysis_result_display_names(normalized, analysis_model)
+
+    assert display_names.items() >= expected.items()
+
+
+def test_finalize_response_attaches_display_names_only_to_analysis_generation_result() -> None:
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql="SELECT dt, COUNT(*) AS active_users FROM event GROUP BY dt",
+        analysis_model="event",
+    )
+    result = ai_sql_generator._node_finalize_response({
+        "response": response,
+        "normalized_config": {
+            "analysis_model": "event",
+            "time": {"field": {"field": "dt", "displayName": "日期"}},
+            "metrics": [{"alias": "active_users", "label": "活跃用户数"}],
+        },
+        "graph_trace": [],
+    })["response"]
+
+    assert result.result_config["display_names"] == {
+        "dt": "日期",
+        "active_users": "活跃用户数",
+    }
+
+
 @pytest.mark.parametrize("analysis_model", ai_sql_generator.ANALYSIS_MODEL_LABELS)
 def test_sql_validation_routes_every_analysis_model_failure_to_one_repair(analysis_model: str) -> None:
     failed_response = ai_sql_generator.DashboardAiSqlGenerateResponse(

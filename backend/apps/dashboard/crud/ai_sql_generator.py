@@ -84,6 +84,225 @@ ANALYSIS_MODEL_LABELS = {
     "heatmap": "热力地图",
 }
 
+ANALYSIS_RESULT_DISPLAY_NAME_MODELS = frozenset(
+    {
+        "event",
+        "property",
+        "retention",
+        "funnel",
+        "distribution",
+        "interval",
+        "path",
+        "revenue",
+        "attribution",
+        "ranking",
+        "heatmap",
+    }
+)
+
+
+def _configured_display_name(value: Any, fallback: str) -> str:
+    if not isinstance(value, dict):
+        return fallback
+    candidates = [
+        str(value.get(key) or "").strip()
+        for key in ("alias", "displayName", "display_name", "label", "comment", "name")
+    ]
+    candidates = [text for text in candidates if text]
+    return next((text for text in candidates if re.search(r"[\u3400-\u9fff]", text)), candidates[0] if candidates else fallback)
+
+
+def _indexed_display_names(
+        prefix: str,
+        values: list[dict[str, Any]],
+        fallback_prefix: str,
+) -> dict[str, str]:
+    return {
+        f"{prefix}_{index + 1}": _configured_display_name(value, f"{fallback_prefix}{index + 1}")
+        for index, value in enumerate(values)
+    }
+
+
+def _analysis_result_display_names(
+        normalized_config: dict[str, Any],
+        analysis_model: str,
+) -> dict[str, str]:
+    """返回分析模型固定结果键对应的中文显示名，不改变 SQL 字段契约。"""
+    if analysis_model not in ANALYSIS_RESULT_DISPLAY_NAME_MODELS:
+        return {}
+
+    groups = _list_dict_items(normalized_config.get("groups"))
+    group_names = _indexed_display_names("group", groups, "分组")
+    if analysis_model == "event":
+        names: dict[str, str] = {}
+        time_field = (normalized_config.get("time") or {}).get("field")
+        for field in [time_field, *groups]:
+            if not isinstance(field, dict):
+                continue
+            output_key = str(field.get("field") or "").strip()
+            if output_key:
+                names[output_key] = _configured_display_name(field, output_key)
+        for metric in [
+            *_list_dict_items(normalized_config.get("metrics")),
+            *_list_dict_items(normalized_config.get("formula_metrics")),
+        ]:
+            output_key = str(metric.get("alias") or "").strip()
+            if output_key:
+                names[output_key] = _configured_display_name(metric, output_key)
+        return names
+
+    if analysis_model == "property":
+        property_config = normalized_config.get("property") or {}
+        if str(property_config.get("groupMode") or "property") == "audience":
+            groups = _list_dict_items(property_config.get("audiences"))
+            group_names = _indexed_display_names("group", groups, "人群")
+        metrics = _list_dict_items(normalized_config.get("metrics"))
+        return {
+            "property_date": "日期",
+            **group_names,
+            **_indexed_display_names("property_metric", metrics, "指标"),
+        }
+
+    if analysis_model == "retention":
+        retention = normalized_config.get("retention") or {}
+        simultaneous = retention.get("simultaneous") or {}
+        related_property = retention.get("relatedProperty") or {}
+        names = {
+            "cohort_date": "同期群日期",
+            "cohort_size": "同期群人数",
+            "day_0": "当日留存率",
+            **{f"day_{day}": f"第{day}日留存率" for day in range(1, RETENTION_COHORT_DAYS + 1)},
+        }
+        if simultaneous.get("enabled") is True:
+            names["simultaneous_value"] = _configured_display_name(
+                simultaneous.get("metricField"),
+                "同时展示指标",
+            )
+        if related_property.get("enabled") is True and related_property.get("asGroup") is True:
+            names["related_property"] = _configured_display_name(
+                related_property.get("initialProperty"),
+                "关联属性",
+            )
+        return names
+
+    if analysis_model == "funnel":
+        return {
+            "step_order": "步骤序号",
+            "step_name": "步骤名称",
+            "step_count": "转化人数",
+            "step_rate": "相对首步转化率",
+            "step_conversion_rate": "相对上一步转化率",
+            "step_dropoff_rate": "流失率",
+        }
+
+    if analysis_model == "distribution":
+        distribution = normalized_config.get("distribution") or {}
+        simultaneous = distribution.get("simultaneous") or {}
+        names = {
+            "distribution_date": "日期",
+            "total_entities": "总体主体数",
+            "interval_order": "区间序号",
+            "interval_label": "分布区间",
+            "entity_count": "主体数",
+            "entity_rate": "主体占比",
+            **group_names,
+        }
+        if simultaneous.get("enabled") is True:
+            names["simultaneous_value"] = _configured_display_name(
+                simultaneous.get("metricField"),
+                "同时展示指标",
+            )
+        return names
+
+    if analysis_model == "interval":
+        return {
+            "interval_date": "日期",
+            "entity_count": "主体数",
+            "interval_count": "有效间隔数",
+            "max_interval_seconds": "最大间隔（秒）",
+            "p75_interval_seconds": "75分位间隔（秒）",
+            "median_interval_seconds": "中位间隔（秒）",
+            "p25_interval_seconds": "25分位间隔（秒）",
+            "min_interval_seconds": "最小间隔（秒）",
+            "avg_interval_seconds": "平均间隔（秒）",
+            **group_names,
+        }
+
+    if analysis_model == "path":
+        return {
+            "path_source": "来源步骤",
+            "path_target": "目标步骤",
+            "path_value": "路径数量",
+            "path_step": "步骤序号",
+            "session_count": "会话数",
+        }
+
+    if analysis_model == "revenue":
+        revenue = normalized_config.get("revenue") or {}
+        metric = revenue.get("metric") or {}
+        method = str(metric.get("method") or "count")
+        metric_labels = {
+            "count": "事件次数",
+            "entity_count": "触发主体数",
+            "per_entity_count": "人均次数",
+            "period_cumulative_count": "累计次数",
+            "period_average_count": "日均次数",
+            "period_cumulative_entity_count": "累计主体数",
+            "period_average_entity_count": "日均主体数",
+            "property_sum": f"{_configured_display_name(metric.get('field'), '指标')}合计",
+            "property_avg": f"{_configured_display_name(metric.get('field'), '指标')}平均值",
+        }
+        try:
+            observation_days = int(revenue.get("observationDays") or revenue.get("observation_days") or 30)
+        except (TypeError, ValueError):
+            observation_days = 30
+        observation_days = min(REVENUE_OBSERVATION_MAX_DAYS, max(REVENUE_OBSERVATION_MIN_DAYS, observation_days))
+        metric_label = metric_labels.get(method, "指标值")
+        names = {
+            "cohort_date": "同期群日期",
+            "cohort_size": "同期群人数",
+            **{f"day_{day}": f"第{day}日{metric_label}" for day in range(observation_days + 1)},
+            **group_names,
+        }
+        cost = revenue.get("cost") or {}
+        if cost.get("enabled") is True or revenue.get("costEnabled") is True:
+            names["cost_value"] = "成本"
+            names["roi"] = "投入产出比"
+        return names
+
+    if analysis_model == "attribution":
+        return {
+            **group_names,
+            "attribution_event": "归因事件",
+            "target_count": "目标事件数",
+            "attributed_value": "归因值",
+            "contribution_rate": "贡献率",
+        }
+
+    if analysis_model == "ranking":
+        ranking = normalized_config.get("ranking") or {}
+        simultaneous_metrics = _list_dict_items(
+            ranking.get("simultaneousMetrics") or ranking.get("simultaneous_metrics")
+        )
+        simultaneous_properties = _list_dict_items(
+            ranking.get("simultaneousProperties") or ranking.get("simultaneous_properties")
+        )
+        return {
+            "rank": "名次",
+            "ranking_entity": _configured_display_name(ranking.get("entityField"), "排行主体"),
+            "ranking_value": _configured_display_name(ranking.get("metric"), "排行指标"),
+            **_indexed_display_names("simultaneous_metric", simultaneous_metrics, "同时展示指标"),
+            **_indexed_display_names("ranking_property", simultaneous_properties, "同时展示属性"),
+        }
+
+    heatmap = normalized_config.get("heatmap") or {}
+    return {
+        "heatmap_x": _configured_display_name(heatmap.get("xField"), "横坐标"),
+        "heatmap_y": _configured_display_name(heatmap.get("yField"), "纵坐标"),
+        "heatmap_group": "对比组",
+        "heatmap_value": _configured_display_name(heatmap.get("metric"), "热力值"),
+    }
+
 
 def _normalized_attribution_window(window: Any) -> dict[str, Any]:
     value = dict(window) if isinstance(window, dict) else {}
@@ -4741,6 +4960,12 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "map_width": heatmap.get("mapWidth") or heatmap.get("map_width") or 0,
             "map_height": heatmap.get("mapHeight") or heatmap.get("map_height") or 0,
             "map_coordinates": heatmap.get("mapCoordinates") or heatmap.get("map_coordinates") or {},
+        }
+    display_names = _analysis_result_display_names(normalized_config, response.analysis_model)
+    if display_names:
+        response.result_config = {
+            **dict(response.result_config or {}),
+            "display_names": display_names,
         }
     return {
         "response": response,

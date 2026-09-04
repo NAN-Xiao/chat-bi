@@ -475,6 +475,7 @@ const form = reactive({
   mcpValueField: '',
 })
 const donutSeriesFields = ref<string[]>([])
+const analysisResultDisplayNames = ref<Record<string, string>>({})
 const sqlBuilder = reactive({
   activeTab: 'builder' as 'builder' | 'sql',
   analysisModel: 'event' as AnalysisModel,
@@ -1482,6 +1483,39 @@ type PivotGranularity = 'day' | 'week' | 'month'
 
 function unique(values: Array<string | undefined | null>) {
   return Array.from(new Set(values.filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '').map((value) => `${value}`)))
+}
+
+function normalizeAnalysisResultDisplayNames(value: any) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([field, name]) => {
+      const fieldText = String(field || '').trim()
+      const nameText = String(name || '').trim()
+      return fieldText && nameText ? [[fieldText, nameText]] : []
+    })
+  )
+}
+
+function persistedAnalysisResultDisplayNames(chart: any) {
+  const bindings = [
+    ...(Array.isArray(chart?.columns) ? chart.columns : []),
+    ...(Array.isArray(chart?.xAxis) ? chart.xAxis : []),
+    ...(Array.isArray(chart?.yAxis) ? chart.yAxis : []),
+    ...(Array.isArray(chart?.series) ? chart.series : []),
+  ]
+  return Object.fromEntries(
+    bindings.flatMap((binding: any) => {
+      const field = String(binding?.value || '').trim()
+      const name = String(binding?.name || '').trim()
+      return field && name && field !== name ? [[field, name]] : []
+    })
+  )
+}
+
+function analysisResultFieldLabel(field: string) {
+  return analysisResultDisplayNames.value[field] || field
 }
 
 function isMeaningfulPreviewValue(value: unknown) {
@@ -4100,6 +4134,7 @@ function removeRankingMetric(index: number) {
 
 function handleAnalysisModelChange(model: AnalysisModel) {
   sqlBuilder.analysisModel = ['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking', 'heatmap'].includes(model) ? model : 'event'
+  analysisResultDisplayNames.value = {}
   resetHeatmapConfig()
   if (sqlBuilder.analysisModel === 'property') {
     resetPropertyConfig()
@@ -5985,6 +6020,10 @@ async function generateBuilderAiSql() {
   if (nextChartType && chartTypes.some((item) => item.value === nextChartType)) {
     form.chartType = nextChartType
   }
+  const generatedResultConfig = result.result_config || result.resultConfig || {}
+  analysisResultDisplayNames.value = normalizeAnalysisResultDisplayNames(
+    generatedResultConfig.display_names || generatedResultConfig.displayNames
+  )
   if (sqlBuilder.analysisModel === 'funnel' || result.analysis_model === 'funnel') {
     const resultConfig = result.result_config || result.resultConfig || {}
     form.chartType = 'funnel'
@@ -6281,7 +6320,8 @@ function sanitizeSeriesSelection() {
 }
 
 function toAxis(field: string): ChartAxis {
-  return { value: field }
+  const name = analysisResultFieldLabel(field)
+  return name === field ? { value: field } : { name, value: field }
 }
 
 function toAxes(fields: string[], options: { metrics?: boolean } = {}): ChartAxis[] {
@@ -7426,12 +7466,16 @@ function initEditor() {
   const chart = viewInfo.chart || {}
   const sourceTypes = resolveChartSourceTypes(viewInfo)
   const sourceConfig = chartSourceConfig(viewInfo)
+  const builderConfig = sourceConfig.sql?.builder || sourceConfig.builder
   const mcpConfig = {
     ...(sourceConfig.mcp || {}),
     ...(viewInfo.mcp || {}),
   }
   resetSqlBuilderState()
-  restoreSqlBuilderState(sourceConfig.sql?.builder || sourceConfig.builder)
+  restoreSqlBuilderState(builderConfig)
+  analysisResultDisplayNames.value = builderConfig
+    ? persistedAnalysisResultDisplayNames(chart)
+    : {}
   normalizeDistributionTableViewInfo(viewInfo)
   const normalizedConfig = normalizeDashboardChartConfig(viewInfo)
   const pivotDateExpression = normalizeDashboardDateExpression(normalizedConfig.dateFilter?.expression)
@@ -7578,6 +7622,7 @@ function resetExecutionDatasourceDependentState() {
   form.x = ''
   form.y = []
   form.series = ''
+  analysisResultDisplayNames.value = {}
   form.pivotEnabled = false
   form.pivotTimeField = ''
   form.pivotGroupField = ''
@@ -8987,7 +9032,7 @@ const analysisModelFormContext = {
           v-for="field in previewTableFields"
           :key="field"
           :prop="field"
-          :label="field"
+          :label="analysisResultFieldLabel(field)"
           min-width="120"
           show-overflow-tooltip
         />

@@ -98,6 +98,17 @@ test('renders the analysis model selector before event metrics', () => {
   )
 })
 
+test('uses analysis SQL result display names without changing result field keys', () => {
+  assert.match(source, /const analysisResultDisplayNames = ref<Record<string, string>>\(\{\}\)/)
+  assert.match(source, /generatedResultConfig\.display_names \|\| generatedResultConfig\.displayNames/)
+  assert.match(
+    source,
+    /function toAxis\(field: string\): ChartAxis \{[\s\S]*?return name === field \? \{ value: field \} : \{ name, value: field \}/
+  )
+  assert.match(source, /:label="analysisResultFieldLabel\(field\)"/)
+  assert.match(source, /builderConfig[\s\S]*?persistedAnalysisResultDisplayNames\(chart\)/)
+})
+
 test('keeps the builder loading mask fixed while its content scrolls', () => {
   assert.match(
     source,
