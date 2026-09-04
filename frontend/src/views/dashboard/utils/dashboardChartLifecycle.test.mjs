@@ -23,11 +23,29 @@ writeFileSync(compiledPath, compiled.outputText, 'utf8')
 
 try {
   const {
+    completeDashboardChartResultState,
     hasDashboardChartRows,
     hasDashboardChartSnapshot,
     prepareDashboardChartRefreshState,
     reconcileDashboardViewInfo,
   } = await import(pathToFileURL(compiledPath).href)
+
+  const editorEmptyResult = {
+    data: { data: [], fields: ['interval_date', 'entity_count'] },
+    fields: [],
+    refreshState: 'waiting',
+  }
+  assert.equal(completeDashboardChartResultState(editorEmptyResult, 789), true)
+  assert.equal(editorEmptyResult.status, 'success')
+  assert.equal(editorEmptyResult.dataState, 'ready')
+  assert.equal(editorEmptyResult.snapshotRefreshedAt, 789)
+  assert.equal(editorEmptyResult.data.snapshotRefreshedAt, 789)
+  assert.equal(editorEmptyResult.refreshState, '')
+  assert.equal(
+    hasDashboardChartSnapshot(editorEmptyResult),
+    true,
+    '编辑器成功返回空结果时也必须记录已完成快照，不能被重新识别为首次加载'
+  )
 
   const rows = [{ day: '2026-08-01', value: 10 }]
   const snapshot = {
