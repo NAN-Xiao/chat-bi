@@ -1127,7 +1127,7 @@ const analysisFieldOptions = computed(() => {
 const analysisFieldPickerMode = computed(() => usesTrackingEventPicker.value ? 'tracking-event' : 'property')
 const formulaFieldPickerPlaceholder = computed(() => usesTrackingEventPicker.value ? '选择事件' : '选择字段')
 const analysisModelOptions: Array<{ label: string; value: AnalysisModel; content?: string }> = [
-  { label: '事件分析', value: 'event' as AnalysisModel },
+  { label: '事件分析', value: 'event' as AnalysisModel, content: '分析某段时间内，某个事件或事件属性的整体趋势情况' },
   { label: '属性分析', value: 'property' as AnalysisModel, content: '按用户属性字段分组，统计属性指标在时间范围内的分布情况' },
   { label: '留存分析', value: 'retention' as AnalysisModel, content: RETENTION_ANALYSIS_CONTEXT_CONTENT },
   { label: '漏斗分析', value: 'funnel' as AnalysisModel, content: '以某段时间做过步骤1的用户为样本，查看窗口期内，指定步骤下用户的转化情况' },
