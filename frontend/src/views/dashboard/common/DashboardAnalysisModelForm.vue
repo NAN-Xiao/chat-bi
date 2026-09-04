@@ -1931,7 +1931,7 @@ const {
                   <span class="group-index">{{ index + 1 }}</span>
                   <BuilderFieldPicker
                     :model-value="sqlBuilder.groups[index]"
-                    :options="isPropertyAnalysis ? propertyFieldOptions : builderFieldOptions"
+                    :options="isPropertyAnalysis ? propertyMetricFieldOptions : builderFieldOptions"
                     :loading="schemaLoading"
                     mode="property"
                     placeholder="分组字段"

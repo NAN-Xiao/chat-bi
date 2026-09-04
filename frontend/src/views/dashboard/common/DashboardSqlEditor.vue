@@ -1175,7 +1175,7 @@ const propertyFieldOptions = computed<SchemaFieldOption[]>(() => {
   })
 })
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
-const propertyMetricFieldOptions = retentionEntityFieldOptions
+const propertyMetricFieldOptions = propertyFieldOptions
 const retentionEventOptions = computed(() => trackingEventCatalogOptions.value)
 const funnelEntityFieldOptions = computed(() => builderFieldOptions.value)
 const funnelEventOptions = computed(() => trackingEventCatalogOptions.value)
