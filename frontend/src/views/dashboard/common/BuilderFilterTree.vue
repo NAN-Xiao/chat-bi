@@ -35,6 +35,7 @@ const props = withDefaults(
     showToolbar?: boolean
     pickerMode?: 'property' | 'filter-property'
     filterPropertyTabs?: Array<'all' | 'event' | 'user'>
+    filterPropertyLabels?: Partial<Record<'all' | 'event' | 'user', string>>
   }>(),
   {
     logic: 'and',
@@ -45,6 +46,7 @@ const props = withDefaults(
     showToolbar: false,
     pickerMode: 'property',
     filterPropertyTabs: () => [],
+    filterPropertyLabels: () => ({}),
   }
 )
 
@@ -131,6 +133,7 @@ function isGroup(node: FilterNode) {
             :show-toolbar="true"
             :picker-mode="pickerMode"
             :filter-property-tabs="filterPropertyTabs"
+            :filter-property-labels="filterPropertyLabels"
             @update:logic="updateNodeLogic(node, $event)"
           />
         </div>
@@ -141,6 +144,7 @@ function isGroup(node: FilterNode) {
             :mode="pickerMode"
             :options="fieldOptions"
             :filter-property-tabs="filterPropertyTabs"
+            :filter-property-labels="filterPropertyLabels"
             :loading="schemaLoading"
             placeholder="字段"
           />

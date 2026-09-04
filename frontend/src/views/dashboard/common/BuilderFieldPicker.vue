@@ -25,6 +25,7 @@ const props = withDefaults(
     disabled?: boolean
     loading?: boolean
     filterPropertyTabs?: FilterPropertyTab[]
+    filterPropertyLabels?: Partial<Record<FilterPropertyTab, string>>
   }>(),
   {
     mode: 'property',
@@ -32,6 +33,7 @@ const props = withDefaults(
     disabled: false,
     loading: false,
     filterPropertyTabs: () => [],
+    filterPropertyLabels: () => ({}),
   }
 )
 
@@ -114,16 +116,22 @@ const tableTabs = computed(() => {
       value: `${TABLE_TAB_PREFIX}${tableName}`,
     }))
 })
-const filterPropertyTabOptions: Array<{ label: string; value: FilterPropertyTab }> = [
+const defaultFilterPropertyTabOptions: Array<{ label: string; value: FilterPropertyTab }> = [
   { label: '全部', value: 'all' },
   { label: '事件属性', value: 'event' },
   { label: '用户属性', value: 'user' },
 ]
 const filterPropertyGroupOrder: FilterPropertyTab[] = ['event', 'user']
+const filterPropertyTabOptions = computed(() => (
+  defaultFilterPropertyTabOptions.map((item) => ({
+    ...item,
+    label: props.filterPropertyLabels[item.value] || item.label,
+  }))
+))
 
 const tabOptions = computed(() => {
   if (isFilterPropertyMode.value) {
-    return filterPropertyTabOptions.filter((item) => props.filterPropertyTabs.includes(item.value))
+    return filterPropertyTabOptions.value.filter((item) => props.filterPropertyTabs.includes(item.value))
   }
   return [
     { label: '全部', value: 'all' },
@@ -210,7 +218,7 @@ const groupedOptions = computed(() => {
       const items = rows.filter((item) => matchesTab(item, groupTab))
       if (!items.length) return
       groups.push({
-        name: filterPropertyTabOptions.find((item) => item.value === groupTab)?.label || '筛选属性',
+        name: filterPropertyTabOptions.value.find((item) => item.value === groupTab)?.label || '筛选属性',
         items: sortItems(items),
       })
     })
@@ -227,9 +235,11 @@ const groupedOptions = computed(() => {
   return Array.from(groups.entries()).map(([name, items]) => ({ name, items: sortItems(items) }))
 })
 
-const propertyEmptyText = computed(() => (
-  activeTab.value === 'all' ? '暂无筛选属性' : activeTab.value === 'event' ? '暂无事件属性' : '暂无用户属性'
-))
+const propertyEmptyText = computed(() => {
+  if (activeTab.value === 'all') return '暂无筛选属性'
+  const label = filterPropertyTabOptions.value.find((item) => item.value === activeTab.value)?.label || '筛选属性'
+  return `暂无${label}`
+})
 
 const eventRows = computed(() => {
   const q = keyword.value.trim().toLowerCase()

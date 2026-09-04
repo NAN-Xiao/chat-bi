@@ -45,11 +45,20 @@ assert.doesNotMatch(
 assert.match(tree, /pickerMode\?: 'property' \| 'filter-property'/, '筛选树需要透传字段选择器模式')
 assert.match(tree, /filterPropertyTabs\?: Array<'all' \| 'event' \| 'user'>/, '筛选树需要透传允许标签')
 assert.match(tree, /:filter-property-tabs="filterPropertyTabs"/, '递归筛选树必须保留允许标签')
+assert.match(tree, /filterPropertyLabels\?: Partial<Record<'all' \| 'event' \| 'user', string>>/, '筛选树需要透传筛选属性展示名称')
+assert.match(tree, /:filter-property-labels="filterPropertyLabels"/, '递归筛选树必须保留属性展示名称')
 
-const metricFilterTabBindings = editor.match(/:filter-property-tabs="\['all', 'event', 'user'\]"/g) || []
-assert.equal(metricFilterTabBindings.length, 5, '指标、公式、留存事件和漏斗步骤筛选都需要全部、事件、用户三个标签')
-assert.match(editor, /:filter-property-tabs="\['user'\]"/, '全局筛选只能显示用户属性')
-assert.match(editor, /:field-options="eventUserPropertyOptions"/, '全局筛选候选只能使用 event.userinfo')
+const form = readFileSync(new URL('./DashboardAnalysisModelForm.vue', import.meta.url), 'utf8')
+const eventFilterLabelBindings = form.match(/:filter-property-labels="\{ user: '公共属性' \}"/g) || []
+assert.equal(eventFilterLabelBindings.length, 14, '事件、全局和人群筛选都应将 event.userinfo 字段标为公共属性')
+
+const eventFilterTabBindings = form.match(/:filter-property-tabs="\['all', 'event', 'user'\]"/g) || []
+assert.equal(eventFilterTabBindings.length, 12, '所有事件筛选入口都需要全部、事件属性和公共属性三个标签')
+const publicPropertyOnlyTabBindings = form.match(/:filter-property-tabs="\['user'\]"/g) || []
+const publicPropertyOnlyLabelBindings = form.match(/:filter-property-tabs="\['user'\]"[\s\S]*?:filter-property-labels="\{ user: '公共属性' \}"/g) || []
+assert.equal(publicPropertyOnlyTabBindings.length, 2, '全局筛选和人群筛选都只显示公共属性')
+assert.equal(publicPropertyOnlyLabelBindings.length, 2, '全局筛选和人群筛选应将 event.userinfo 字段标为公共属性')
+assert.match(form, /:field-options="eventUserPropertyOptions"/, '全局筛选和人群筛选候选只能使用 event.userinfo')
 assert.match(editor, /function builderFilterScopeIssues\(\)/, '旧配置需要独立筛选范围校验')
 assert.match(editor, /字段不属于当前筛选范围/, '失效字段需要明确错误信息')
 assert.match(editor, /builderBlockingScopeIssues\(\)/, 'SQL 生成前需要合并事件范围和筛选范围错误')
