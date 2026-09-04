@@ -415,7 +415,7 @@ def test_roi_query_rejects_write_sql(
     assert "仅允许单条只读查询" in exc.value.detail
 
 
-def test_roi_query_passes_timeout_and_original_sql_without_limit(
+def test_roi_query_uses_datasource_timeout_and_preserves_original_sql_without_limit(
     monkeypatch: pytest.MonkeyPatch,
     session: Session,
 ) -> None:
@@ -433,7 +433,7 @@ def test_roi_query_passes_timeout_and_original_sql_without_limit(
     result = execute_roi_read_query(session, make_user(), sql)
 
     assert captured["sql"] == sql
-    assert captured["query_timeout"] == query_executor.settings.DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS
+    assert "query_timeout" not in captured
     assert captured["max_result_rows"] is None
     assert len(result.data) == 1005
     assert result.data[-1] == {"value": 1004}
@@ -601,12 +601,12 @@ def test_roi_validated_read_marks_sql_as_prevalidated(
     query_executor._run_validated_read(
         datasource=datasource,
         sql="SELECT DATE_ADD(dt, period) FROM payments",
-        query_timeout=10,
         max_result_rows=None,
     )
 
     assert captured["skip_read_validation"] is True
     assert captured["require_controlled_timeout"] is True
+    assert "query_timeout" not in captured
     assert captured["max_result_rows"] is None
 
 
@@ -790,7 +790,7 @@ def test_roi_query_supported_timeout_matrix_executes(
     result = execute_roi_read_query(session, make_user(), "SELECT 1")
 
     assert result.status == "success"
-    assert calls[0]["query_timeout"] > 0
+    assert "query_timeout" not in calls[0]
     assert calls[0]["max_result_rows"] is None
 
 

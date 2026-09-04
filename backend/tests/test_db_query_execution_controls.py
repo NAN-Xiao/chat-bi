@@ -70,6 +70,20 @@ class FakeSqlAlchemyConnection:
         return self.session.result
 
 
+def test_effective_query_timeout_uses_datasource_configuration_without_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configuration = json.dumps({"timeout": 90})
+    monkeypatch.setattr(db_module, "aes_decrypt", lambda _value: configuration)
+
+    timeout = db_module._effective_query_timeout(
+        SimpleNamespace(configuration="encrypted"),
+        None,
+    )
+
+    assert timeout == 90
+
+
 def test_raw_sql_execution_preserves_colon_literals(monkeypatch) -> None:
     session = FakeSqlAlchemySession(FakeResult([(1,)]))
     monkeypatch.setattr(db_module, "get_session", lambda *_args, **_kwargs: session)

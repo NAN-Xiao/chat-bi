@@ -319,15 +319,13 @@ def test_dashboard_chart_execution_marks_resolved_datasource_as_prevalidated(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """图表执行器不得对已完成空间级 ROI 校验的数据源重复做用户级校验。"""
-    execution_options: list[bool] = []
+    execution_options: list[dict] = []
     monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *_args: 11)
     monkeypatch.setattr(dashboard_service, "get_roi_datasource_id_for_tenant", lambda *_args: 22)
     monkeypatch.setattr(
         dashboard_service,
         "execute_user_query",
-        lambda *_args, **kwargs: execution_options.append(
-            kwargs.get("datasource_access_checked", False)
-        ) or {
+        lambda *_args, **kwargs: execution_options.append(kwargs) or {
             "status": "success",
             "fields": ["value"],
             "data": [{"value": 1}],
@@ -340,7 +338,8 @@ def test_dashboard_chart_execution_marks_resolved_datasource_as_prevalidated(
     )
 
     assert result["status"] == "success"
-    assert execution_options == [True]
+    assert execution_options[0]["datasource_access_checked"] is True
+    assert "query_timeout" not in execution_options[0]
 
 
 def test_dashboard_roi_permission_audit_marks_validation_as_prevalidated(

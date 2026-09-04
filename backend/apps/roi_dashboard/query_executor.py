@@ -34,7 +34,6 @@ from apps.roi_dashboard.permissions import (
     has_roi_datasource_access,
     require_roi_workspace_admin,
 )
-from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
 from common.utils.utils import AppLogUtil
 
@@ -68,7 +67,6 @@ def _run_validated_read(
     *,
     datasource: CoreDatasource,
     sql: str,
-    query_timeout: int,
     max_result_rows: int | None,
 ) -> dict[str, Any]:
     """集中封装底层已验证执行入口，禁止私有调用扩散到 ROI 其他模块。"""
@@ -76,7 +74,6 @@ def _run_validated_read(
         ds=datasource,
         sql=sql,
         origin_column=True,
-        query_timeout=query_timeout,
         max_result_rows=max_result_rows,
         require_controlled_timeout=True,
         skip_read_validation=True,
@@ -354,7 +351,6 @@ def execute_roi_read_query(
         raw = _run_validated_read(
             datasource=datasource,
             sql=rendered_sql,
-            query_timeout=settings.DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS,
             max_result_rows=None,
         )
     except HTTPException:
