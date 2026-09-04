@@ -7,7 +7,6 @@ import {
   type G2ResponsiveStyle,
 } from '@/views/chat/component/charts/g2Responsive.ts'
 import { endsWith, replace } from 'lodash-es'
-import { formatCompactDateByAxis } from '@/views/chat/component/charts/compactDate.ts'
 
 const AUTO_VALUE_FIELD = 'shuzhi_auto_quota'
 const AUTO_COUNT_VALUE_FIELD = 'shuzhi_auto_count_quota'
@@ -43,24 +42,6 @@ const AVERAGE_KEYWORDS = [
   '单均',
   '客单',
 ]
-
-const CJK_IDENTIFIER_PATTERN =
-  /(账号|账户|用户|玩家|角色|区服|服务器|订单|商品|产品|渠道|设备|会话|事件|项目|记录|租户|工作空间)\s*id/i
-
-const CJK_IDENTIFIER_KEYWORDS = [
-  '编号',
-  '编码',
-  '代码',
-  '号码',
-  '单号',
-  '序列号',
-  '标识',
-]
-
-const EN_IDENTIFIER_TOKEN_PATTERN =
-  /(^|[\s_.:/-])(id|uid|uuid|guid|code|key|no)([\s_.:/-]|$)/i
-
-const EN_IDENTIFIER_SUFFIX_PATTERN = /(Id|ID|Uid|UID|UUID|Guid|GUID|Code|Key|No)$/
 
 const ISO_DATE_AXIS_VALUE_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})(?:$|[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)$/
@@ -133,36 +114,6 @@ export function formatTooltipValue(value: any, suffix = ''): string {
     return '-'
   }
   return `${formatted}${suffix}`
-}
-
-export function isIdentifierAxis(axis?: Pick<ChartAxis, 'name' | 'value'> | null): boolean {
-  const label = axisLabel(axis)
-  const value = String(axis?.value || '').trim()
-  const text = `${label} ${value}`
-
-  if (CJK_IDENTIFIER_PATTERN.test(text)) {
-    return true
-  }
-
-  if (CJK_IDENTIFIER_KEYWORDS.some((keyword) => text.includes(keyword))) {
-    return true
-  }
-
-  return EN_IDENTIFIER_TOKEN_PATTERN.test(text) || EN_IDENTIFIER_SUFFIX_PATTERN.test(value)
-}
-
-export function formatValueByAxis(
-  value: any,
-  axis?: Pick<ChartAxis, 'name' | 'value'> | null
-): string | number {
-  if (isIdentifierAxis(axis)) {
-    return value
-  }
-  const compactDate = formatCompactDateByAxis(value, axis)
-  if (compactDate !== null) {
-    return compactDate
-  }
-  return formatNumber(value)
 }
 
 export function toNumber(value: any): number {

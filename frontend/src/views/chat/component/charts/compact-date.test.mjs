@@ -20,10 +20,9 @@ assert.equal(formatCompactDateByAxis(20260827, { value: 'cohort_size' }), null)
 assert.equal(formatCompactDateByAxis(20260827, { value: 'date_id' }), null)
 assert.equal(formatCompactDateByAxis(20260827, { name: '日期编号', value: 'cohort' }), null)
 
-const utilsSource = readFileSync('src/views/chat/component/charts/utils.ts', 'utf8')
 const tableSource = readFileSync('src/views/chat/component/charts/Table.ts', 'utf8')
 assert.match(
-  utilsSource,
+  tableSource,
   /const compactDate = formatCompactDateByAxis\(value, axis\)[\s\S]*?return compactDate/,
   '共享表格数值格式化前必须先处理明确日期字段的 YYYYMMDD 值'
 )

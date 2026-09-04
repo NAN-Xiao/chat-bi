@@ -21,4 +21,16 @@ assert.match(
   'S2 meta formatter 必须统一走空值展示格式化'
 )
 
+assert.match(
+  table,
+  /const compactDate = formatCompactDateByAxis\(value, axis\)[\s\S]*?return String\(value\)/,
+  'S2 表格除明确日期外必须保留查询结果原始格式'
+)
+
+assert.doesNotMatch(
+  table,
+  /format(?:Number|ValueByAxis)\(/,
+  'S2 表格不得给普通数字或数字字符串自动添加千分位'
+)
+
 console.log('Table null display tests passed')
