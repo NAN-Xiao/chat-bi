@@ -196,14 +196,33 @@ export function isTrackingEventPropertyOption(option: FieldOption) {
   return option.kind === 'tracking-property' && isSelectableFieldOption(option)
 }
 
-export function isEventUserPropertyOption(option: FieldOption, eventTable = 'event') {
+export function isEventPublicPropertyOption(option: FieldOption, eventTable = 'event') {
   return (
+    option.kind !== 'tracking-event' &&
     option.kind !== 'tracking-property' &&
     option.table === eventTable &&
-    normalizeRole(option.sourceField) === 'userinfo' &&
-    Boolean(String(option.jsonPath || '').trim()) &&
     isSelectableFieldOption(option)
   )
+}
+
+export function eventPublicPropertyOptions(input: {
+  fields?: FieldOption[]
+  eventProperties?: FieldOption[]
+  activeEventTable?: string
+}) {
+  const eventTable = input.activeEventTable || ''
+  if (!eventTable) return []
+  const eventPropertySourceKeys = new Set(
+    (input.eventProperties || [])
+      .filter((option) => option.table === eventTable && option.kind === 'tracking-property')
+      .flatMap(fieldOptionSourceKeys)
+  )
+  const options = (input.fields || []).filter((option) => {
+    if (!isEventPublicPropertyOption(option, eventTable)) return false
+    if (!option.isJsonSubfield && !(option.sourceField && option.jsonPath)) return true
+    return !fieldOptionSourceKeys(option).some((key) => eventPropertySourceKeys.has(key))
+  })
+  return Array.from(new Map(options.map((option) => [option.value, option])).values())
 }
 
 export function propertyAnalysisFieldOptions(input: {
@@ -222,7 +241,7 @@ export function propertyAnalysisFieldOptions(input: {
 export function eventScopedPropertyOptions(input: {
   eventOption?: FieldOption
   eventProperties?: FieldOption[]
-  userProperties?: FieldOption[]
+  publicProperties?: FieldOption[]
   activeEventTable?: string
 }) {
   const eventTable = input.eventOption?.eventTable || input.eventOption?.table || ''
@@ -236,7 +255,7 @@ export function eventScopedPropertyOptions(input: {
   }
   const options = [
     ...(input.eventProperties || []),
-    ...(input.userProperties || []),
+    ...(input.publicProperties || []),
   ]
   const uniqueOptions = new Map<string, FieldOption>()
   options.forEach((option) => {

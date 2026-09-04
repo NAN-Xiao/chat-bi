@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { ArrowDown, Search } from '@element-plus/icons-vue'
 import {
   fieldOptionDisplayName,
-  isEventUserPropertyOption,
+  isEventPublicPropertyOption,
   isNumericFieldOption,
   isSelectableFieldOption,
   isTimeFieldOption,
@@ -117,7 +117,7 @@ const tableTabs = computed(() => {
 const filterPropertyTabOptions: Array<{ label: string; value: FilterPropertyTab }> = [
   { label: '全部', value: 'all' },
   { label: '事件属性', value: 'event' },
-  { label: '用户属性', value: 'user' },
+  { label: '公共属性', value: 'user' },
 ]
 const filterPropertyGroupOrder: FilterPropertyTab[] = ['event', 'user']
 
@@ -152,13 +152,13 @@ function isIdentifierField(item: FieldOption) {
 
 function matchesTab(item: FieldOption, tab: string) {
   if (isFilterPropertyMode.value && tab === 'all') {
-    return isTrackingEventPropertyOption(item) || isEventUserPropertyOption(item)
+    return isTrackingEventPropertyOption(item) || isEventPublicPropertyOption(item)
   }
   if (isFilterPropertyMode.value && tab === 'event') {
     return isTrackingEventPropertyOption(item)
   }
   if (isFilterPropertyMode.value && tab === 'user') {
-    return isEventUserPropertyOption(item)
+    return isEventPublicPropertyOption(item)
   }
   if (tab === 'all') {
     return true
@@ -228,7 +228,7 @@ const groupedOptions = computed(() => {
 })
 
 const propertyEmptyText = computed(() => (
-  activeTab.value === 'all' ? '暂无筛选属性' : activeTab.value === 'event' ? '暂无事件属性' : '暂无用户属性'
+  activeTab.value === 'all' ? '暂无筛选属性' : activeTab.value === 'event' ? '暂无事件属性' : '暂无公共属性'
 ))
 
 const eventRows = computed(() => {

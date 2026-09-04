@@ -8,9 +8,9 @@ assert.match(source, /type FilterPropertyTab = 'all' \| 'event' \| 'user'/, '筛
 assert.match(source, /filterPropertyTabs\?: FilterPropertyTab\[\]/, '调用方需要显式控制可见属性标签')
 assert.match(source, /label: '全部', value: 'all'/, '指标筛选需要全部标签')
 assert.match(source, /label: '事件属性'/, '筛选属性模式需要事件属性标签')
-assert.match(source, /label: '用户属性'/, '筛选属性模式需要用户属性标签')
+assert.match(source, /label: '公共属性'/, '筛选属性模式需要公共属性标签')
 assert.match(source, /isTrackingEventPropertyOption\(item\)/, '事件属性标签只能匹配事件目录参数')
-assert.match(source, /isEventUserPropertyOption\(item\)/, '用户属性标签只能匹配 event.userinfo JSON 字段')
+assert.match(source, /isEventPublicPropertyOption\(item\)/, '公共属性标签需要匹配事件表公共字段')
 assert.match(
   source,
   /const rows = isFilterPropertyMode\.value[\s\S]*?\? tabRows/,
@@ -18,7 +18,7 @@ assert.match(
 )
 assert.match(source, /\{ immediate: true \}/, '筛选属性模式首次打开需要立即选择第一个允许标签')
 assert.match(source, /暂无事件属性/, '事件属性空列表需要明确空状态')
-assert.match(source, /暂无用户属性/, '用户属性空列表需要明确空状态')
+assert.match(source, /暂无公共属性/, '公共属性空列表需要明确空状态')
 assert.match(source, /暂无筛选属性/, '全部标签空列表需要明确空状态')
 assert.match(source, /const filterPropertyGroupOrder: FilterPropertyTab\[\] = \['event', 'user'\]/, '全部标签分组顺序需要事件属性在前')
 assert.match(source, /groupTabs\.forEach/, '全部标签需要按固定顺序生成分组')

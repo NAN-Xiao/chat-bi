@@ -200,27 +200,45 @@ const eventUserProperty = {
 }
 
 assert.equal(
-  options.isEventUserPropertyOption(eventUserProperty),
+  options.isEventPublicPropertyOption(eventUserProperty),
   true,
-  'event.userinfo JSON 叶子字段应识别为用户属性'
+  'event.userinfo JSON 叶子字段应识别为公共属性'
 )
 assert.equal(
-  options.isEventUserPropertyOption({ ...eventUserProperty, table: 'user', value: 'user.userinfo.country' }),
+  options.isEventPublicPropertyOption({ ...eventUserProperty, table: 'user', value: 'user.userinfo.country' }),
   false,
-  'user 表的 userinfo 字段不得进入筛选用户属性'
+  'user 表的 userinfo 字段不得进入事件公共属性'
 )
 assert.equal(
-  options.isEventUserPropertyOption({ ...eventUserProperty, sourceField: 'personal', value: 'event.personal.country' }),
-  false,
-  '其他 JSON 宿主列不得识别为用户属性'
+  options.isEventPublicPropertyOption({ ...eventUserProperty, sourceField: 'personal', value: 'event.personal.country' }),
+  true,
+  '其他事件公共 JSON 宿主列的叶子字段也应进入公共属性'
 )
 assert.equal(
-  options.isEventUserPropertyOption({ ...eventUserProperty, jsonPath: '', isJsonSubfield: false }),
+  options.isEventPublicPropertyOption({ ...eventUserProperty, jsonPath: '', isJsonSubfield: false, field: 'userinfo', type: 'json' }),
   false,
-  'userinfo 容器本身不得识别为可筛选用户属性'
+  'userinfo 容器本身不得识别为可筛选公共属性'
 )
 assert.equal(
-  options.isEventUserPropertyOption(trackingProperty),
+  options.isEventPublicPropertyOption(trackingProperty),
   false,
-  '事件目录参数不得重复进入用户属性'
+  '事件目录参数不得重复进入公共属性'
+)
+
+const eventUid = {
+  label: '用户 ID',
+  value: 'event.uid',
+  table: 'event',
+  field: 'uid',
+  type: 'text',
+}
+assert.equal(options.isEventPublicPropertyOption(eventUid), true, 'event.uid 应识别为公共属性')
+assert.deepEqual(
+  options.eventPublicPropertyOptions({
+    fields: [eventUid, eventUserProperty, { ...trackingProperty, kind: undefined, value: 'event.personal.gold', field: 'personal.gold' }],
+    eventProperties: [trackingProperty],
+    activeEventTable: 'event',
+  }).map((item) => item.value),
+  ['event.uid', 'event.userinfo.country'],
+  '公共属性候选应保留 uid 和 userinfo 叶子，并排除事件专属参数'
 )

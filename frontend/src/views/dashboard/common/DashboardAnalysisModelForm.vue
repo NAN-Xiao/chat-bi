@@ -33,7 +33,7 @@ const {
   cancelHeatmapComparisonGroupRename, cancelPropertyAudienceRename, cancelPropertyMetricRename, cancelRetentionEventRename,
   clearFormulaTokens, deleteFormulaToken, distributionEntityFieldOptions, distributionEventLabel, distributionEventOptions,
   distributionEventPropertyOptions, distributionFilterExpanded, distributionSimultaneousMetricFieldOptions, emptyBuilderFilter,
-  eventFieldScope, eventFilterFieldOptions, eventUserPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
+  eventFieldScope, eventFilterFieldOptions, eventPublicPropertyOptions, eventUserPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
   finishPropertyAudienceRename, finishPropertyMetricRename, finishRetentionEventRename, formulaFieldPickerPlaceholder,
   formulaMetricPrecisionText, formulaNumberKeys, formulaParenKeys, formulaTokenText, funnelAliasDraft, funnelAliasEditing,
   funnelEntityFieldOptions, funnelEventOptions, funnelFilterExpanded, funnelRelatedPropertyOptions, handleAnalysisModelChange,
@@ -1819,7 +1819,7 @@ const {
               <BuilderFilterTree
                 :nodes="sqlBuilder.globalFilters"
                 :logic="sqlBuilder.globalFilterLogic"
-                :field-options="isPropertyAnalysis ? propertyFieldOptions : eventUserPropertyOptions"
+                :field-options="isPropertyAnalysis ? propertyFieldOptions : eventPublicPropertyOptions"
                 :operator-options="builderFilterOperatorOptions"
                 :schema-loading="schemaLoading"
                 :picker-mode="isPropertyAnalysis && eventFieldScope.status !== 'active' ? 'property' : 'filter-property'"
@@ -1907,7 +1907,7 @@ const {
                     <BuilderFilterTree
                       :nodes="group.filters"
                       :logic="group.filterLogic"
-                      :field-options="eventUserPropertyOptions"
+                      :field-options="eventPublicPropertyOptions"
                       :operator-options="builderFilterOperatorOptions"
                       :schema-loading="schemaLoading"
                       picker-mode="filter-property"

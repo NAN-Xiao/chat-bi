@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 
 const editor = readFileSync(new URL('./DashboardSqlEditor.vue', import.meta.url), 'utf8')
 const tree = readFileSync(new URL('./BuilderFilterTree.vue', import.meta.url), 'utf8')
+const form = readFileSync(new URL('./DashboardAnalysisModelForm.vue', import.meta.url), 'utf8')
 
 assert.match(editor, /import \{ datasourceApi \} from '@\/api\/datasource'/, '看板需要复用数据源字段接口')
 assert.match(editor, /datasourceApi\.fieldList\(/, '默认事件表需要加载权限受控字典字段')
@@ -10,24 +11,24 @@ assert.match(editor, /fieldList\(table\.id, \{\s*fieldName: ''/, '字段接口�
 assert.match(editor, /source_field|sourceField/, '字段合并需要保留 JSON 宿主字段')
 assert.match(editor, /json_path|jsonPath/, '字段合并需要保留 JSON 路径')
 
-assert.match(editor, /const eventUserPropertyOptions = computed\(\(\) =>/, '编辑器需要独立的 event.userinfo 候选')
+assert.match(editor, /const eventPublicPropertyOptions = computed\(\(\) =>/, '编辑器需要独立的事件公共属性候选')
 assert.match(
   editor,
-  /isEventUserPropertyOption\(option, eventFieldScope\.value\.defaultEventTable\)/,
-  '用户属性必须严格限定当前工作空间的默认事件表'
+  /buildEventPublicPropertyOptions\([\s\S]*activeEventTable: eventFieldScope\.value\.defaultEventTable/,
+  '公共属性必须严格限定当前工作空间的默认事件表'
 )
 
 const eventOptions = editor.match(/function eventFilterFieldOptions[\s\S]*?\n\}/)?.[0] || ''
 const metricOptions = editor.match(/function metricFilterFieldOptions[\s\S]*?\n\}/)?.[0] || ''
 assert.match(eventOptions, /eventScopedPropertyOptions/, '事件筛选需要复用统一事件属性合并逻辑')
 assert.match(eventOptions, /trackingEventPropertyOptionsByEvent/, '事件筛选需要当前事件参数')
-assert.match(eventOptions, /eventUserPropertyOptions\.value/, '事件筛选需要默认事件表的用户属性')
+assert.match(eventOptions, /eventPublicPropertyOptions\.value/, '事件筛选需要默认事件表的公共属性')
 assert.match(
   eventOptions,
   /activeEventTable:[\s\S]*?eventFieldScope\.value\.defaultEventTable/,
   '事件筛选必须严格限定当前工作空间配置的默认事件表'
 )
-assert.doesNotMatch(eventOptions, /eventDetailFieldOptions/, '事件筛选不得混入事件公共物理字段')
+assert.doesNotMatch(eventOptions, /eventDetailFieldOptions/, '事件筛选不得绕过统一公共属性候选')
 assert.match(metricOptions, /return eventFilterFieldOptions\(item\.field\)/, '指标筛选必须复用事件筛选候选逻辑')
 
 const metricFilterRecovery = editor.match(/function recoverMissingMetricFiltersFromSql[\s\S]*?\n\}/)?.[0] || ''
@@ -47,9 +48,9 @@ assert.match(tree, /filterPropertyTabs\?: Array<'all' \| 'event' \| 'user'>/, '�
 assert.match(tree, /:filter-property-tabs="filterPropertyTabs"/, '递归筛选树必须保留允许标签')
 
 const metricFilterTabBindings = editor.match(/:filter-property-tabs="\['all', 'event', 'user'\]"/g) || []
-assert.equal(metricFilterTabBindings.length, 5, '指标、公式、留存事件和漏斗步骤筛选都需要全部、事件、用户三个标签')
-assert.match(editor, /:filter-property-tabs="\['user'\]"/, '全局筛选只能显示用户属性')
-assert.match(editor, /:field-options="eventUserPropertyOptions"/, '全局筛选候选只能使用 event.userinfo')
+assert.equal((form.match(/:filter-property-tabs="\['all', 'event', 'user'\]"/g) || []).length, 12, '所有事件筛选入口都需要全部、事件、公共三个标签')
+assert.match(form, /:filter-property-tabs="\['user'\]"/, '全局筛选只能显示公共属性')
+assert.match(form, /:field-options="eventPublicPropertyOptions"/, '全局筛选和人群筛选候选只能使用事件公共属性')
 assert.match(editor, /function builderFilterScopeIssues\(\)/, '旧配置需要独立筛选范围校验')
 assert.match(editor, /字段不属于当前筛选范围/, '失效字段需要明确错误信息')
 assert.match(editor, /builderBlockingScopeIssues\(\)/, 'SQL 生成前需要合并事件范围和筛选范围错误')

@@ -60,7 +60,7 @@ import {
 import {
   eventRelatedPropertyOptions,
   eventScopedPropertyOptions,
-  isEventUserPropertyOption,
+  eventPublicPropertyOptions as buildEventPublicPropertyOptions,
   isNumericFieldOption,
   isSelectableFieldOption,
   isTimeFieldOption,
@@ -1005,9 +1005,21 @@ const eventUserPropertyOptions = computed(() => {
   if (eventFieldScope.value.status !== 'active') {
     return []
   }
-  return builderFieldOptions.value.filter((option) =>
-    isEventUserPropertyOption(option, eventFieldScope.value.defaultEventTable)
-  )
+  return builderFieldOptions.value.filter((option) => (
+    option.table === eventFieldScope.value.defaultEventTable &&
+    option.sourceField === 'userinfo' &&
+    Boolean(String(option.jsonPath || '').trim())
+  ))
+})
+const eventPublicPropertyOptions = computed(() => {
+  if (eventFieldScope.value.status !== 'active') {
+    return []
+  }
+  return buildEventPublicPropertyOptions({
+    fields: builderFieldOptions.value,
+    eventProperties: trackingEventPropertyOptions.value,
+    activeEventTable: eventFieldScope.value.defaultEventTable,
+  })
 })
 const trackingEventCatalogOptions = computed<SchemaFieldOption[]>(() => {
   const groups = Array.isArray(trackingEventCatalog.value?.groups) ? trackingEventCatalog.value.groups : []
@@ -1629,7 +1641,7 @@ function emptyBuilderFilter(): SqlBuilderFilter {
 
 function createAudienceGroup(index: number, withDefaultFilter = false): SqlBuilderAudienceGroup {
   const filters = withDefaultFilter ? [emptyBuilderFilter()] : []
-  if (filters[0]) filters[0].field = eventUserPropertyOptions.value[0]?.value || ''
+  if (filters[0]) filters[0].field = eventPublicPropertyOptions.value[0]?.value || ''
   return {
     id: nodeId('audience'),
     name: `人群${index + 1}`,
@@ -3181,7 +3193,7 @@ function eventFilterFieldOptions(eventValue: string) {
     eventProperties: eventOption?.eventName
       ? trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
       : [],
-    userProperties: eventUserPropertyOptions.value,
+    publicProperties: eventPublicPropertyOptions.value,
     activeEventTable: eventFieldScope.value.status === 'active'
       ? eventFieldScope.value.defaultEventTable
       : '',
@@ -3706,10 +3718,10 @@ function builderFilterScopeIssues() {
   }
   if (isPropertyAnalysis.value && sqlBuilder.property.groupMode === 'audience') {
     sqlBuilder.property.audiences.forEach((group, index) => {
-      appendFilterRangeIssues(group.filters, eventUserPropertyOptions.value, `property.audiences[${index}].filter`, issues)
+      appendFilterRangeIssues(group.filters, eventPublicPropertyOptions.value, `property.audiences[${index}].filter`, issues)
     })
   }
-  appendFilterRangeIssues(sqlBuilder.globalFilters, eventUserPropertyOptions.value, 'global_filter', issues)
+  appendFilterRangeIssues(sqlBuilder.globalFilters, eventPublicPropertyOptions.value, 'global_filter', issues)
   return unique(issues)
 }
 
@@ -4148,8 +4160,8 @@ function propertyBlockingIssues() {
     sqlBuilder.property.audiences.forEach((group, index) => {
       if (!group.name.trim()) issues.push(`人群${index + 1}名称不能为空。`)
       filterFieldValues(group.filters).forEach((field) => {
-        if (!optionExists(field, eventUserPropertyOptions.value)) {
-          issues.push(`人群${index + 1}筛选字段不属于当前用户属性。`)
+        if (!optionExists(field, eventPublicPropertyOptions.value)) {
+          issues.push(`人群${index + 1}筛选字段不属于当前公共属性。`)
         }
       })
       const visit = (nodes: SqlBuilderFilter[]) => nodes.forEach((node) => {
@@ -8454,7 +8466,7 @@ const analysisModelFormContext = {
   cancelHeatmapComparisonGroupRename, cancelPropertyAudienceRename, cancelPropertyMetricRename, cancelRetentionEventRename,
   clearFormulaTokens, deleteFormulaToken, distributionEntityFieldOptions, distributionEventLabel, distributionEventOptions,
   distributionEventPropertyOptions, distributionFilterExpanded, distributionSimultaneousMetricFieldOptions, emptyBuilderFilter,
-  eventFieldScope, eventFilterFieldOptions, eventUserPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
+  eventFieldScope, eventFilterFieldOptions, eventPublicPropertyOptions, eventUserPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
   finishPropertyAudienceRename, finishPropertyMetricRename, finishRetentionEventRename, formulaFieldPickerPlaceholder,
   formulaMetricPrecisionText, formulaNumberKeys, formulaParenKeys, formulaTokenText, funnelAliasDraft, funnelAliasEditing,
   funnelEntityFieldOptions, funnelEventOptions, funnelFilterExpanded, funnelRelatedPropertyOptions, handleAnalysisModelChange,
