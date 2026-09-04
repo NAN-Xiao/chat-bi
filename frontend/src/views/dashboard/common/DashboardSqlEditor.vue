@@ -58,6 +58,7 @@ import {
   type DashboardDateExpression,
 } from '@/views/dashboard/common/dashboardDateExpression.ts'
 import {
+  eventRelatedPropertyOptions,
   eventScopedPropertyOptions,
   isEventUserPropertyOption,
   isNumericFieldOption,
@@ -1185,9 +1186,9 @@ const distributionEventLabel = computed(() => (
 ))
 const intervalEntityFieldOptions = computed(() => builderFieldOptions.value)
 const intervalEventOptions = computed(() => trackingEventCatalogOptions.value)
-const intervalStartPropertyOptions = computed(() => eventFilterFieldOptions(sqlBuilder.interval.startEvent))
+const intervalStartPropertyOptions = computed(() => relatedPropertyOptions(sqlBuilder.interval.startEvent))
 const intervalEndPropertyOptions = computed(() => {
-  const options = eventFilterFieldOptions(sqlBuilder.interval.endEvent)
+  const options = relatedPropertyOptions(sqlBuilder.interval.endEvent)
   const startOption = fieldOptionByValue(sqlBuilder.interval.relatedProperty.startProperty)
   if (!startOption) return options
   const startType = intervalPropertyTypeFamily(startOption)
@@ -3047,7 +3048,7 @@ function fieldOptionByValue(value: string) {
 }
 
 function retentionPropertyOptions(eventValue: string) {
-  return eventFilterFieldOptions(eventValue)
+  return relatedPropertyOptions(eventValue)
 }
 
 function handleRetentionEventPropertyChange(type: 'initial' | 'return' | 'simultaneous', eventValue: string) {
@@ -3178,6 +3179,21 @@ function eventFilterFieldOptions(eventValue: string) {
       ? trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
       : [],
     userProperties: eventUserPropertyOptions.value,
+    activeEventTable: eventFieldScope.value.status === 'active'
+      ? eventFieldScope.value.defaultEventTable
+      : '',
+  })
+}
+
+function relatedPropertyOptions(eventValue: string) {
+  const eventOption = fieldOptionByValue(eventValue)
+  return eventRelatedPropertyOptions({
+    eventOption,
+    eventProperties: eventOption?.eventName
+      ? trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
+      : [],
+    allEventProperties: trackingEventPropertyOptions.value,
+    otherProperties: builderFieldOptions.value,
     activeEventTable: eventFieldScope.value.status === 'active'
       ? eventFieldScope.value.defaultEventTable
       : '',

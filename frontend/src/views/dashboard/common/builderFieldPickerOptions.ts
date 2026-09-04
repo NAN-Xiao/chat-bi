@@ -242,3 +242,53 @@ export function eventScopedPropertyOptions(input: {
   })
   return Array.from(uniqueOptions.values())
 }
+
+export function eventRelatedPropertyOptions(input: {
+  eventOption?: FieldOption
+  eventProperties?: FieldOption[]
+  allEventProperties?: FieldOption[]
+  otherProperties?: FieldOption[]
+  activeEventTable?: string
+}) {
+  const eventTable = input.eventOption?.eventTable || input.eventOption?.table || ''
+  const eventName = input.eventOption?.eventName || ''
+  if (
+    input.eventOption?.kind !== 'tracking-event' ||
+    !eventName ||
+    !input.activeEventTable ||
+    eventTable !== input.activeEventTable
+  ) {
+    return []
+  }
+  const eventPropertySourceKeys = new Set(
+    (input.allEventProperties || input.eventProperties || [])
+      .filter((option) => option.table === eventTable && option.kind === 'tracking-property')
+      .flatMap(fieldOptionSourceKeys)
+  )
+  const options = [
+    ...(input.eventProperties || []).filter((option) => (
+      option.table === eventTable
+      && option.kind === 'tracking-property'
+      && option.eventName === eventName
+    )),
+    ...(input.otherProperties || []).filter((option) => (
+      option.table === eventTable
+      && option.kind !== 'tracking-event'
+      && option.kind !== 'tracking-property'
+      && isSelectableFieldOption(option)
+      && !fieldOptionSourceKeys(option).some((key) => eventPropertySourceKeys.has(key))
+    )),
+  ]
+  return Array.from(new Map(options.map((option) => [option.value, option])).values())
+}
+
+function fieldOptionSourceKeys(option: FieldOption) {
+  const table = String(option.table || '').trim().toLowerCase()
+  const field = String(option.field || option.propertyName || '').trim().toLowerCase()
+  const sourceField = String(option.sourceField || '').trim().toLowerCase()
+  const jsonPath = String(option.jsonPath || '').trim().toLowerCase()
+  return [
+    field ? `${table}:field:${field}` : '',
+    sourceField && jsonPath ? `${table}:json:${sourceField}:${jsonPath}` : '',
+  ].filter(Boolean)
+}

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  eventRelatedPropertyOptions,
   eventScopedPropertyOptions,
   propertyAnalysisFieldOptions,
   type FieldOption,
@@ -80,6 +81,91 @@ test('properties are unavailable outside the active event table', () => {
   assert.deepEqual(eventScopedPropertyOptions({
     eventOption,
     userProperties: [fieldOption({})],
+    activeEventTable: 'event',
+  }), [])
+})
+
+test('related properties include selected event properties plus uid and userinfo common properties', () => {
+  const eventOption = fieldOption({
+    value: 'tracking-event:event.event:Login',
+    field: 'event',
+    kind: 'tracking-event',
+    eventName: 'Login',
+    eventTable: 'event',
+  })
+  const eventProperty = fieldOption({
+    value: 'tracking-property:event.event:Login:session_id',
+    field: 'session_id',
+    kind: 'tracking-property',
+    eventName: 'Login',
+    sourceField: 'personal',
+    jsonPath: '$.session_id',
+  })
+  const uidProperty = fieldOption({
+    label: '用户 ID',
+    value: 'event.uid',
+    field: 'uid',
+    fieldRole: 'subject_id',
+  })
+  const eventPropertySchemaField = fieldOption({
+    value: 'event.personal.session_id',
+    field: 'personal.session_id',
+    sourceField: 'personal',
+    jsonPath: '$.session_id',
+    isJsonSubfield: true,
+  })
+  const userProperty = fieldOption({
+    label: '渠道',
+    value: 'event.userinfo.channel',
+    field: 'userinfo.channel',
+    sourceField: 'userinfo',
+    jsonPath: '$.channel',
+    isJsonSubfield: true,
+  })
+
+  assert.deepEqual(eventRelatedPropertyOptions({
+    eventOption,
+    eventProperties: [eventProperty],
+    allEventProperties: [eventProperty],
+    otherProperties: [eventPropertySchemaField, uidProperty, userProperty],
+    activeEventTable: 'event',
+  }), [eventProperty, uidProperty, userProperty])
+})
+
+test('related properties exclude schema fields owned by other events and fields from other tables', () => {
+  const eventOption = fieldOption({
+    value: 'tracking-event:event.event:Login',
+    field: 'event',
+    kind: 'tracking-event',
+    eventName: 'Login',
+    eventTable: 'event',
+  })
+  const otherEventProperty = fieldOption({
+    value: 'tracking-property:event.event:Purchase:order_id',
+    field: 'order_id',
+    kind: 'tracking-property',
+    eventName: 'Purchase',
+    sourceField: 'personal',
+    jsonPath: '$.order_id',
+  })
+  const otherEventSchemaField = fieldOption({
+    value: 'event.personal.order_id',
+    field: 'personal.order_id',
+    sourceField: 'personal',
+    jsonPath: '$.order_id',
+    isJsonSubfield: true,
+  })
+  const otherTableProperty = fieldOption({
+    value: 'users.channel',
+    table: 'users',
+    field: 'channel',
+  })
+
+  assert.deepEqual(eventRelatedPropertyOptions({
+    eventOption,
+    eventProperties: [otherEventProperty],
+    allEventProperties: [otherEventProperty],
+    otherProperties: [otherEventSchemaField, otherTableProperty],
     activeEventTable: 'event',
   }), [])
 })
