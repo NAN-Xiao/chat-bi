@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const editor = readFileSync(new URL('./DashboardSqlEditor.vue', import.meta.url), 'utf8')
+const form = readFileSync(new URL('./DashboardAnalysisModelForm.vue', import.meta.url), 'utf8')
 
 test('keeps related property options broader than event filter options', () => {
   const filterOptions = editor.match(/function eventFilterFieldOptions[\s\S]*?\n\}/)?.[0] || ''
@@ -48,5 +49,15 @@ test('uses complete related property options for retention, funnel, and interval
     editor,
     /const intervalEndPropertyOptions = computed[\s\S]*?const options = relatedPropertyOptions/,
     '间隔终点关联属性必须使用完整候选'
+  )
+  assert.match(
+    form,
+    /:options="intervalStartPropertyOptions"[\s\S]*?mode="property"[\s\S]*?placeholder="起点事件属性"/,
+    '间隔起点关联属性必须展示当前事件属性和公共属性'
+  )
+  assert.match(
+    form,
+    /:options="intervalEndPropertyOptions"[\s\S]*?mode="property"[\s\S]*?placeholder="终点事件属性"/,
+    '间隔终点关联属性必须展示当前事件属性和公共属性'
   )
 })

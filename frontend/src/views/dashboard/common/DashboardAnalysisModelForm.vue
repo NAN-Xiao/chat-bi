@@ -987,7 +987,7 @@ const {
                     :model-value="sqlBuilder.interval.relatedProperty.startProperty"
                     :options="intervalStartPropertyOptions"
                     :loading="schemaLoading"
-                    mode="filter-property"
+                    mode="property"
                     placeholder="起点事件属性"
                     @update:modelValue="handleIntervalStartPropertyChange"
                   />
@@ -996,7 +996,7 @@ const {
                     v-model="sqlBuilder.interval.relatedProperty.endProperty"
                     :options="intervalEndPropertyOptions"
                     :loading="schemaLoading"
-                    mode="filter-property"
+                    mode="property"
                     placeholder="终点事件属性"
                   />
                   <span>相等</span>
