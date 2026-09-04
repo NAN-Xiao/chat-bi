@@ -1707,10 +1707,14 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
             if table_name:
                 tables.add(table_name)
     funnel = normalized_config.get("funnel") if isinstance(normalized_config.get("funnel"), dict) else {}
-    funnel_fields = [funnel.get("entityField") or funnel.get("entity_field")]
+    funnel_fields = [
+        funnel.get("entityField") or funnel.get("entity_field"),
+        funnel.get("relatedProperty") or funnel.get("related_property"),
+    ]
     for step in _list_dict_items(funnel.get("steps")):
         funnel_fields.extend([
             step.get("event"),
+            # Step-level relatedProperty is retained only for legacy configs.
             step.get("relatedProperty") or step.get("related_property"),
         ])
         for field in _iter_filter_rule_fields(step.get("filters")):
@@ -1995,6 +1999,8 @@ def _deterministic_validate_manual_config(
         entity_field = funnel.get("entityField") or funnel.get("entity_field")
         steps = _list_dict_items(funnel.get("steps"))
         related_enabled = funnel.get("relatedPropertyEnabled") is True or funnel.get("related_property_enabled") is True
+        shared_related_property = funnel.get("relatedProperty") or funnel.get("related_property")
+        shared_related_property_configured = "relatedProperty" in funnel or "related_property" in funnel
         if not _field_has_resolvable_reference(entity_field):
             issues.append("漏斗分析请先选择分析主体。")
         else:
@@ -2010,17 +2016,31 @@ def _deterministic_validate_manual_config(
         if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "funnel":
             issues.append("漏斗分析只能使用漏斗图结果。")
         issues.extend(_funnel_window_issues(funnel))
+        if related_enabled and shared_related_property:
+            issues.extend(_tracking_event_metadata_issues(shared_related_property, "漏斗关联属性"))
+            issues.extend(_json_subfield_mapping_issues(shared_related_property, "漏斗关联属性"))
+            issues.extend(_field_table_permission_issues(shared_related_property, "漏斗关联属性", allowed_tables))
+            issues.extend(_field_schema_permission_issues(shared_related_property, "漏斗关联属性", allowed_fields_by_table))
+        if related_enabled and shared_related_property_configured and not _field_has_resolvable_reference(shared_related_property):
+            issues.append("使用关联属性时请选择漏斗关联属性。")
         for index, step in enumerate(steps):
             label = f"漏斗步骤{index + 1}"
             event = step.get("event")
-            related_property = step.get("relatedProperty") or step.get("related_property")
+            # New configs use one funnel-level property. Read the legacy step
+            # value only when that shared property is absent.
+            related_property = (
+                shared_related_property
+                if shared_related_property_configured
+                else step.get("relatedProperty") or step.get("related_property")
+            )
             if not _field_has_resolvable_reference(event):
                 issues.append(f"{label}请先选择事件。")
             if related_enabled and not _field_has_resolvable_reference(related_property):
-                issues.append(f"使用关联属性时请选择{label}关联属性。")
+                if not shared_related_property_configured:
+                    issues.append(f"使用关联属性时请选择{label}关联属性。")
             for field, field_label in (
                 (event, f"{label}事件"),
-                (related_property if related_enabled else None, f"{label}关联属性"),
+                (related_property if related_enabled and not shared_related_property else None, f"{label}关联属性"),
             ):
                 if not field:
                     continue
@@ -2030,7 +2050,7 @@ def _deterministic_validate_manual_config(
                 issues.extend(_field_schema_permission_issues(field, field_label, allowed_fields_by_table))
             event_name = _tracking_event_name_from_field(event)
             property_event_name = _tracking_event_name_from_field(related_property)
-            if related_enabled and event_name and property_event_name and event_name != property_event_name:
+            if related_enabled and not shared_related_property and event_name and property_event_name and event_name != property_event_name:
                 issues.append(f"{label}关联属性不属于当前选择的事件。")
             for filter_index, filter_field in enumerate(_iter_filter_rule_fields(step.get("filters"))):
                 filter_label = f"{label}筛选{filter_index + 1}"
@@ -3086,7 +3106,7 @@ def _dashboard_config_prompt(
             "漏斗按同一分析主体去重计数：步骤 1 是样本基数，后续步骤必须在前一步完成后发生，并且整个步骤链必须满足 funnel.window。",
             "funnel.window.mode=same_day 时，按步骤 1 时间所在自然日约束全部步骤，禁止改写成滚动 24 小时；mode=duration 时，最后一步与步骤 1 的精确经过时长不得超过 value 和 unit 指定的时长，天固定表示 24 小时。",
             "每个步骤的 filters.rules 只应用于该步骤事件明细；全局 filters 仍按全局配置应用，不得把步骤筛选互换或合并。",
-            "funnel.relatedPropertyEnabled=true 时，必须使用每个步骤 relatedProperty 指定的属性值与前一步相等进行关联，不得根据字段名猜测关联属性。",
+            "funnel.relatedPropertyEnabled=true 时，必须使用 funnel.relatedProperty 指定的统一关联属性值与前一步相等进行关联，不得根据字段名猜测关联属性；仅对未提供根级字段的旧配置读取步骤级 relatedProperty。",
             "最终结果必须是一行一个漏斗步骤，并固定输出 step_order、step_name、step_count、step_rate、step_conversion_rate、step_dropoff_rate 六列；step_rate 以第一步为分母，step_conversion_rate 以相邻上一步为分母。",
             "step_order 必须按 steps 配置顺序为 1、2、3...，不能按用户数据量重新排序；step_name 使用步骤 alias（没有 alias 时使用事件展示名称）。",
             f"当前配置的漏斗步骤数量：{len(steps)}，窗口期：{funnel_window_text}。",

@@ -1987,6 +1987,45 @@ def test_funnel_config_rejects_missing_step_and_invalid_chart() -> None:
     assert "漏斗分析只能使用漏斗图结果。" in result.issues
 
 
+def test_funnel_config_accepts_shared_related_property() -> None:
+    request = _funnel_request(
+        relatedPropertyEnabled=True,
+        relatedProperty={
+            "kind": "tracking-property",
+            "table": "event",
+            "field": "account_id",
+            "eventName": "register",
+            "propertyType": "string",
+        },
+    )
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "account_id", "dt"}},
+    )
+
+    assert result.success is True
+    assert ai_sql_generator._config_reference_table_names(normalized, {}) == {"event"}
+
+
+def test_funnel_config_reports_missing_shared_related_property_once() -> None:
+    request = _funnel_request(relatedPropertyEnabled=True, relatedProperty=None)
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    result = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"user_id", "event_name", "dt"}},
+    )
+
+    assert result.success is False
+    assert result.issues.count("使用关联属性时请选择漏斗关联属性。") == 1
+
+
 @pytest.mark.parametrize(
     "window",
     [
