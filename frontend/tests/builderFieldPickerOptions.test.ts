@@ -188,7 +188,7 @@ test('related properties exclude schema fields owned by other events and fields 
   }), [])
 })
 
-test('property analysis only exposes user properties for an active event scope', () => {
+test('property analysis exposes all public properties for an active event scope', () => {
   const eventProperty = fieldOption({
     value: 'tracking-property:event.event:Login:resolution',
     field: 'resolution',
@@ -207,12 +207,17 @@ test('property analysis only exposes user properties for an active event scope',
     field: 'event_time',
     type: 'timestamp',
   })
+  const uidProperty = fieldOption({
+    label: '用户 ID',
+    value: 'event.uid',
+    field: 'uid',
+  })
 
   assert.deepEqual(propertyAnalysisFieldOptions({
     eventScopeActive: true,
     builderFields: [eventProperty, userProperty, timeField],
-    userProperties: [userProperty],
-  }), [userProperty])
+    publicProperties: [userProperty, uidProperty],
+  }), [userProperty, uidProperty])
 })
 
 test('property analysis retains datasource fields when event scope is inactive', () => {
@@ -225,7 +230,7 @@ test('property analysis retains datasource fields when event scope is inactive',
   assert.deepEqual(propertyAnalysisFieldOptions({
     eventScopeActive: false,
     builderFields: [field],
-    userProperties: [],
+    publicProperties: [],
   }), [field])
 })
 
@@ -240,6 +245,6 @@ test('property analysis does not fall back when an event scope is configured but
     eventScopeMode: 'event',
     eventScopeActive: false,
     builderFields: [field],
-    userProperties: [],
+    publicProperties: [],
   }), [])
 })

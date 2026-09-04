@@ -3884,7 +3884,7 @@ def test_global_json_filter_requires_complete_mapping() -> None:
     assert any("expression" in item for item in issues)
 
 
-def test_dashboard_prompt_keeps_user_properties_on_event_userinfo() -> None:
+def test_dashboard_prompt_uses_generic_event_public_properties() -> None:
     prompt = ai_sql_generator._dashboard_config_prompt(
         DashboardAiSqlGenerateRequest(
             datasource=1,
@@ -3928,5 +3928,7 @@ def test_dashboard_prompt_keeps_user_properties_on_event_userinfo() -> None:
         tracking_config="",
     )
 
-    assert "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段" in prompt
-    assert "不得把用户属性改为 user 表" in prompt
+    assert "筛选属性范围：指标内筛选可使用当前事件的 tracking-property 事件属性，或字段对象明确提供的当前事件表公共属性。" in prompt
+    assert "全局筛选只允许使用 context.filters 中提供的当前事件表公共属性" in prompt
+    assert "不得改用其他表的同名字段" in prompt
+    assert "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段" not in prompt

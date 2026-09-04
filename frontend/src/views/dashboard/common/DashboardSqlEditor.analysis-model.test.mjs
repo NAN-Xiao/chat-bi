@@ -156,7 +156,7 @@ test('keeps property analysis isolated with property metrics, filters, and group
   assert.match(source, /const isPropertyAnalysis = computed\(\(\) => sqlBuilder\.analysisModel === 'property'\)/)
   assert.match(source, /const propertyFieldOptions = computed/)
   assert.match(propertyFieldOptionsBody, /propertyAnalysisFieldOptions/)
-  assert.match(propertyFieldOptionsBody, /eventUserPropertyOptions\.value/)
+  assert.match(propertyFieldOptionsBody, /eventPublicPropertyOptions\.value/)
   assert.doesNotMatch(propertyFieldOptionsBody, /trackingEventPropertyOptions\.value/)
   assert.match(saveBody, /property:\s*sqlBuilder\.analysisModel === 'property'/)
   assert.match(saveBody, /groupSettings:/)
