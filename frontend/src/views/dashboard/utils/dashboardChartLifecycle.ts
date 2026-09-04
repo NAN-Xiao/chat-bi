@@ -40,6 +40,25 @@ export function hasDashboardChartSnapshot(viewInfo: DashboardViewInfo) {
   )
 }
 
+export function completeDashboardChartResultState(
+  viewInfo: DashboardViewInfo,
+  refreshedAt: unknown = Date.now()
+) {
+  if (!viewInfo || typeof viewInfo !== 'object') {
+    return false
+  }
+  normalizeChartResultArrays(viewInfo)
+  const completedAt = finitePositiveNumber(refreshedAt) || Date.now()
+  viewInfo.snapshotRefreshedAt = completedAt
+  viewInfo.data.snapshotRefreshedAt = completedAt
+  viewInfo.status = 'success'
+  viewInfo.dataState = 'ready'
+  viewInfo.loadingProgress = 100
+  viewInfo.refreshState = ''
+  viewInfo.message = ''
+  return true
+}
+
 export function prepareDashboardChartRefreshState(
   viewInfo: DashboardViewInfo,
   refreshState: 'waiting' | 'loading' = 'waiting'

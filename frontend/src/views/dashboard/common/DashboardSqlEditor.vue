@@ -123,6 +123,7 @@ import {
   buildDashboardDateFilterConfig,
   normalizeDashboardChartConfig,
 } from '@/views/dashboard/utils/dashboardChartConfig.ts'
+import { completeDashboardChartResultState } from '@/views/dashboard/utils/dashboardChartLifecycle.ts'
 import {
   availableTrendComparisonMetrics,
   defaultTrendComparisonMetrics,
@@ -8268,8 +8269,12 @@ function writeEditorStateToViewInfo(options: {
     delete nextData.source_data
   }
   props.viewInfo.data = nextData
-  delete props.viewInfo.status
-  delete props.viewInfo.dataState
+  if (preview.status === 'failed') {
+    delete props.viewInfo.status
+    delete props.viewInfo.dataState
+  } else {
+    completeDashboardChartResultState(props.viewInfo)
+  }
   props.viewInfo.loadingProgress = 100
   delete props.viewInfo.message
   const normalizedConfig = normalizeDashboardChartConfig({

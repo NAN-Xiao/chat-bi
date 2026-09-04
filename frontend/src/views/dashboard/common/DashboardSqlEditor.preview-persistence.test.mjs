@@ -23,6 +23,11 @@ assert.doesNotMatch(
 )
 
 assert.ok(writeEditorStateMatch, '需要保留编辑器写回图表配置函数')
+assert.match(
+  writeEditorStateMatch[1],
+  /if \(preview\.status === 'failed'\)[\s\S]*?completeDashboardChartResultState\(props\.viewInfo\)/,
+  '成功预览即使没有数据行，也必须写入完成状态；失败预览仍不能持久化为成功结果'
+)
 assert.doesNotMatch(
   writeEditorStateMatch[1],
   /props\.viewInfo\.status\s*=\s*preview\.status|props\.viewInfo\.message\s*=\s*preview\.message/,
