@@ -33,7 +33,7 @@ const {
   cancelHeatmapComparisonGroupRename, cancelPropertyAudienceRename, cancelPropertyMetricRename, cancelRetentionEventRename,
   clearFormulaTokens, deleteFormulaToken, distributionEntityFieldOptions, distributionEventLabel, distributionEventOptions,
   distributionEventPropertyOptions, distributionFilterExpanded, distributionSimultaneousMetricFieldOptions, emptyBuilderFilter,
-  eventFieldScope, eventFilterFieldOptions, eventPublicPropertyOptions, eventUserPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
+  eventFieldScope, eventFilterFieldOptions, eventPublicPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
   finishPropertyAudienceRename, finishPropertyMetricRename, finishRetentionEventRename, formulaFieldPickerPlaceholder,
   formulaMetricPrecisionText, formulaNumberKeys, formulaParenKeys, formulaTokenText, funnelAliasDraft, funnelAliasEditing,
   funnelEntityFieldOptions, funnelEventOptions, funnelFilterExpanded, funnelRelatedPropertyOptions, handleAnalysisModelChange,

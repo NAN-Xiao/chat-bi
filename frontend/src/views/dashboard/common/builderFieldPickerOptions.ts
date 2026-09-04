@@ -229,7 +229,7 @@ export function propertyAnalysisFieldOptions(input: {
   eventScopeMode?: 'general' | 'event'
   eventScopeActive: boolean
   builderFields: FieldOption[]
-  userProperties: FieldOption[]
+  publicProperties: FieldOption[]
 }) {
   if (input.eventScopeMode === 'event' && !input.eventScopeActive) {
     return []
@@ -238,7 +238,7 @@ export function propertyAnalysisFieldOptions(input: {
     return input.builderFields
   }
   return Array.from(
-    new Map(input.userProperties.map((option) => [option.value, option])).values()
+    new Map(input.publicProperties.map((option) => [option.value, option])).values()
   )
 }
 

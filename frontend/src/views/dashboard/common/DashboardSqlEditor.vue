@@ -1001,16 +1001,6 @@ const eventScopedSchemaFieldOptions = computed(() =>
   getEventScopedFields(schemaFieldOptions.value, eventFieldScope.value)
 )
 const builderFieldOptions = computed(() => eventScopedSchemaFieldOptions.value.filter(isSelectableFieldOption))
-const eventUserPropertyOptions = computed(() => {
-  if (eventFieldScope.value.status !== 'active') {
-    return []
-  }
-  return builderFieldOptions.value.filter((option) => (
-    option.table === eventFieldScope.value.defaultEventTable &&
-    option.sourceField === 'userinfo' &&
-    Boolean(String(option.jsonPath || '').trim())
-  ))
-})
 const eventPublicPropertyOptions = computed(() => {
   if (eventFieldScope.value.status !== 'active') {
     return []
@@ -1184,7 +1174,7 @@ const propertyFieldOptions = computed<SchemaFieldOption[]>(() => {
     eventScopeMode: eventFieldScope.value.mode,
     eventScopeActive: eventFieldScope.value.status === 'active',
     builderFields: builderFieldOptions.value as SchemaFieldOption[],
-    userProperties: eventUserPropertyOptions.value,
+    publicProperties: eventPublicPropertyOptions.value,
   })
 })
 const retentionEntityFieldOptions = computed(() => builderFieldOptions.value)
@@ -8467,7 +8457,7 @@ const analysisModelFormContext = {
   cancelHeatmapComparisonGroupRename, cancelPropertyAudienceRename, cancelPropertyMetricRename, cancelRetentionEventRename,
   clearFormulaTokens, deleteFormulaToken, distributionEntityFieldOptions, distributionEventLabel, distributionEventOptions,
   distributionEventPropertyOptions, distributionFilterExpanded, distributionSimultaneousMetricFieldOptions, emptyBuilderFilter,
-  eventFieldScope, eventFilterFieldOptions, eventPublicPropertyOptions, eventUserPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
+  eventFieldScope, eventFilterFieldOptions, eventPublicPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
   finishPropertyAudienceRename, finishPropertyMetricRename, finishRetentionEventRename, formulaFieldPickerPlaceholder,
   formulaMetricPrecisionText, formulaNumberKeys, formulaParenKeys, formulaTokenText, funnelAliasDraft, funnelAliasEditing,
   funnelEntityFieldOptions, funnelEventOptions, funnelFilterExpanded, funnelRelatedPropertyOptions, handleAnalysisModelChange,

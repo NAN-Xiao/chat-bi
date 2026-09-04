@@ -37,3 +37,16 @@ test('property analysis does not fall back to arbitrary fields when event scope 
     '事件配置无效时属性分析下拉必须为空，不能混入普通数据源字段'
   )
 })
+
+test('property analysis uses all event public properties, not only userinfo fields', () => {
+  assert.match(
+    editorSource,
+    /propertyAnalysisFieldOptions\(\{[\s\S]*?publicProperties: eventPublicPropertyOptions\.value/,
+    '属性分析下拉必须使用当前事件表的公共属性候选'
+  )
+  assert.doesNotMatch(
+    editorSource,
+    /eventUserPropertyOptions/,
+    '属性分析不能保留只筛选 userinfo 的候选链路'
+  )
+})
