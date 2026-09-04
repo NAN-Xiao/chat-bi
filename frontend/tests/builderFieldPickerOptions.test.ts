@@ -228,3 +228,18 @@ test('property analysis retains datasource fields when event scope is inactive',
     userProperties: [],
   }), [field])
 })
+
+test('property analysis does not fall back when an event scope is configured but invalid', () => {
+  const field = fieldOption({
+    value: 'orders.status',
+    table: 'orders',
+    field: 'status',
+  })
+
+  assert.deepEqual(propertyAnalysisFieldOptions({
+    eventScopeMode: 'event',
+    eventScopeActive: false,
+    builderFields: [field],
+    userProperties: [],
+  }), [])
+})
