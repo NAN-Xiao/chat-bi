@@ -16,7 +16,7 @@ import {
 } from '@antv/s2'
 import { debounce, filter } from 'lodash-es'
 import { i18n } from '@/i18n'
-import { formatValueByAxis } from '@/views/chat/component/charts/utils.ts'
+import { formatCompactDateByAxis } from '@/views/chat/component/charts/compactDate.ts'
 import {
   collectTableFilterOptions,
   refreshFilteredTableData,
@@ -153,16 +153,12 @@ function resolveTableDisplayValue(
     return '-'
   }
 
-  const formatted = formatValueByAxis(value, axis)
-  if (
-    formatted === null ||
-    formatted === undefined ||
-    (typeof formatted === 'string' && formatted.trim().toLowerCase() === 'null')
-  ) {
-    return '-'
+  const compactDate = formatCompactDateByAxis(value, axis)
+  if (compactDate !== null) {
+    return compactDate
   }
 
-  return String(formatted)
+  return String(value)
 }
 
 export class Table extends BaseChart {
