@@ -3288,6 +3288,68 @@ def _sqlglot_statements_for_generation_validation(sql: str, sql_dialect: str | N
         return []
 
 
+def _select_expression_columns(expression: exp.Expression | None) -> list[exp.Column]:
+    """Collect columns in one projection without descending into nested query blocks."""
+    if expression is None:
+        return []
+    columns: list[exp.Column] = []
+
+    def visit(node: exp.Expression) -> None:
+        if isinstance(node, exp.Select):
+            return
+        if isinstance(node, exp.Column):
+            columns.append(node)
+            return
+        for child in node.iter_expressions():
+            visit(child)
+
+    visit(expression)
+    return columns
+
+
+def _same_select_alias_reference_issues(sql: str, sql_dialect: str | None) -> list[str]:
+    """Reject projections that reference another alias defined by the same SELECT."""
+    issues: list[str] = []
+    statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+    for statement in statements:
+        for select in statement.find_all(exp.Select):
+            aliases: set[str] = set()
+            for projection in select.expressions:
+                if not isinstance(projection, exp.Alias):
+                    continue
+                alias_name = _normalized_identifier(projection.alias)
+                expression = projection.args.get("this")
+                if not alias_name:
+                    continue
+                # `source_column AS source_column` does not introduce a new
+                # name that could shadow the source column in this query block.
+                if (
+                    isinstance(expression, exp.Column)
+                    and _normalized_identifier(expression.name) == alias_name
+                ):
+                    continue
+                aliases.add(alias_name)
+            if not aliases:
+                continue
+            for projection in select.expressions:
+                if not isinstance(projection, exp.Alias):
+                    continue
+                projection_alias = _normalized_identifier(projection.alias)
+                for column in _select_expression_columns(projection.args.get("this")):
+                    column_name = _normalized_identifier(column.name)
+                    if (
+                        column.table
+                        or column_name not in aliases
+                        or column_name == projection_alias
+                    ):
+                        continue
+                    issues.append(
+                        f"查询块输出列 {projection_alias} 引用了同层刚定义的别名 {column_name}；"
+                        "请先在子查询或 CTE 中生成该字段，再由外层查询引用。"
+                    )
+    return _unique_text_items(issues)
+
+
 def _sql_uses_unix_time_for_yyyymmdd_field(sql: str, time_config: dict[str, Any]) -> bool:
     """仅拦截把配置的 YYYYMMDD 字段传给 Unix 时间转换函数的 SQL。"""
     field = time_config.get("field") if isinstance(time_config, dict) else None
@@ -4006,6 +4068,9 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
         "仅当请求中的 chart_type 为 donut，或用户明确要求环形图、圆环图、donut chart 时才允许返回 donut。\n"
         "当用户问题或当前配置涉及复杂分析，例如留存、转化、活跃、复购、漏斗、cohort 分析、分组比率、时间窗口对比时，优先使用 CTE 分层结构。"
         "CTE 只是组织结构范式，所有表名、字段名、事件名、日期表达式、过滤条件、分子分母和成熟窗口必须来自当前配置、business-sql-schema、data-skill 或用户明确规则；不得照抄占位符，也不得编造未提供字段。\n"
+        "查询块别名作用域规则（所有分析模型必须遵守）：同一个 SELECT 的输出列之间不能互相引用刚定义的别名。"
+        "如果一个输出列依赖另一个输出列，必须先在子查询或 CTE 中生成被依赖字段，再由外层查询引用；例如 interval_label 依赖 interval_order 时，必须拆成 bucket_numbers 和 bucketed 两个查询层级。"
+        "禁止生成 CASE ... END AS interval_order, CASE ... interval_order ... END AS interval_label 这类同层别名引用。\n"
         "时间边界层规则：\n"
         "- bounds CTE 必须只返回一行时间边界，供后续 CTE 通过 JOIN 或 CROSS JOIN 引用。\n"
         "- 聚合函数和窗口函数不得出现在同一查询层的 WHERE 条件中。\n"
@@ -4703,6 +4768,14 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 未满足当前数据源方言要求。"
         response.advice = "请按当前数据源支持的查询结构重新生成 SQL。"
         response.issues = _unique_text_items(list(response.issues or []) + [dialect_issue])
+    elif alias_scope_issues := _same_select_alias_reference_issues(
+        sql,
+        state.get("sql_dialect") or datasource_type,
+    ):
+        response.success = False
+        response.message = "生成 SQL 存在查询列别名作用域错误。"
+        response.advice = "请将依赖其他输出列的表达式拆分到子查询或 CTE 的外层查询中。"
+        response.issues = _unique_text_items(list(response.issues or []) + alias_scope_issues)
     elif isinstance(state.get("normalized_config"), dict) and _uses_dashboard_date_parameters(
         response.chart_type
         or ((state["normalized_config"].get("chart") or {}).get("type")),

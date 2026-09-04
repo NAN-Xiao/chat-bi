@@ -1671,6 +1671,8 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
     assert "simultaneous_entity_value" in prompt
     assert "显式 LEFT JOIN" in prompt
     assert "禁止在 JOIN 条件中使用引用外层" in prompt
+    assert "同一个 SELECT 的输出列之间不能互相引用刚定义的别名" in prompt
+    assert "必须先在子查询或 CTE 中生成被依赖字段" in prompt
     assert normalized["analysis_model"] == "distribution"
     assert normalized["chart"]["type"] == "table"
     assert ai_sql_generator._distribution_sql_result_issues(valid_sql, normalized) == []
@@ -1681,6 +1683,54 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
     assert invalid
     assert any("distribution_date" in issue for issue in invalid)
     assert any("total_entities" in issue for issue in invalid)
+
+
+@pytest.mark.parametrize("analysis_model", sorted(ai_sql_generator.ANALYSIS_MODEL_LABELS))
+def test_sql_validation_rejects_same_select_output_alias_references_for_all_models(
+    analysis_model: str,
+) -> None:
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql=(
+            "SELECT 1 AS interval_order, "
+            "interval_order + 1 AS interval_label FROM event"
+        ),
+    )
+
+    validated = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": {"analysis_model": analysis_model},
+        "sql_dialect": "mysql",
+        "graph_trace": [],
+    })["response"]
+
+    assert validated.success is False
+    assert validated.message == "生成 SQL 存在查询列别名作用域错误。"
+    assert any("interval_label" in issue and "interval_order" in issue for issue in validated.issues)
+
+
+def test_sql_validation_allows_qualified_source_columns_with_same_names() -> None:
+    sql = (
+        "SELECT e.interval_order AS interval_order, "
+        "e.interval_order + 1 AS interval_label FROM event e"
+    )
+
+    assert ai_sql_generator._same_select_alias_reference_issues(sql, "mysql") == []
+
+
+def test_sql_validation_allows_identity_source_column_aliases() -> None:
+    sql = "SELECT interval_order AS interval_order, interval_order + 1 AS interval_label FROM event"
+
+    assert ai_sql_generator._same_select_alias_reference_issues(sql, "mysql") == []
+
+
+def test_sql_validation_ignores_nested_query_columns() -> None:
+    sql = (
+        "SELECT (SELECT interval_order FROM intervals) AS interval_order, "
+        "1 AS interval_label FROM event"
+    )
+
+    assert ai_sql_generator._same_select_alias_reference_issues(sql, "mysql") == []
 
 
 def test_distribution_auto_bucket_rejects_unclamped_thirteenth_interval() -> None:
