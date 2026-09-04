@@ -308,6 +308,103 @@ def test_dashboard_prompt_requires_tracking_event_prefilter_for_multiple_event_m
     assert "收窄扫描范围" in prompt
 
 
+def _event_metric_request(event_name: str = "ShopBuyComplete") -> DashboardAiSqlGenerateRequest:
+    event_field = {
+        "kind": "tracking-event",
+        "eventTable": "event",
+        "eventNameField": "event",
+        "eventName": event_name,
+    }
+    return DashboardAiSqlGenerateRequest(
+        datasource=1,
+        chart_type="table",
+        context={
+            "analysisModel": "event",
+            "metrics": [{
+                "id": "metric-1",
+                "alias": "指标1",
+                "field": event_field,
+                "metricField": event_field,
+                "aggregation": "count",
+                "filters": {"logic": "and", "rules": []},
+            }],
+            "groups": [],
+            "filters": {"logic": "and", "rules": []},
+            "selectedFields": [
+                event_field,
+                {
+                    "kind": "tracking-event",
+                    "eventTable": "event",
+                    "eventNameField": "event",
+                    "eventName": "GVGBattleResult",
+                },
+            ],
+        },
+    )
+
+
+def test_event_analysis_sql_validation_rejects_event_only_present_in_selected_fields() -> None:
+    """selectedFields 中的残留事件不能变成额外 SQL 指标。"""
+    normalized = ai_sql_generator._normalize_manual_config(_event_metric_request())
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql=(
+            "SELECT COUNT(CASE WHEN event = 'ShopBuyComplete' THEN 1 END) AS shop_count, "
+            "COUNT(CASE WHEN event = 'GVGBattleResult' THEN 1 END) AS gvg_count "
+            "FROM event WHERE event IN ('ShopBuyComplete', 'GVGBattleResult')"
+        ),
+    )
+
+    validated = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": normalized,
+        "sql_dialect": "mysql",
+        "graph_trace": [],
+    })["response"]
+
+    assert validated.success is False
+    assert "事件分析 SQL 引用了未配置事件：GVGBattleResult。" in validated.issues
+
+
+def test_event_analysis_sql_validation_requires_every_configured_event() -> None:
+    normalized = ai_sql_generator._normalize_manual_config(_event_metric_request())
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql="SELECT COUNT(*) AS shop_count FROM event",
+    )
+
+    validated = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": normalized,
+        "sql_dialect": "mysql",
+        "graph_trace": [],
+    })["response"]
+
+    assert validated.success is False
+    assert "事件分析 SQL 未引用配置事件：ShopBuyComplete。" in validated.issues
+
+
+def test_event_analysis_sql_validation_accepts_exact_configured_event_set() -> None:
+    normalized = ai_sql_generator._normalize_manual_config(_event_metric_request())
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql=(
+            "SELECT COUNT(CASE WHEN event = 'ShopBuyComplete' THEN 1 END) AS shop_count "
+            "FROM event WHERE event = 'ShopBuyComplete'"
+        ),
+    )
+
+    validated = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": normalized,
+        "sql_dialect": "mysql",
+        "graph_trace": [],
+    })["response"]
+
+    assert validated.success is True
+    assert validated.issues == []
+
+
 def test_dashboard_prompt_treats_event_metric_filters_as_optional() -> None:
     """
     是什么：事件指标没有筛选条件也是合法配置，不能要求每个事件都补筛选。
@@ -447,6 +544,21 @@ def test_formula_ir_allows_cross_event_atomic_metric_formula_without_blocking() 
     assert formula["expression"]["type"] == "binary"
     assert formula["expression"]["operator"] == "/"
     assert {item["event"] for item in formula["base_metrics"]} == {"ServerPayLog", "UserActive"}
+
+
+def test_event_analysis_sql_validation_accepts_formula_atomic_metric_events() -> None:
+    normalized = ai_sql_generator._normalize_manual_config(_cross_event_arpu_formula_request())
+    issues = ai_sql_generator._event_analysis_sql_result_issues(
+        (
+            "SELECT SUM(CASE WHEN event = 'ServerPayLog' THEN amount ELSE 0 END) "
+            "/ NULLIF(COUNT(DISTINCT CASE WHEN event = 'UserActive' THEN uid END), 0) AS arpu "
+            "FROM event WHERE event IN ('ServerPayLog', 'UserActive')"
+        ),
+        normalized,
+        sql_dialect="mysql",
+    )
+
+    assert issues == []
 
 
 def test_formula_ir_preserves_json_subfield_mapping() -> None:
