@@ -6086,7 +6086,6 @@ async function generateBuilderAiSql() {
   )
   if (sqlBuilder.analysisModel === 'funnel' || result.analysis_model === 'funnel') {
     const resultConfig = result.result_config || result.resultConfig || {}
-    form.chartType = 'funnel'
     form.x = String(resultConfig.step_field || resultConfig.stepField || 'step_name')
     const valueField = String(resultConfig.value_field || resultConfig.valueField || 'step_count')
     form.y = [valueField]
@@ -7550,15 +7549,15 @@ function initEditor() {
   form.title = chart.title || ''
   initialChartTitle.value = form.title
   const persistedChartType = chart.sourceType || chart.type
-  form.chartType = isFunnelAnalysis.value
-    ? 'funnel'
-    : isPathAnalysis.value
+  form.chartType = isPathAnalysis.value
       ? 'sankey'
       : isHeatmapAnalysis.value
         ? 'heatmap'
       : chartTypes.some((item) => item.value === persistedChartType)
         ? persistedChartType
-        : 'table'
+        : isFunnelAnalysis.value
+          ? 'funnel'
+          : 'table'
   form.columns = axisValues(chart.columns)
   form.x = axisValues(chart.xAxis)[0] || ''
   form.y = axisValues(chart.yAxis)
@@ -8817,7 +8816,7 @@ const analysisModelFormContext = {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-if="!isFunnelAnalysis && !isPathAnalysis" v-model="form.chartType" :disabled="isHeatmapAnalysis" @change="handleChartTypeChange">
+            <el-select v-if="!isPathAnalysis" v-model="form.chartType" :disabled="isHeatmapAnalysis" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -8825,7 +8824,7 @@ const analysisModelFormContext = {
                 :value="item.value"
               />
             </el-select>
-            <el-input v-else :model-value="isFunnelAnalysis ? '漏斗图' : '桑基图'" disabled />
+            <el-input v-else model-value="桑基图" disabled />
           </el-form-item>
         </div>
         <el-form-item v-if="form.chartType === 'table' && !isPropertyAnalysis && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis && !isHeatmapAnalysis" :label="t('dashboard.sql_editor_columns')">

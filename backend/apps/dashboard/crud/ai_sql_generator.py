@@ -2013,8 +2013,6 @@ def _deterministic_validate_manual_config(
             issues.append("漏斗分析至少需要配置两个步骤。")
         if len(steps) > 10:
             issues.append("漏斗分析最多支持十个步骤。")
-        if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "funnel":
-            issues.append("漏斗分析只能使用漏斗图结果。")
         issues.extend(_funnel_window_issues(funnel))
         if related_enabled and shared_related_property:
             issues.extend(_tracking_event_metadata_issues(shared_related_property, "漏斗关联属性"))
@@ -3110,7 +3108,7 @@ def _dashboard_config_prompt(
             "最终结果必须是一行一个漏斗步骤，并固定输出 step_order、step_name、step_count、step_rate、step_conversion_rate、step_dropoff_rate 六列；step_rate 以第一步为分母，step_conversion_rate 以相邻上一步为分母。",
             "step_order 必须按 steps 配置顺序为 1、2、3...，不能按用户数据量重新排序；step_name 使用步骤 alias（没有 alias 时使用事件展示名称）。",
             f"当前配置的漏斗步骤数量：{len(steps)}，窗口期：{funnel_window_text}。",
-            "最终返回 chart_type 必须为 funnel。",
+            "最终返回 chart_type 必须保持请求指定的图表类型。",
         ]
     distribution = context.get("distribution") if isinstance(context.get("distribution"), dict) else {}
     distribution_rules: list[str] = []
@@ -4948,7 +4946,10 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "related_property_as_group": related_property.get("asGroup") is True,
         }
     elif response.analysis_model == "funnel":
-        response.chart_type = "funnel"
+        selected_chart_type = str(
+            (normalized_config.get("chart") or {}).get("type") or response.chart_type or "funnel"
+        ).strip()
+        response.chart_type = selected_chart_type or "funnel"
         response.result_config = {
             "type": "funnel",
             "step_field": "step_name",

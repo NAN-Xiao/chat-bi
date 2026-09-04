@@ -122,7 +122,7 @@ test('keeps the builder loading mask fixed while its content scrolls', () => {
   )
 })
 
-test('keeps chart type selectable for non-fixed analysis models', () => {
+test('keeps chart type selectable for funnel and other non-fixed analysis models', () => {
   assert.match(
     source,
     /const persistedChartType = chart\.sourceType \|\| chart\.type[\s\S]*?chartTypes\.some\(\(item\) => item\.value === persistedChartType\)/,
@@ -130,13 +130,13 @@ test('keeps chart type selectable for non-fixed analysis models', () => {
   )
   assert.match(
     source,
-    /<el-select v-if="!isFunnelAnalysis && !isPathAnalysis" v-model="form\.chartType"/,
-    '收入、属性、留存等分析模型应显示可选图表类型'
+    /<el-select v-if="!isPathAnalysis" v-model="form\.chartType"/,
+    '漏斗、收入、属性、留存等分析模型应显示可选图表类型'
   )
   assert.match(
     source,
-    /<el-input v-else :model-value="isFunnelAnalysis \? '漏斗图' : '桑基图'" disabled \/>/,
-    '仅漏斗和路径分析固定图表类型'
+    /<el-input v-else model-value="桑基图" disabled \/>/,
+    '仅路径分析固定图表类型'
   )
 })
 
@@ -268,7 +268,7 @@ test('includes retention in AI context and preview signature', () => {
   assert.match(signatureBody, /funnel:\s*sqlBuilder\.analysisModel === 'funnel'/)
 })
 
-test('model switching clears incompatible state and fixes retention to table', () => {
+test('model switching clears incompatible state and defaults funnel to a funnel chart', () => {
   const switchBody = source.match(/function handleAnalysisModelChange\(model: AnalysisModel\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
 
   assert.match(switchBody, /sqlBuilder\.metricItems = \[\]/)

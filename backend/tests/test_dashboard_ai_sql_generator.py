@@ -1964,7 +1964,7 @@ def test_funnel_config_uses_ordered_steps_and_deterministic_validation() -> None
     assert ai_sql_generator._config_reference_table_names(normalized, {}) == {"event"}
 
 
-def test_funnel_config_rejects_missing_step_and_invalid_chart() -> None:
+def test_funnel_config_rejects_missing_step_without_locking_chart_type() -> None:
     request = _funnel_request(
         steps=[{"event": None, "relatedProperty": None}],
         window={"mode": "duration", "value": 0, "unit": "day"},
@@ -1984,7 +1984,27 @@ def test_funnel_config_rejects_missing_step_and_invalid_chart() -> None:
     assert "漏斗步骤1请先选择事件。" in result.issues
     assert "使用关联属性时请选择漏斗步骤1关联属性。" in result.issues
     assert "漏斗分析窗口期必须是正整数。" in result.issues
-    assert "漏斗分析只能使用漏斗图结果。" in result.issues
+    assert "漏斗分析只能使用漏斗图结果。" not in result.issues
+
+
+def test_funnel_finalize_response_preserves_selected_chart_type() -> None:
+    result = ai_sql_generator._node_finalize_response({
+        "response": ai_sql_generator.DashboardAiSqlGenerateResponse(
+            success=True,
+            sql="SELECT step_order, step_name, step_count FROM funnel_result",
+            chart_type="funnel",
+        ),
+        "normalized_config": {
+            "analysis_model": "funnel",
+            "chart": {"type": "column"},
+            "funnel": {},
+        },
+        "graph_trace": [],
+    })["response"]
+
+    assert result.chart_type == "column"
+    assert result.result_config["step_field"] == "step_name"
+    assert result.result_config["value_field"] == "step_count"
 
 
 def test_funnel_config_accepts_shared_related_property() -> None:
