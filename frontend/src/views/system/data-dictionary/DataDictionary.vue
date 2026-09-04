@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus-secondary'
-import { Delete, Download, Plus, Refresh, Upload } from '@element-plus/icons-vue'
+import { Delete, Download, EditPen, Plus, Refresh, Upload } from '@element-plus/icons-vue'
 import { datasourceApi } from '@/api/datasource'
 import { trackingConfigApi } from '@/api/system'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
@@ -95,6 +95,7 @@ const selectedTableId = ref<number | string | null>(null)
 const activeFieldView = ref('all')
 const changeDrawerVisible = ref(false)
 const dictionaryFieldDrawerVisible = ref(false)
+const sqlRulesDrawerVisible = ref(false)
 const changeMode = ref<'create_table' | 'create_field' | 'alter_field'>('create_table')
 const dictionaryMode = ref<'create' | 'edit'>('create')
 const changeFormRef = ref()
@@ -108,6 +109,8 @@ const changeForm = reactive({
   fields: [] as SchemaChangeField[],
 })
 const dictionarySubmitting = ref(false)
+const sqlRulesSubmitting = ref(false)
+const sqlRulesText = ref('')
 const trackingConfig = ref<TrackingConfig | null>(null)
 const dictionaryForm = reactive({
   table_name: '',
@@ -606,6 +609,32 @@ const trackingConfigPayload = (
   fields,
 })
 
+const openSqlRulesDrawer = async () => {
+  const current = await currentTrackingConfig()
+  sqlRulesText.value = String(current.sql_rules || '')
+  sqlRulesDrawerVisible.value = true
+}
+
+const submitSqlRules = async () => {
+  const current = await currentTrackingConfig()
+  const fields = Array.isArray(current.fields) ? [...current.fields] : []
+  const tables = Array.isArray(current.tables) ? [...current.tables] : []
+  sqlRulesSubmitting.value = true
+  try {
+    trackingConfig.value = await trackingConfigApi.update(
+      trackingConfigPayload(
+        { ...current, sql_rules: sqlRulesText.value.trim() },
+        fields,
+        tables
+      )
+    )
+    ElMessage.success(t('data_dictionary.sql_rules_saved'))
+    sqlRulesDrawerVisible.value = false
+  } finally {
+    sqlRulesSubmitting.value = false
+  }
+}
+
 const submitDictionaryField = async () => {
   if (!schema.value) return
   const valid = await dictionaryFormRef.value?.validate?.().catch(() => false)
@@ -747,6 +776,9 @@ const submitSchemaChange = async () => {
               </el-select>
             </div>
             <div class="schema-actions">
+              <el-button :icon="EditPen" @click="openSqlRulesDrawer">
+                {{ t('data_dictionary.sql_rules') }}
+              </el-button>
               <el-button :icon="Download" :loading="templateDownloading" @click="downloadTrackingTemplate">
                 {{ t('data_dictionary.download_template') }}
               </el-button>
@@ -867,6 +899,35 @@ const submitSchemaChange = async () => {
           </el-button>
         </div>
       </main>
+
+    <el-drawer
+      v-model="sqlRulesDrawerVisible"
+      :title="t('data_dictionary.sql_rules')"
+      size="620px"
+      destroy-on-close
+    >
+      <el-form label-position="top" class="schema-change-form" @submit.prevent>
+        <el-form-item :label="t('data_dictionary.sql_rules')">
+          <el-input
+            v-model="sqlRulesText"
+            class="schema-textarea schema-textarea--large code-textarea"
+            type="textarea"
+            :rows="12"
+            maxlength="8000"
+            show-word-limit
+            :placeholder="t('data_dictionary.sql_rules_placeholder')"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="drawer-footer">
+          <el-button @click="sqlRulesDrawerVisible = false">{{ t('common.cancel') }}</el-button>
+          <el-button type="primary" :loading="sqlRulesSubmitting" @click="submitSqlRules">
+            {{ t('common.save') }}
+          </el-button>
+        </div>
+      </template>
+    </el-drawer>
 
     <el-drawer
       v-model="dictionaryFieldDrawerVisible"

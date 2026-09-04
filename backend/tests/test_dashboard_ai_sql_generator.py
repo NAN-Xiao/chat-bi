@@ -202,6 +202,28 @@ def test_dashboard_prompt_describes_formula_metrics_contract() -> None:
     assert "外层 SELECT" in prompt
 
 
+@pytest.mark.parametrize("analysis_model", sorted(ai_sql_generator.ANALYSIS_MODEL_LABELS))
+def test_dashboard_prompt_includes_workspace_sql_rules_for_every_analysis_model(
+    analysis_model: str,
+) -> None:
+    """所有手动分析模型都必须收到当前工作空间的纯文本 SQL 规则。"""
+    workspace_rule = "查询包含 prod 字段的物理表时，必须添加 prod = 110000047。"
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        DashboardAiSqlGenerateRequest(
+            datasource=1,
+            context={"analysisModel": analysis_model},
+        ),
+        datasource=SimpleNamespace(name="测试数据源", type="mysql", type_name="MySQL"),
+        data_skill="",
+        tracking_config=workspace_rule,
+    )
+
+    assert workspace_rule in prompt
+    assert "SQL 约束是生成 SQL 的强制规则" in prompt
+    assert "WHERE 或 JOIN ON" in prompt
+    assert "不得使用 SELECT * 派生表包裹代替" in prompt
+
+
 def test_dashboard_prompt_for_mysql_forbids_full_outer_join() -> None:
     """
     是什么：MySQL 数据源下手动图表 SQL 生成提示词要禁止生成 FULL OUTER JOIN。

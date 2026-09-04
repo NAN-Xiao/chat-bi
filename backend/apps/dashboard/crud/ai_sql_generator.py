@@ -3216,6 +3216,7 @@ def _dashboard_config_prompt(
         _trim_text(tracking_config, 8000),
         "</tracking-config>",
         "",
+        "当前工作空间 <tracking-config> 中的 SQL 约束是生成 SQL 的强制规则；涉及物理表固定筛选时，必须直接写入该物理表所在查询块的 WHERE 或 JOIN ON，不得使用 SELECT * 派生表包裹代替。",
         "当前配置器可配置的控件：时间范围(time.field/time.grain/time.range)、分析指标(metrics: 字段/聚合/计算字段/别名/指标内筛选树)、公式指标(formulaMetrics/calculatedMetrics: token 化公式/小数/别名)、全局筛选、分组项(groups)。",
         "配置器规则：time.field + time.grain 会自动生成日期维度；groups 只表示额外维度，不包含时间维度也不是错误。",
         "公式指标规则：formulaMetrics[].tokens 是公式 token 列表；token.type=metric 时只能引用 metrics 中已有指标，并使用 metricAlias 对应的基础指标结果；token.type=atomicMetric 时表示公式内部直接插入的事件指标，结构与 metrics 单项类似，必须按它自己的 field/metric/aggregation/filters 生成基础聚合；token.type=operator 只能是 + - * /；token.type=paren 只能是 ( )；token.type=number 只能是数字常量。",
