@@ -109,16 +109,16 @@ test('uses analysis SQL result display names without changing result field keys'
   assert.match(source, /builderConfig[\s\S]*?persistedAnalysisResultDisplayNames\(chart\)/)
 })
 
-test('keeps the builder loading mask fixed while its content scrolls', () => {
+test('keeps the builder loading mask fixed while schema metadata loads', () => {
   assert.match(
     source,
-    /<div\s+v-if="sqlBuilder\.activeTab === 'builder'"\s+v-loading="schemaLoading \|\| builderLoading"\s+:element-loading-text="builderLoading \? loadingText : ''"\s+class="sql-builder-builder-pane"\s*>/,
-    '加载遮罩应挂在包含滚动区和底部操作栏的容器上'
+    /<div\s+v-if="sqlBuilder\.activeTab === 'builder'"\s+v-loading="builderLoading"\s+:element-loading-text="loadingText"\s+class="sql-builder-builder-pane"\s*>/,
+    '执行计算时加载遮罩应挂在包含滚动区和底部操作栏的容器上'
   )
   assert.doesNotMatch(
     source,
     /<div\s+v-loading="schemaLoading \|\| builderLoading"[\s\S]*?class="sql-builder-content"/,
-    '可滚动内容节点不应承载加载遮罩'
+    'Schema 异步加载不应通过整面板遮罩阻断下拉控件'
   )
 })
 

@@ -8543,8 +8543,8 @@ const analysisModelFormContext = {
 
           <div
             v-if="sqlBuilder.activeTab === 'builder'"
-            v-loading="schemaLoading || builderLoading"
-            :element-loading-text="builderLoading ? loadingText : ''"
+            v-loading="builderLoading"
+            :element-loading-text="loadingText"
             class="sql-builder-builder-pane"
           >
             <el-alert
