@@ -12,7 +12,7 @@ export type AttributionWindowConfig = {
 export const ATTRIBUTION_EVENT_LIMIT = 30
 export const ATTRIBUTION_WINDOW_MAX_SECONDS = 365 * 24 * 60 * 60
 export const DEFAULT_ATTRIBUTION_WINDOW: AttributionWindowConfig = {
-  mode: 'duration',
+  mode: 'same_day',
   value: 1,
   unit: 'day',
 }
