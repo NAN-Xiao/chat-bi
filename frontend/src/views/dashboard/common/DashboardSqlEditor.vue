@@ -64,6 +64,7 @@ import {
   isNumericFieldOption,
   isSelectableFieldOption,
   isTimeFieldOption,
+  preferredBuilderEntityField,
   propertyAnalysisFieldOptions,
 } from '@/views/dashboard/common/builderFieldPickerOptions.ts'
 import { metricFilterRecoveryCandidates } from '@/views/dashboard/common/metricFilterRecovery.ts'
@@ -3737,8 +3738,23 @@ function builderBlockingScopeIssues() {
   ].filter(Boolean))
 }
 
+function sanitizeAnalysisEntityField(
+  config: { entityField: string },
+  options: SchemaFieldOption[],
+) {
+  if (!config.entityField) {
+    config.entityField = preferredBuilderEntityField(options)
+    return false
+  }
+  if (optionExists(config.entityField, options)) {
+    return false
+  }
+  config.entityField = ''
+  return true
+}
+
 function resetRetentionConfig() {
-  sqlBuilder.retention.entityField = ''
+  sqlBuilder.retention.entityField = preferredBuilderEntityField(retentionEntityFieldOptions.value)
   sqlBuilder.retention.initialEvent = ''
   sqlBuilder.retention.initialEventAlias = ''
   sqlBuilder.retention.initialEventFilterLogic = 'and'
@@ -3790,7 +3806,7 @@ function restoreFunnelRelatedProperty(funnel: any, legacySteps: any) {
 }
 
 function resetFunnelConfig() {
-  sqlBuilder.funnel.entityField = ''
+  sqlBuilder.funnel.entityField = preferredBuilderEntityField(funnelEntityFieldOptions.value)
   sqlBuilder.funnel.steps = [createFunnelStep(), createFunnelStep(), createFunnelStep()]
   sqlBuilder.funnel.window = { ...DEFAULT_FUNNEL_WINDOW }
   sqlBuilder.funnel.relatedPropertyEnabled = false
@@ -3806,7 +3822,7 @@ function resetFunnelConfig() {
 }
 
 function resetDistributionConfig() {
-  sqlBuilder.distribution.entityField = ''
+  sqlBuilder.distribution.entityField = preferredBuilderEntityField(distributionEntityFieldOptions.value)
   sqlBuilder.distribution.event = ''
   sqlBuilder.distribution.eventFilterLogic = 'and'
   sqlBuilder.distribution.eventFilters = []
@@ -3820,7 +3836,7 @@ function resetDistributionConfig() {
 }
 
 function resetIntervalConfig() {
-  sqlBuilder.interval.entityField = ''
+  sqlBuilder.interval.entityField = preferredBuilderEntityField(intervalEntityFieldOptions.value)
   sqlBuilder.interval.startEvent = ''
   sqlBuilder.interval.startEventFilterLogic = 'and'
   sqlBuilder.interval.startEventFilters = []
@@ -3842,7 +3858,7 @@ function resetPathConfig() {
 }
 
 function resetRevenueConfig() {
-  sqlBuilder.revenue.entityField = ''
+  sqlBuilder.revenue.entityField = preferredBuilderEntityField(revenueEntityFieldOptions.value)
   sqlBuilder.revenue.initialEvent = ''
   sqlBuilder.revenue.paymentEvent = ''
   sqlBuilder.revenue.metric = { method: 'count', field: '' }
@@ -3861,7 +3877,7 @@ function createAttributionEvent(): SqlBuilderAttributionEvent {
 }
 
 function resetAttributionConfig() {
-  sqlBuilder.attribution.entityField = ''
+  sqlBuilder.attribution.entityField = preferredBuilderEntityField(attributionEntityFieldOptions.value)
   sqlBuilder.attribution.method = 'linear'
   sqlBuilder.attribution.window = { ...DEFAULT_ATTRIBUTION_WINDOW }
   sqlBuilder.attribution.targetEvent = ''
@@ -3877,7 +3893,7 @@ function resetAttributionConfig() {
 }
 
 function resetRankingConfig() {
-  sqlBuilder.ranking.entityField = ''
+  sqlBuilder.ranking.entityField = preferredBuilderEntityField(rankingEntityFieldOptions.value)
   sqlBuilder.ranking.metric = createRankingMetric('ranking-primary-metric')
   sqlBuilder.ranking.tieHandling = 'default'
   sqlBuilder.ranking.simultaneousMetrics = []
@@ -4373,8 +4389,7 @@ function sanitizeRevenueConfig() {
   if (!isRevenueAnalysis.value) return
   const cleared: string[] = []
   const revenue = sqlBuilder.revenue
-  if (revenue.entityField && !optionExists(revenue.entityField, revenueEntityFieldOptions.value)) {
-    revenue.entityField = ''
+  if (sanitizeAnalysisEntityField(revenue, revenueEntityFieldOptions.value)) {
     cleared.push('分析主体')
   }
   if (revenue.initialEvent && !optionExists(revenue.initialEvent, revenueEventOptions.value)) {
@@ -4485,8 +4500,7 @@ function sanitizeDistributionConfig() {
   if (!isDistributionAnalysis.value) return
   const distribution = sqlBuilder.distribution
   const cleared: string[] = []
-  if (distribution.entityField && !optionExists(distribution.entityField, distributionEntityFieldOptions.value)) {
-    distribution.entityField = ''
+  if (sanitizeAnalysisEntityField(distribution, distributionEntityFieldOptions.value)) {
     cleared.push('分析主体')
   }
   if (distribution.event && !optionExists(distribution.event, distributionEventOptions.value)) {
@@ -4603,8 +4617,7 @@ function sanitizeIntervalConfig() {
   if (!isIntervalAnalysis.value) return
   const interval = sqlBuilder.interval
   const cleared: string[] = []
-  if (interval.entityField && !optionExists(interval.entityField, intervalEntityFieldOptions.value)) {
-    interval.entityField = ''
+  if (sanitizeAnalysisEntityField(interval, intervalEntityFieldOptions.value)) {
     cleared.push('分析主体')
   }
   for (const target of ['start', 'end'] as IntervalEventTarget[]) {
@@ -4775,8 +4788,7 @@ function sanitizeAttributionConfig() {
   if (!isAttributionAnalysis.value) return
   const attribution = sqlBuilder.attribution
   const cleared: string[] = []
-  if (attribution.entityField && !optionExists(attribution.entityField, attributionEntityFieldOptions.value)) {
-    attribution.entityField = ''
+  if (sanitizeAnalysisEntityField(attribution, attributionEntityFieldOptions.value)) {
     cleared.push('分析主体')
   }
   if (attribution.targetEvent && !optionExists(attribution.targetEvent, attributionEventOptions.value)) {
@@ -4817,8 +4829,7 @@ function sanitizeRankingConfig() {
   if (!isRankingAnalysis.value) return
   const ranking = sqlBuilder.ranking
   const cleared: string[] = []
-  if (ranking.entityField && !optionExists(ranking.entityField, rankingEntityFieldOptions.value)) {
-    ranking.entityField = ''
+  if (sanitizeAnalysisEntityField(ranking, rankingEntityFieldOptions.value)) {
     cleared.push('分析主体')
   }
   const sanitizeMetric = (metric: SqlBuilderRankingMetric, label: string) => {
@@ -4960,8 +4971,7 @@ function heatmapBlockingIssues() {
 function sanitizeRetentionConfig() {
   if (!isRetentionAnalysis.value) return
   const cleared: string[] = []
-  if (sqlBuilder.retention.entityField && !optionExists(sqlBuilder.retention.entityField, retentionEntityFieldOptions.value)) {
-    sqlBuilder.retention.entityField = ''
+  if (sanitizeAnalysisEntityField(sqlBuilder.retention, retentionEntityFieldOptions.value)) {
     cleared.push('分析主体')
   }
   if (sqlBuilder.retention.initialEvent && !optionExists(sqlBuilder.retention.initialEvent, retentionEventOptions.value)) {
@@ -5158,8 +5168,7 @@ function removeFunnelStep(index: number) {
 function sanitizeFunnelConfig() {
   if (!isFunnelAnalysis.value) return
   const cleared: string[] = []
-  if (sqlBuilder.funnel.entityField && !optionExists(sqlBuilder.funnel.entityField, funnelEntityFieldOptions.value)) {
-    sqlBuilder.funnel.entityField = ''
+  if (sanitizeAnalysisEntityField(sqlBuilder.funnel, funnelEntityFieldOptions.value)) {
     cleared.push('分析主体')
   }
   sqlBuilder.funnel.steps.forEach((step, index) => {
