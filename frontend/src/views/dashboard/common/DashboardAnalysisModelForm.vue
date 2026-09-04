@@ -36,7 +36,7 @@ const {
   eventFieldScope, eventFilterFieldOptions, eventUserPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
   finishPropertyAudienceRename, finishPropertyMetricRename, finishRetentionEventRename, formulaFieldPickerPlaceholder,
   formulaMetricPrecisionText, formulaNumberKeys, formulaParenKeys, formulaTokenText, funnelAliasDraft, funnelAliasEditing,
-  funnelEntityFieldOptions, funnelEventOptions, funnelFilterExpanded, funnelPropertyOptions, handleAnalysisModelChange,
+  funnelEntityFieldOptions, funnelEventOptions, funnelFilterExpanded, funnelRelatedPropertyOptions, handleAnalysisModelChange,
   handleAttributionEventChange, handleAttributionTargetEventChange, handleDistributionEventChange,
   handleDistributionSimultaneousToggle, handleFormulaDisplayClick, handleFormulaEditorFocusout, handleFormulaEditorKeydown,
   handleFunnelRelatedPropertyToggle, handleFunnelStepEventChange, handleIntervalEventChange, handleIntervalRelatedPropertyToggle,
@@ -1486,16 +1486,6 @@ const {
                         @empty="funnelFilterExpanded[step.id] = false"
                       />
                     </div>
-                    <div v-if="sqlBuilder.funnel.relatedPropertyEnabled" class="funnel-step-property-row">
-                      <span>关联属性</span>
-                      <BuilderFieldPicker
-                        v-model="step.relatedProperty"
-                        :options="funnelPropertyOptions(step.event)"
-                        :loading="schemaLoading"
-                        mode="property"
-                        placeholder="选择步骤属性"
-                      />
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1510,6 +1500,22 @@ const {
                     v-model="sqlBuilder.funnel.relatedPropertyEnabled"
                     @change="handleFunnelRelatedPropertyToggle"
                   />
+                </div>
+                <div v-if="sqlBuilder.funnel.relatedPropertyEnabled" class="funnel-related-property-panel">
+                  <span class="funnel-related-property-label">关联属性</span>
+                  <div class="funnel-related-property-control">
+                    <BuilderFieldPicker
+                      v-model="sqlBuilder.funnel.relatedProperty"
+                      :options="funnelRelatedPropertyOptions()"
+                      :loading="schemaLoading"
+                      mode="property"
+                      placeholder="选择关联属性"
+                    />
+                    <span>为关联属性</span>
+                    <el-tooltip content="使用该属性匹配同一分析主体在各漏斗步骤中的行为。" placement="top">
+                      <el-icon aria-label="关联属性说明"><InfoFilled /></el-icon>
+                    </el-tooltip>
+                  </div>
                 </div>
                 <div class="funnel-option-row">
                   <span>分析窗口期</span>
@@ -3042,18 +3048,51 @@ const {
   visibility: visible;
 }
 
-.funnel-step-property-row {
-  display: grid;
-  grid-template-columns: auto minmax(140px, 280px);
-  align-items: center;
-  gap: 10px;
-  margin-top: 4px;
+.funnel-related-property-panel {
+  width: min(100%, 360px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 12px 14px;
+  border: 1px solid #e3e7ee;
+  border-radius: 6px;
+  background: #fff;
   color: #6b7280;
   font-size: 12px;
 }
 
-.funnel-step-property-row :deep(.builder-field-picker-trigger) {
+.funnel-related-property-label {
+  color: #505968;
+  line-height: 18px;
+}
+
+.funnel-related-property-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.funnel-related-property-control :deep(.builder-field-picker) {
+  min-width: 0;
+  flex: 0 1 180px;
+}
+
+.funnel-related-property-control :deep(.builder-field-picker-trigger) {
   width: 100%;
+}
+
+.funnel-related-property-control > span {
+  flex: none;
+  white-space: nowrap;
+}
+
+.funnel-related-property-control .el-icon {
+  flex: none;
+  color: #8b93a1;
+  cursor: help;
 }
 
 .funnel-add-step {

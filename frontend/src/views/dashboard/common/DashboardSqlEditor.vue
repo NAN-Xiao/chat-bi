@@ -198,7 +198,6 @@ type SqlBuilderFunnelStep = {
   alias: string
   filterLogic: SqlBuilderFilterLogic
   filters: SqlBuilderFilter[]
-  relatedProperty: string
 }
 type SqlBuilderAggregation = 'count' | 'sum' | 'avg' | 'max' | 'min' | 'count_distinct'
 const RETENTION_ANALYSIS_CONTEXT_CONTENT = '以某段时间做过初始事件的用户为样本，查看在指定日期后用户进行回访事件的留存情况'
@@ -231,6 +230,7 @@ type SqlBuilderFunnelConfig = {
   steps: SqlBuilderFunnelStep[]
   window: FunnelWindowConfig
   relatedPropertyEnabled: boolean
+  relatedProperty: string
 }
 type SqlBuilderDistributionConfig = {
   entityField: string
@@ -527,6 +527,7 @@ const sqlBuilder = reactive({
     steps: [],
     window: { ...DEFAULT_FUNNEL_WINDOW },
     relatedPropertyEnabled: false,
+    relatedProperty: '',
   } as SqlBuilderFunnelConfig,
   distribution: {
     entityField: '',
@@ -2547,6 +2548,7 @@ function builderConfigForSave() {
       entityField: sqlBuilder.funnel.entityField,
       window: normalizeFunnelWindow(sqlBuilder.funnel.window),
       relatedPropertyEnabled: sqlBuilder.funnel.relatedPropertyEnabled,
+      relatedProperty: sqlBuilder.funnel.relatedPropertyEnabled ? sqlBuilder.funnel.relatedProperty : '',
       steps: sqlBuilder.funnel.steps.map((step) => ({
         id: step.id,
         event: step.event,
@@ -2555,7 +2557,6 @@ function builderConfigForSave() {
           logic: builderLogic(step.filterLogic),
           rules: compactBuilderFilters(step.filters),
         },
-        relatedProperty: sqlBuilder.funnel.relatedPropertyEnabled ? step.relatedProperty : '',
       })),
     } : undefined,
     distribution: sqlBuilder.analysisModel === 'distribution' ? {
@@ -2797,13 +2798,13 @@ function restoreSqlBuilderState(value: any) {
         restored.alias = typeof step?.alias === 'string' ? step.alias : ''
         restored.filterLogic = builderLogic(step?.filterLogic || step?.filters?.logic)
         restored.filters = restoreBuilderFilters(step?.filters?.rules || step?.filters)
-        restored.relatedProperty = typeof step?.relatedProperty === 'string' ? step.relatedProperty : ''
         return restored
       })
     : []
   sqlBuilder.funnel.steps = restoredFunnelSteps.length >= 2
     ? restoredFunnelSteps
     : [createFunnelStep(), createFunnelStep(), createFunnelStep()]
+  sqlBuilder.funnel.relatedProperty = restoreFunnelRelatedProperty(funnel, funnel.steps)
   sqlBuilder.funnel.steps.forEach((step) => {
     funnelFilterExpanded[step.id] = false
     funnelAliasEditing[step.id] = false
@@ -3770,8 +3771,22 @@ function createFunnelStep(): SqlBuilderFunnelStep {
     alias: '',
     filterLogic: 'and',
     filters: [],
-    relatedProperty: '',
   }
+}
+
+function restoreFunnelRelatedProperty(funnel: any, legacySteps: any) {
+  if (typeof funnel?.relatedProperty === 'string') return funnel.relatedProperty.trim()
+  if (funnel?.relatedProperty && typeof funnel.relatedProperty === 'object'
+    && typeof funnel.relatedProperty.value === 'string') {
+    return funnel.relatedProperty.value.trim()
+  }
+  // Legacy configs stored one property on every step. Migrate only when all values agree.
+  const legacyValues = Array.isArray(legacySteps)
+    ? [...new Set(legacySteps
+      .map((step) => typeof step?.relatedProperty === 'string' ? step.relatedProperty.trim() : '')
+      .filter(Boolean))]
+    : []
+  return legacyValues.length === 1 ? legacyValues[0] : ''
 }
 
 function resetFunnelConfig() {
@@ -3779,6 +3794,7 @@ function resetFunnelConfig() {
   sqlBuilder.funnel.steps = [createFunnelStep(), createFunnelStep(), createFunnelStep()]
   sqlBuilder.funnel.window = { ...DEFAULT_FUNNEL_WINDOW }
   sqlBuilder.funnel.relatedPropertyEnabled = false
+  sqlBuilder.funnel.relatedProperty = ''
   Object.keys(funnelFilterExpanded).forEach((key) => { delete funnelFilterExpanded[key] })
   Object.keys(funnelAliasEditing).forEach((key) => { delete funnelAliasEditing[key] })
   Object.keys(funnelAliasDraft).forEach((key) => { delete funnelAliasDraft[key] })
@@ -5055,15 +5071,27 @@ function funnelPropertyOptions(eventValue: string) {
   return retentionPropertyOptions(eventValue)
 }
 
+function funnelRelatedPropertyOptions() {
+  const events = sqlBuilder.funnel.steps
+    .map((step) => step.event)
+    .filter(Boolean)
+  if (!events.length) return []
+  const optionsByEvent = events.map((eventValue) => funnelPropertyOptions(eventValue))
+  const sharedKeys = optionsByEvent.slice(1).reduce((keys, options) => {
+    const currentKeys = new Set(options.map((option) => `${option.table || ''}:${option.field || option.propertyName || ''}`))
+    return new Set([...keys].filter((key) => currentKeys.has(key)))
+  }, new Set(optionsByEvent[0].map((option) => `${option.table || ''}:${option.field || option.propertyName || ''}`)))
+  return optionsByEvent[0].filter((option) => sharedKeys.has(`${option.table || ''}:${option.field || option.propertyName || ''}`))
+}
+
 function handleFunnelStepEventChange(step: SqlBuilderFunnelStep, eventValue: string) {
   const changed = step.event !== eventValue
   step.event = eventValue
   if (!changed) return
-  const hadScopedConfig = Boolean(step.alias.trim() || step.filters.length || step.relatedProperty)
+  const hadScopedConfig = Boolean(step.alias.trim() || step.filters.length)
   step.alias = ''
   step.filters = []
   step.filterLogic = 'and'
-  step.relatedProperty = ''
   funnelFilterExpanded[step.id] = false
   funnelAliasEditing[step.id] = false
   funnelAliasDraft[step.id] = ''
@@ -5074,9 +5102,7 @@ function handleFunnelStepEventChange(step: SqlBuilderFunnelStep, eventValue: str
 
 function handleFunnelRelatedPropertyToggle(enabled: boolean) {
   if (enabled) return
-  sqlBuilder.funnel.steps.forEach((step) => {
-    step.relatedProperty = ''
-  })
+  sqlBuilder.funnel.relatedProperty = ''
 }
 
 function beginFunnelStepRename(step: SqlBuilderFunnelStep) {
@@ -5141,7 +5167,6 @@ function sanitizeFunnelConfig() {
       step.event = ''
       step.alias = ''
       step.filters = []
-      step.relatedProperty = ''
       funnelFilterExpanded[step.id] = false
       cleared.push(`步骤${index + 1}事件`)
     }
@@ -5152,11 +5177,12 @@ function sanitizeFunnelConfig() {
       funnelFilterExpanded[step.id] = false
       cleared.push(`步骤${index + 1}筛选条件`)
     }
-    if (step.relatedProperty && !optionExists(step.relatedProperty, funnelPropertyOptions(step.event))) {
-      step.relatedProperty = ''
-      cleared.push(`步骤${index + 1}关联属性`)
-    }
   })
+  if (sqlBuilder.funnel.relatedProperty
+    && !optionExists(sqlBuilder.funnel.relatedProperty, funnelRelatedPropertyOptions())) {
+    sqlBuilder.funnel.relatedProperty = ''
+    cleared.push('关联属性')
+  }
   if (cleared.length) {
     ElMessage.warning(`${cleared.join('、')}在当前数据源中无效，已清除，请重新选择。`)
   }
@@ -5171,10 +5197,10 @@ function funnelBlockingIssues() {
   if (sqlBuilder.funnel.steps.length < 2) issues.push('漏斗分析至少需要配置两个步骤。')
   sqlBuilder.funnel.steps.forEach((step, index) => {
     if (!step.event) issues.push(`漏斗分析请先选择步骤${index + 1}事件。`)
-    if (sqlBuilder.funnel.relatedPropertyEnabled && !step.relatedProperty) {
-      issues.push(`使用关联属性时请选择步骤${index + 1}关联属性。`)
-    }
   })
+  if (sqlBuilder.funnel.relatedPropertyEnabled && !sqlBuilder.funnel.relatedProperty) {
+    issues.push('使用关联属性时请选择关联属性。')
+  }
   return issues
 }
 
@@ -5288,9 +5314,9 @@ function selectedBuilderFieldValues() {
     ] : []),
     ...(sqlBuilder.analysisModel === 'funnel' ? [
       sqlBuilder.funnel.entityField,
+      sqlBuilder.funnel.relatedProperty,
       ...sqlBuilder.funnel.steps.flatMap((step) => [
         step.event,
-        step.relatedProperty,
         ...filterFieldValues(step.filters),
       ]),
     ] : []),
@@ -5428,6 +5454,9 @@ function collectBuilderAiContext() {
       entityField: fieldOptionPayload(sqlBuilder.funnel.entityField),
       window: normalizeFunnelWindow(sqlBuilder.funnel.window),
       relatedPropertyEnabled: sqlBuilder.funnel.relatedPropertyEnabled,
+      relatedProperty: sqlBuilder.funnel.relatedPropertyEnabled
+        ? fieldOptionPayload(sqlBuilder.funnel.relatedProperty)
+        : null,
       steps: sqlBuilder.funnel.steps.map((step, index) => ({
         order: index + 1,
         event: fieldOptionPayload(step.event),
@@ -5436,9 +5465,6 @@ function collectBuilderAiContext() {
           logic: step.filterLogic,
           rules: filterContext(step.filters),
         },
-        relatedProperty: sqlBuilder.funnel.relatedPropertyEnabled
-          ? fieldOptionPayload(step.relatedProperty)
-          : null,
       })),
     } : null,
     ranking: sqlBuilder.analysisModel === 'ranking' ? {
@@ -8418,7 +8444,7 @@ const analysisModelFormContext = {
   eventFieldScope, eventFilterFieldOptions, eventUserPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
   finishPropertyAudienceRename, finishPropertyMetricRename, finishRetentionEventRename, formulaFieldPickerPlaceholder,
   formulaMetricPrecisionText, formulaNumberKeys, formulaParenKeys, formulaTokenText, funnelAliasDraft, funnelAliasEditing,
-  funnelEntityFieldOptions, funnelEventOptions, funnelFilterExpanded, funnelPropertyOptions, handleAnalysisModelChange,
+  funnelEntityFieldOptions, funnelEventOptions, funnelFilterExpanded, funnelRelatedPropertyOptions, handleAnalysisModelChange,
   handleAttributionEventChange, handleAttributionTargetEventChange, handleDistributionEventChange,
   handleDistributionSimultaneousToggle, handleFormulaDisplayClick, handleFormulaEditorFocusout, handleFormulaEditorKeydown,
   handleFunnelRelatedPropertyToggle, handleFunnelStepEventChange, handleIntervalEventChange, handleIntervalRelatedPropertyToggle,
@@ -10233,20 +10259,6 @@ const analysisModelFormContext = {
 .funnel-step-editor.is-active .funnel-step-actions {
   opacity: 1;
   visibility: visible;
-}
-
-.funnel-step-property-row {
-  display: grid;
-  grid-template-columns: auto minmax(140px, 280px);
-  align-items: center;
-  gap: 10px;
-  margin-top: 4px;
-  color: #6b7280;
-  font-size: 12px;
-}
-
-.funnel-step-property-row :deep(.builder-field-picker-trigger) {
-  width: 100%;
 }
 
 .funnel-add-step {
