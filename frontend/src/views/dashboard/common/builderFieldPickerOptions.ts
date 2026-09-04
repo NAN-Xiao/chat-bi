@@ -226,10 +226,14 @@ export function eventPublicPropertyOptions(input: {
 }
 
 export function propertyAnalysisFieldOptions(input: {
+  eventScopeMode?: 'general' | 'event'
   eventScopeActive: boolean
   builderFields: FieldOption[]
   userProperties: FieldOption[]
 }) {
+  if (input.eventScopeMode === 'event' && !input.eventScopeActive) {
+    return []
+  }
   if (!input.eventScopeActive) {
     return input.builderFields
   }

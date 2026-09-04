@@ -1181,6 +1181,7 @@ const isRankingAnalysis = computed(() => sqlBuilder.analysisModel === 'ranking')
 const isHeatmapAnalysis = computed(() => sqlBuilder.analysisModel === 'heatmap')
 const propertyFieldOptions = computed<SchemaFieldOption[]>(() => {
   return propertyAnalysisFieldOptions({
+    eventScopeMode: eventFieldScope.value.mode,
     eventScopeActive: eventFieldScope.value.status === 'active',
     builderFields: builderFieldOptions.value as SchemaFieldOption[],
     userProperties: eventUserPropertyOptions.value,

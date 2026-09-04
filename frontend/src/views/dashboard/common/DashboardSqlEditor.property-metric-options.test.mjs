@@ -29,3 +29,11 @@ test('property metric picker shares the property grouping user-property options'
     '属性分组下拉必须使用与属性指标一致的候选列表'
   )
 })
+
+test('property analysis does not fall back to arbitrary fields when event scope is invalid', () => {
+  assert.match(
+    editorSource,
+    /propertyAnalysisFieldOptions\(\{[\s\S]*?eventScopeMode: eventFieldScope\.value\.mode[\s\S]*?eventScopeActive: eventFieldScope\.value\.status === 'active'/,
+    '事件配置无效时属性分析下拉必须为空，不能混入普通数据源字段'
+  )
+})
