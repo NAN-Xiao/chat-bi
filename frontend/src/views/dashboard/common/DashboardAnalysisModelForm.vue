@@ -1512,7 +1512,7 @@ const {
                       placeholder="选择关联属性"
                     />
                     <span>为关联属性</span>
-                    <el-tooltip content="使用该属性匹配同一分析主体在各漏斗步骤中的行为。" placement="top">
+                    <el-tooltip content="漏斗各步骤的关联属性值必须保持一致，且不能为空" placement="top">
                       <el-icon aria-label="关联属性说明"><InfoFilled /></el-icon>
                     </el-tooltip>
                   </div>
@@ -3049,16 +3049,11 @@ const {
 }
 
 .funnel-related-property-panel {
-  width: min(100%, 360px);
-  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
   margin-top: 2px;
-  padding: 12px 14px;
-  border: 1px solid #e3e7ee;
-  border-radius: 6px;
-  background: #fff;
   color: #6b7280;
   font-size: 12px;
 }
