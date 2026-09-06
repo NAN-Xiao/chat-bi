@@ -768,5 +768,7 @@ watch(
 
 :global(.builder-field-hover-popper) {
   z-index: 5002 !important;
+  /* Hover cards are informational; never let a stale teleported card block the picker. */
+  pointer-events: none;
 }
 </style>

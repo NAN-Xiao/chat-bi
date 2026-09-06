@@ -39,6 +39,11 @@ assert.match(
 )
 assert.match(
   source,
+  /:global\(\.builder-field-hover-popper\)\s*\{[\s\S]*?pointer-events:\s*none/,
+  '字段悬浮说明层不能拦截字段选择器的鼠标事件'
+)
+assert.match(
+  source,
   /<el-popover[\s\S]*?trigger="manual"[\s\S]*?>[\s\S]*?class="builder-field-picker-trigger"[\s\S]*?@click\.stop="visible = !visible"[\s\S]*?>/,
   '字段选择器应由自身显式切换弹层，避免自动触发与外层点击处理冲突'
 )
