@@ -4003,12 +4003,13 @@ const {
 
 .property-metric-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
 .property-metric-index {
+  flex: 0 0 24px;
   width: 24px;
   height: 24px;
   display: inline-flex;
