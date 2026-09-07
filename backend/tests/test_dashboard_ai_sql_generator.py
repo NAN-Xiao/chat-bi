@@ -203,22 +203,31 @@ def test_dashboard_prompt_describes_formula_metrics_contract() -> None:
 
 
 @pytest.mark.parametrize("analysis_model", sorted(ai_sql_generator.ANALYSIS_MODEL_LABELS))
+@pytest.mark.parametrize("context_prefix", ["", "event metadata\n" * 2000], ids=["short", "long"])
+@pytest.mark.parametrize("prompt_builder", [
+    ai_sql_generator._dashboard_sql_user_prompt,
+    ai_sql_generator._dashboard_sql_repair_user_prompt,
+])
 def test_dashboard_prompt_includes_workspace_sql_rules_for_every_analysis_model(
     analysis_model: str,
+    context_prefix: str,
+    prompt_builder: Any,
 ) -> None:
     """所有手动分析模型都必须收到当前工作空间的纯文本 SQL 规则。"""
     workspace_rule = "查询包含 prod 字段的物理表时，必须添加 prod = 110000047。"
-    prompt = ai_sql_generator._dashboard_config_prompt(
-        DashboardAiSqlGenerateRequest(
+    tracking_context = context_prefix + workspace_rule
+    prompt = prompt_builder({
+        "request": DashboardAiSqlGenerateRequest(
             datasource=1,
             context={"analysisModel": analysis_model},
         ),
-        datasource=SimpleNamespace(name="测试数据源", type="mysql", type_name="MySQL"),
-        data_skill="",
-        tracking_config=workspace_rule,
-    )
+        "datasource": SimpleNamespace(name="测试数据源", type="mysql", type_name="MySQL"),
+        "data_skill": "",
+        "tracking_config": tracking_context,
+        "normalized_config": {"analysis_model": analysis_model},
+    })
 
-    assert workspace_rule in prompt
+    assert f"<tracking-config>\n{tracking_context}\n</tracking-config>" in prompt
     assert "SQL 约束是生成 SQL 的强制规则" in prompt
     assert "WHERE 或 JOIN ON" in prompt
     assert "不得使用 SELECT * 派生表包裹代替" in prompt
