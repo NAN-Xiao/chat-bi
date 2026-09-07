@@ -6137,7 +6137,6 @@ async function generateBuilderAiSql() {
   }
   if (sqlBuilder.analysisModel === 'path' || result.analysis_model === 'path') {
     const resultConfig = result.result_config || result.resultConfig || {}
-    form.chartType = 'sankey'
     form.x = String(resultConfig.source_field || resultConfig.sourceField || 'path_source')
     form.y = [String(resultConfig.value_field || resultConfig.valueField || 'path_value')]
     form.series = String(resultConfig.target_field || resultConfig.targetField || 'path_target')
@@ -7559,12 +7558,12 @@ function initEditor() {
   form.title = chart.title || ''
   initialChartTitle.value = form.title
   const persistedChartType = chart.sourceType || chart.type
-  form.chartType = isPathAnalysis.value
-      ? 'sankey'
-      : isHeatmapAnalysis.value
+  form.chartType = isHeatmapAnalysis.value
         ? 'heatmap'
       : chartTypes.some((item) => item.value === persistedChartType)
         ? persistedChartType
+        : isPathAnalysis.value
+          ? 'sankey'
         : isFunnelAnalysis.value
           ? 'funnel'
           : 'table'
@@ -8826,7 +8825,7 @@ const analysisModelFormContext = {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-if="!isPathAnalysis" v-model="form.chartType" :disabled="isHeatmapAnalysis" @change="handleChartTypeChange">
+            <el-select v-model="form.chartType" :disabled="isHeatmapAnalysis" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -8834,7 +8833,6 @@ const analysisModelFormContext = {
                 :value="item.value"
               />
             </el-select>
-            <el-input v-else model-value="桑基图" disabled />
           </el-form-item>
         </div>
         <el-form-item v-if="form.chartType === 'table' && !isPropertyAnalysis && !isRetentionAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis && !isHeatmapAnalysis" :label="t('dashboard.sql_editor_columns')">

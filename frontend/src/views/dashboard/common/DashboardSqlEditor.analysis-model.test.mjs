@@ -130,14 +130,10 @@ test('keeps chart type selectable for funnel and other non-fixed analysis models
   )
   assert.match(
     source,
-    /<el-select v-if="!isPathAnalysis" v-model="form\.chartType"/,
+    /<el-select v-model="form\.chartType"/,
     '漏斗、收入、属性、留存等分析模型应显示可选图表类型'
   )
-  assert.match(
-    source,
-    /<el-input v-else model-value="桑基图" disabled \/>/,
-    '仅路径分析固定图表类型'
-  )
+  assert.doesNotMatch(source, /<el-input v-else model-value="桑基图" disabled \/>/)
 })
 
 test('keeps property analysis isolated with property metrics, filters, and grouping', () => {
