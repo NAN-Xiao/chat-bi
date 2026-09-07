@@ -1144,7 +1144,6 @@ const analysisModelOptions: Array<{ label: string; value: AnalysisModel; content
   { label: '收入分析', value: 'revenue' as AnalysisModel, content: '以同期初始事件形成主体 Cohort，统计其在观察期内参与付费事件产生的每日及累计收入指标' },
   { label: '归因分析', value: 'attribution' as AnalysisModel, content: '按目标事件发生前窗口期内的首次、末次或线性归因方式分配贡献，统计各归因事件获得的目标次数、目标值和贡献占比' },
   { label: '排行榜', value: 'ranking' as AnalysisModel, content: '按排行主体聚合主排行指标并生成名次，同时展示附加指标和属性；并列名次严格使用配置规则' },
-  { label: '热力地图', value: 'heatmap' as AnalysisModel, content: '按事件的 X/Y 坐标聚合指标，在地图或二维坐标上展示空间分布热度' },
 ]
 const analysisModelContent = computed(() =>
   analysisModelOptions.find((option) => option.value === sqlBuilder.analysisModel)?.content || ''
