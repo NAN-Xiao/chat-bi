@@ -134,7 +134,15 @@ export function preferredBuilderTimeField(options: FieldOption[]) {
     .sort((left, right) => left.priority - right.priority || left.index - right.index)[0]?.option.value || ''
 }
 
-export function preferredBuilderEntityField(options: FieldOption[]) {
+export function preferredBuilderEntityField(
+  options: FieldOption[],
+  configuredSubject?: { table: string; field: string },
+) {
+  if (configuredSubject?.field) {
+    return options.find((option) => (
+      option.table === configuredSubject.table && option.field === configuredSubject.field
+    ))?.value || ''
+  }
   return options.find((option) => normalizeRole(option.fieldRole) === 'subjectid')?.value || ''
 }
 

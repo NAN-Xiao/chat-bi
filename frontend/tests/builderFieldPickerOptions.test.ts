@@ -36,6 +36,28 @@ test('preferred entity field uses the configured subject role', () => {
   assert.equal(preferredBuilderEntityField([namedUidWithoutRole]), '')
 })
 
+test('configured default subject works without a field role and wins over another subject role', () => {
+  const subject = fieldOption({ value: 'activity.account_key', table: 'activity', field: 'account_key' })
+  const otherSubject = fieldOption({ fieldRole: 'subject_id' })
+
+  assert.equal(preferredBuilderEntityField([otherSubject, subject], {
+    table: 'activity', field: 'account_key',
+  }), subject.value)
+})
+
+test('unavailable configured subject stays empty instead of choosing another field', () => {
+  const otherSubject = fieldOption({ fieldRole: 'subject_id' })
+  assert.equal(preferredBuilderEntityField([otherSubject], {
+    table: 'event', field: 'missing',
+  }), '')
+  assert.equal(preferredBuilderEntityField([otherSubject], {
+    table: 'other', field: otherSubject.field,
+  }), '')
+  assert.equal(preferredBuilderEntityField([], {
+    table: 'event', field: 'account_key',
+  }), '')
+})
+
 test('retention events without dedicated properties still expose common user properties', () => {
   const eventOption = fieldOption({
     label: '当日活跃',
