@@ -43,6 +43,6 @@ const stopExecutionBody =
   )?.[1] || ''
 assert.match(
   stopExecutionBody,
-  /ElMessage\.warning\([\s\S]*?blockingIssues\[0\] \|\| result\?\.message/,
-  '停止执行时应直接显示首个真实校验错误'
+  /ElMessage\.warning\(builderSqlGenerationFailureMessage\)/,
+  '停止执行时应显示统一的生成失败提示'
 )
