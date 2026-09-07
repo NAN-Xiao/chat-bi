@@ -249,6 +249,19 @@ def test_real_model_union_and_scalar_total_pass_full_generation_validation_and_e
         assert (touch['total_touch_count'], touch['effective_touch_count'], touch['effective_entity_count'], touch['attributed_value']) == (3, 2, 1, 2)
         assert direct['effective_entity_count'] == 0 and direct['attributed_value'] == 1
         assert direct['effective_touch_rate'] is None
+        assert touch['contribution_rate'] == pytest.approx(66.67)
+        assert direct['contribution_rate'] == pytest.approx(33.33)
         db.execute("DELETE FROM event WHERE user_id='a' AND event_name='purchase'")
         rows = {row['attribution_event']: dict(row) for row in db.execute(query)}
         assert rows['login']['attributed_value'] == 0 and rows['login']['total_touch_count'] == 3
+        assert rows['login']['contribution_rate'] == 0
+        assert rows['直接转化']['contribution_rate'] == 100
+
+
+def test_attribution_prompt_uses_explicit_total_for_union_result_compatibility():
+    prompt = generator._dashboard_sql_system_prompt('attribution')
+    assert 'total_value AS (SELECT SUM(attributed_value) AS total FROM complete)' in prompt
+    assert 'NULLIF((SELECT total FROM total_value), 0)' in prompt
+    assert '全部目标侧分组键' in prompt
+    assert 'NULL 分组键也必须正确匹配' in prompt
+    assert '分母必须包括已配置纳入的直接转化' in prompt

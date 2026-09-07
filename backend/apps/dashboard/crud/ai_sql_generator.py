@@ -4329,6 +4329,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "touch_results AS (SELECT <触点统计中的类型及分组>, COALESCE(c.target_count,0) AS target_count, s.total_touch_count, COALESCE(e.effective_touch_count,0) AS effective_touch_count, COALESCE(e.effective_entity_count,0) AS effective_entity_count, COALESCE(c.attributed_value,0) AS attributed_value FROM touches_total s LEFT JOIN contributions c ON <完整键匹配> LEFT JOIN effective_touches e ON <完整键匹配>),\n"
             "complete AS (SELECT <逐项列出同序字段> FROM touch_results UNION ALL SELECT <直接转化类型及分组>, COUNT(DISTINCT target_id), 0, 0, 0, SUM(target_value) FROM <无匹配触点的目标明细> <按配置分组；仅 includeDirect=true 添加此分支>),\n"
             "最终从 complete 计算有效触发率和贡献度。直接转化必须输出完整目标值，不能只保留其名称后再关联不含直接转化的 contributions。所有触点均未匹配目标时仍必须显示其总触发数及零贡献，不能丢行。\n"
+            "贡献率分母使用独立总计 CTE，避免依赖数据源对 UNION 结果再做窗口聚合的兼容性：无目标侧分组时 total_value AS (SELECT SUM(attributed_value) AS total FROM complete)，外层用 attributed_value * 100.0 / NULLIF((SELECT total FROM total_value), 0)；有目标侧分组时，total_value 按全部目标侧分组键汇总 complete，并按这些完整键关联，NULL 分组键也必须正确匹配。分母必须包括已配置纳入的直接转化，不得按触点类型或触点侧分组拆分分母；不生成 SUM(attributed_value) OVER () 作为分母。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；触点只能发生在目标之前或同一时刻，且每个目标的线性权重之和必须为 1。\n"
             "count 的 target_value=1；权重仅为分配比例，不得先在权重中乘 target_value 后又重复相乘。贡献率必须在汇总 attributed_value 后的外层 SELECT 计算。\n"
             + "\n".join(ATTRIBUTION_RULES) + "\n"

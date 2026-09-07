@@ -83,22 +83,18 @@ DATA_UNAVAILABLE_TEXT_PATTERNS = [
     r"无效的列名",
     r"对象名.+无效",
 ]
-PERMISSION_DENIED_TEXT_MARKERS = (
-    "无权",
-    "无权限",
-    "权限",
-    "select *",
-    "unauthorized",
-    "allowed tables",
-    "permission",
-    "表范围",
-    "字段权限",
-    "permission_scope",
-    "permission denied",
-    "insufficient privilege",
-    "not permitted",
-    "access denied",
-    "ora-01031",
+PERMISSION_DENIED_TEXT_PATTERNS = (
+    r"无权(?:限)?",
+    r"(?:没有|缺少|缺乏|不具备|不足|拒绝).{0,40}权限",
+    r"权限.{0,12}(?:不足|受限|拒绝|禁止)",
+    r"无法安全应用字段权限",
+    r"\bunauthorized\b",
+    r"\bpermission(?:s)?\s+(?:denied|insufficient|required)\b",
+    r"\binsufficient privilege(?:s)?\b",
+    r"\bnot permitted\b",
+    r"\baccess denied\b",
+    r"\bcommand denied\b",
+    r"\bora-01031\b",
 )
 
 
@@ -163,7 +159,7 @@ def _candidate_sqlstates(error: Any) -> list[str]:
             states.append(str(value).upper())
         for arg in getattr(item, "args", ()) or ():
             if isinstance(arg, str):
-                for match in re.finditer(r"\b[0-9A-Z]{5}\b", arg.upper()):
+                for match in re.finditer(r"\b[0-9A-Z]{5}\b", _diagnostic_text(arg).upper()):
                     states.append(match.group(0))
     return list(dict.fromkeys(states))
 
@@ -182,7 +178,7 @@ def _candidate_errnos(error: Any) -> list[int]:
                 numbers.append(arg)
             elif isinstance(arg, str):
                 for pattern in (r"\bORA-(\d{5})\b", r"\bError\s+(\d{2,5})\b", r"\[(\d{2,5})\]"):
-                    for match in re.finditer(pattern, arg, flags=re.IGNORECASE):
+                    for match in re.finditer(pattern, _diagnostic_text(arg), flags=re.IGNORECASE):
                         try:
                             numbers.append(int(match.group(1)))
                         except (TypeError, ValueError):
@@ -201,6 +197,20 @@ def _message_for_error(error: Any) -> str:
     return " | ".join(messages)
 
 
+def _diagnostic_text(message: str) -> str:
+    """只分类诊断正文，SQLAlchemy SQL/参数和驱动查询回显不是错误原因。"""
+    return re.split(
+        r"(?:\[SQL:|\[parameters:|^\s*(?:LINE \d+:|QUERY:|STATEMENT:))",
+        str(message or ""),
+        maxsplit=1,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )[0]
+
+
+def _classification_message(error: Any) -> str:
+    return " | ".join(_diagnostic_text(str(item)) for item in _walk_error_chain(error))
+
+
 def _matches_data_unavailable_text(message: str) -> bool:
     lowered = str(message or "").lower()
     return any(re.search(pattern, lowered, flags=re.IGNORECASE) for pattern in DATA_UNAVAILABLE_TEXT_PATTERNS)
@@ -208,16 +218,19 @@ def _matches_data_unavailable_text(message: str) -> bool:
 
 def _matches_permission_denied_text(message: str) -> bool:
     lowered = str(message or "").lower()
-    return any(marker in lowered for marker in PERMISSION_DENIED_TEXT_MARKERS)
+    return any(re.search(pattern, lowered) for pattern in PERMISSION_DENIED_TEXT_PATTERNS)
 
 
 def classify_error(error: Any) -> ErrorClassification:
     """
     是什么：统一把底层异常或历史错误文本分类成平台标准错误类型。
     谁调用：SQL 执行、工作流和兼容旧入口的 looks_like_* 函数。
-    做了什么：优先使用 SQLSTATE/errno 等结构化错误码，文本正则只作为 fallback。
+    做了什么：优先使用显式业务类型和 SQLSTATE/errno，仅对诊断正文做文本识别。
     """
     message = _message_for_error(error)
+    for item in _walk_error_chain(error):
+        if getattr(item, "error_type", None) in BUSINESS_ERROR_TYPES:
+            return ErrorClassification(item.error_type, "explicit", None, message)
     for state in _candidate_sqlstates(error):
         if state in DATA_UNAVAILABLE_SQLSTATES:
             return ErrorClassification(DATA_UNAVAILABLE_ERROR_TYPE, "sqlstate", state, message)
@@ -228,10 +241,11 @@ def classify_error(error: Any) -> ErrorClassification:
             return ErrorClassification(DATA_UNAVAILABLE_ERROR_TYPE, "errno", errno, message)
         if errno in PERMISSION_DENIED_ERRNOS:
             return ErrorClassification(PERMISSION_DENIED_ERROR_TYPE, "errno", errno, message)
-    if _matches_permission_denied_text(message):
-        return ErrorClassification(PERMISSION_DENIED_ERROR_TYPE, "text", None, message)
-    if _matches_data_unavailable_text(message) or looks_like_data_unavailable_business_message(message):
+    diagnostic = _classification_message(error)
+    if _matches_data_unavailable_text(diagnostic) or looks_like_data_unavailable_business_message(diagnostic):
         return ErrorClassification(DATA_UNAVAILABLE_ERROR_TYPE, "text", None, message)
+    if _matches_permission_denied_text(diagnostic):
+        return ErrorClassification(PERMISSION_DENIED_ERROR_TYPE, "text", None, message)
     return ErrorClassification(None, "unknown", None, message)
 
 
