@@ -2244,6 +2244,10 @@ def test_attribution_groups_are_preserved_in_result_contract_and_sql_prompt() ->
         "group_1",
         "attribution_event",
         "target_count",
+        "total_touch_count",
+        "effective_touch_count",
+        "effective_touch_rate",
+        "effective_entity_count",
         "attributed_value",
         "contribution_rate",
     ]
@@ -2881,7 +2885,7 @@ def test_retention_system_prompt_uses_wide_result_without_changing_event_prompt(
             {"revenue": {"observationDays": 2, "metric": {"method": "count"}}},
             {"cohort_date": "同期群日期", "day_2": "第2日事件次数"},
         ),
-        ("attribution", {}, {"attribution_event": "归因事件", "contribution_rate": "贡献率"}),
+        ("attribution", {}, {"attribution_event": "归因事件", "contribution_rate": "对目标事件的贡献度"}),
         (
             "ranking",
             {"ranking": {"metric": {"alias": "登录次数"}}},
