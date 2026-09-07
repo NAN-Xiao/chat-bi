@@ -5,13 +5,39 @@ from sqlglot import exp
 from sqlglot.optimizer.scope import Scope, traverse_scope
 
 
-def _outputs(scope: Scope) -> dict[str, exp.Expression] | None:
-    query = scope.expression
-    if scope.outer_columns:
-        return dict(zip(scope.outer_columns, query.selects))
-    if any(item.is_star for item in query.selects):
+def _outputs(scope: Scope, seen: frozenset = frozenset()) -> dict[str, exp.Expression] | None:
+    if id(scope) in seen:
         return None
-    return {item.alias_or_name: item for item in query.selects}
+    seen = seen | {id(scope)}
+    query = scope.expression
+    if scope.union_scopes:
+        outputs = _outputs(scope.union_scopes[0], seen)
+        if outputs is not None and scope.outer_columns:
+            return dict(zip(scope.outer_columns, outputs.values()))
+        return outputs
+    projections = []
+    for item in query.selects:
+        if not item.is_star:
+            projections.append(item)
+            continue
+        star = item.this if isinstance(item, exp.Column) else item
+        if any(star.args.values()):
+            return None
+        qualifier = item.table if isinstance(item, exp.Column) else ""
+        sources = {name: source for name, (_, source) in scope.selected_sources.items()
+                   if not qualifier or name == qualifier}
+        if not sources:
+            return None
+        for name, source in sources.items():
+            columns = _outputs(source, seen) if isinstance(source, Scope) else None
+            if columns is None:
+                return None  # Physical SELECT * requires schema information we do not have here.
+            projections.extend(exp.column(column, table=name) for column in columns)
+    if scope.outer_columns:
+        return dict(zip(scope.outer_columns, projections))
+    if len({item.alias_or_name for item in projections}) != len(projections):
+        return None
+    return {item.alias_or_name: item for item in projections}
 
 
 def _source(scope: Scope, column: exp.Column):
@@ -61,11 +87,16 @@ def _duration_bound(term: exp.Expression, seconds: int) -> bool:
 def derived_column_issues(statement: exp.Expression) -> list[str]:
     """Only reject provably missing derived columns; physical schema is checked elsewhere."""
     issues: list[str] = []
-    for scope in traverse_scope(statement):
+    scopes = list(traverse_scope(statement))
+    owners = {id(scope.expression): scope for scope in scopes}
+    for scope in scopes:
         sources = {name: source for name, (_, source) in scope.selected_sources.items()}
         for column in scope.columns:
             if column.is_star:
                 continue
+            nested = owners.get(id(column.find_ancestor(exp.Select)))
+            if nested is not None and nested is not scope and _source(nested, column) is not None:
+                continue  # An unqualified scalar-subquery column can still resolve locally.
             source = _source(scope, column)
             if isinstance(source, Scope):
                 outputs = _outputs(source)
@@ -145,6 +176,8 @@ def _resolve_projection(node: exp.Expression, scope: Scope):
         source = _source(scope, node)
         if not isinstance(source, Scope):
             break
+        if source.union_scopes:
+            break  # UNION values have one lineage per branch, not the first branch's scope.
         marker = (id(source), node.name)
         projection = (_outputs(source) or {}).get(node.name)
         if marker in seen or projection is None:
@@ -173,6 +206,63 @@ def _matching_scopes(scopes: list[Scope]) -> list[Scope]:
     return matches
 
 
+def _same_value(left: exp.Expression, left_scope: Scope, right: exp.Expression, right_scope: Scope) -> bool:
+    """Compare expressions through projections, without relying on intermediate aliases."""
+    left, left_scope, _ = _resolve_projection(left, left_scope)
+    right, right_scope, _ = _resolve_projection(right, right_scope)
+    if left_scope is right_scope and left == right:
+        return True
+    if isinstance(left, exp.Column) or isinstance(right, exp.Column):
+        return (isinstance(left, exp.Column) and isinstance(right, exp.Column)
+                and left.name == right.name and _source(left_scope, left) is _source(right_scope, right)
+                and _source(left_scope, left) is not None)
+    if type(left) is not type(right):
+        return False
+    # Preserve operators, literals, units and argument positions while resolving children.
+    for key in left.arg_types:
+        a, b = left.args.get(key), right.args.get(key)
+        if isinstance(a, exp.Expression) and isinstance(b, exp.Expression):
+            if not _same_value(a, left_scope, b, right_scope):
+                return False
+        elif isinstance(a, list) and isinstance(b, list):
+            if len(a) != len(b):
+                return False
+            for x, y in zip(a, b):
+                if isinstance(x, exp.Expression) and isinstance(y, exp.Expression):
+                    if not _same_value(x, left_scope, y, right_scope):
+                        return False
+                elif x != y:
+                    return False
+        elif a != b:
+            return False
+    # Query-local identities must not compare equal across separate event scans.
+    return left_scope is right_scope if isinstance(left, exp.Window) else True
+
+
+def _natural_day_of(value: exp.Expression, scope: Scope, timestamp: exp.Expression) -> bool:
+    value, owner, _ = _resolve_projection(value, scope)
+    if isinstance(value, (exp.Date, exp.TsOrDsToDate)) or (
+        isinstance(value, exp.Cast) and value.to.is_type(exp.DataType.Type.DATE)
+    ):
+        return _same_value(value.this, owner, timestamp, scope)
+    return False
+
+
+def _same_day_match(term: exp.Expression, scope: Scope) -> bool:
+    if not isinstance(term, exp.EQ):
+        return False
+    outputs = _outputs(scope) or {}
+    for target, touch in ((term.this, term.expression), (term.expression, term.this)):
+        def is_day(value, side):
+            date = outputs.get(f"{side}_date")
+            time = outputs.get(f"{side}_time")
+            return (date is not None and _same_value(value, scope, date, scope)) or (
+                time is not None and _natural_day_of(value, scope, time))
+        if is_day(target, "target") and is_day(touch, "touch"):
+            return True
+    return False
+
+
 def _target_count_join(parent: Scope, source: Scope) -> bool:
     aliases = {name for name, (_, selected) in parent.selected_sources.items() if selected is source}
     for join in parent.expression.args.get("joins") or []:
@@ -196,20 +286,43 @@ def _target_count_join(parent: Scope, source: Scope) -> bool:
     return False
 
 
+def _null_without_touch(value: exp.Expression, scope: Scope, matches: list[Scope]) -> bool:
+    for match in matches:
+        for key in ("touch_id", "touch_time"):
+            touch = (_outputs(match) or {}).get(key)
+            if touch is not None and _same_value(value, scope, touch, match):
+                return True
+    value, owner, _ = _resolve_projection(value, scope)
+    if not isinstance(value, exp.Case) or value.this is not None:
+        return False
+    arms = value.args.get("ifs") or []
+    if len(arms) != 1:
+        return False
+    predicate = arms[0].this
+    negated = isinstance(predicate, exp.Not)
+    if negated:
+        predicate = predicate.this
+    if not isinstance(predicate, exp.Is) or not isinstance(predicate.expression, exp.Null):
+        return False
+    null_branch = value.args.get("default") if negated else arms[0].args.get("true")
+    return (isinstance(null_branch, exp.Null)
+            and _null_without_touch(predicate.this, owner, matches))
+
+
 def _touches_can_be_null(scope: Scope, matches: list[Scope], seen: frozenset[int] = frozenset()) -> bool:
     if id(scope) in seen:
         return True
     where = scope.expression.args.get("where")
     for term in _conjuncts(where.this if where else None):
         if (isinstance(term, exp.Not) and isinstance(term.this, exp.Is)
-                and isinstance(term.this.this, exp.Column) and term.this.this.name == "touch_time"
+                and isinstance(term.this.this, exp.Column)
                 and isinstance(term.this.expression, exp.Null)):
-            touch = (_outputs(scope) or {}).get("touch_time")
-            if touch is not None:
-                filtered, filtered_scope, _ = _resolve_projection(term.this.this, scope)
-                projected, projected_scope, _ = _resolve_projection(touch, scope)
-                if filtered_scope is projected_scope and filtered == projected:
-                    return False
+            if _null_without_touch(term.this.this, scope, matches):
+                return False
+        if isinstance(term, (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)) and any(
+            _null_without_touch(side, scope, matches) for side in (term.this, term.expression)
+        ):
+            return False
     if any(scope is match for match in matches):
         output = (_outputs(scope) or {}).get("touch_time")
         if isinstance(output, exp.Alias):
@@ -222,7 +335,8 @@ def _touches_can_be_null(scope: Scope, matches: list[Scope], seen: frozenset[int
             for join in scope.expression.args.get("joins") or []
         )
         return nullable
-    sources = [source for _, source in scope.selected_sources.values() if isinstance(source, Scope)]
+    sources = [source for _, source in scope.selected_sources.values()
+               if isinstance(source, Scope) and _depends_on_match(source, matches)]
     return not sources or any(_touches_can_be_null(source, matches, seen | {id(scope)}) for source in sources)
 
 
@@ -285,8 +399,9 @@ def _metric_nodes(node: exp.Expression, scope: Scope, kind: type, seen: frozense
             if source.union_scopes and node.name in outputs:
                 index = list(outputs).index(node.name)
                 for branch in source.union_scopes:
-                    if index < len(branch.expression.selects):
-                        yield from _metric_nodes(branch.expression.selects[index], branch, kind, seen)
+                    projections = list((_outputs(branch) or {}).values())
+                    if index < len(projections):
+                        yield from _metric_nodes(projections[index], branch, kind, seen)
             elif node.name in outputs:
                 yield from _metric_nodes(outputs[node.name], source, kind, seen)
         return
@@ -304,6 +419,170 @@ def _depends_on_match(scope: Scope, matches: list[Scope], seen: frozenset = froz
                for source in [*sources, *scope.union_scopes])
 
 
+def _entity_count_uses_touch(count: exp.Count, owner: Scope, matches: list[Scope]) -> bool:
+    distinct = count.this
+    if not isinstance(distinct, exp.Distinct) or len(distinct.expressions) != 1:
+        return False
+    value, scope = distinct.expressions[0], owner
+    seen = set()
+    while True:
+        if isinstance(value, (exp.Alias, exp.Paren)):
+            value = value.this
+            continue
+        if not isinstance(value, exp.Column) or (id(scope), value.name, value.table) in seen:
+            return False
+        seen.add((id(scope), value.name, value.table))
+        source = _source(scope, value)
+        if any(scope is match for match in matches):
+            touch = (_outputs(scope) or {}).get("touch_id")
+            if isinstance(touch, exp.Alias):
+                touch = touch.this
+            if isinstance(touch, exp.Column) and source is _source(scope, touch):
+                return True
+            # A target-side UID is equivalent only after the equality join has matched.
+            target = (_outputs(scope) or {}).get("target_id")
+            if isinstance(target, exp.Alias):
+                target = target.this
+            return (isinstance(target, exp.Column) and source is _source(scope, target)
+                    and not _touches_can_be_null(owner, matches))
+        projection = (_outputs(source) or {}).get(value.name) if isinstance(source, Scope) else None
+        if projection is None:
+            return False
+        value, scope = projection, source
+
+
+def _scalar_aggregate(scope: Scope) -> bool:
+    query = scope.expression
+    return (isinstance(query, exp.Select) and not any(query.args.get(key) for key in ("group", "having", "limit", "offset"))
+            and any(aggregate.find_ancestor(exp.Select) is query and aggregate.find_ancestor(exp.Window) is None
+                    for item in query.selects for aggregate in item.find_all(exp.AggFunc)))
+
+
+def _preserves_rows(scope: Scope, origin: Scope, seen: frozenset = frozenset()) -> bool:
+    """Prove a result path retains the touch-statistics rows, respecting join direction."""
+    if scope is origin:
+        return True
+    if id(scope) in seen:
+        return False
+    seen = seen | {id(scope)}
+    query = scope.expression
+    if any(query.args.get(key) for key in ("where", "having", "qualify", "limit", "offset")):
+        return False
+    if scope.union_scopes:
+        return isinstance(query, exp.Union) and any(_preserves_rows(branch, origin, seen) for branch in scope.union_scopes)
+    sources = {alias: source for alias, (_, source) in scope.selected_sources.items()}
+    for alias, source in sources.items():
+        if not isinstance(source, Scope) or not _preserves_rows(source, origin, seen):
+            continue
+        preserved = True
+        for join in query.args.get("joins") or []:
+            joined_alias = join.this.alias_or_name
+            if joined_alias == alias:
+                preserved = join.side in {"RIGHT", "FULL"}
+            elif preserved:
+                other = sources.get(joined_alias)
+                scalar = (isinstance(other, Scope) and _scalar_aggregate(other)
+                          and not join.args.get("on") and not join.args.get("using"))
+                preserved = join.side in {"LEFT", "FULL"} or scalar
+        if preserved:
+            return True
+    return False
+
+
+def _number(value: exp.Expression | None, number: float) -> bool:
+    return isinstance(value, exp.Literal) and value.is_number and float(value.this) == number
+
+
+def _without_zero_coalesce(value: exp.Expression) -> exp.Expression:
+    while isinstance(value, (exp.Alias, exp.Paren)):
+        value = value.this
+    if isinstance(value, exp.Coalesce) and len(value.expressions) == 1 and _number(value.expressions[0], 0):
+        return _without_zero_coalesce(value.this)
+    return value
+
+
+def _rate_value_matches(value: exp.Expression, scope: Scope, metric: exp.Expression, root: Scope) -> bool:
+    def branches(node, owner, seen=frozenset()):
+        node, owner, _ = _resolve_projection(node, owner)
+        unwrapped = _without_zero_coalesce(node)
+        if unwrapped is not node:
+            yield from branches(unwrapped, owner, seen)
+            return
+        marker = (id(owner), id(node))
+        if marker in seen:
+            return
+        source = _source(owner, node) if isinstance(node, exp.Column) else None
+        if isinstance(source, Scope) and source.union_scopes:
+            names = list(_outputs(source) or {})
+            if node.name in names:
+                index = names.index(node.name)
+                for branch in source.union_scopes:
+                    outputs = list((_outputs(branch) or {}).values())
+                    if index < len(outputs):
+                        yield from branches(outputs[index], branch, seen | {marker})
+        else:
+            yield node, owner
+    return any(_same_value(a, a_scope, b, b_scope)
+               for a, a_scope in branches(value, scope) for b, b_scope in branches(metric, root))
+
+
+def _safe_rate_division(fraction: exp.Div, scope: Scope) -> bool:
+    denominator = fraction.expression
+    if isinstance(denominator, exp.Nullif) and _number(denominator.expression, 0):
+        return True
+    # CASE is safe only when this division's own denominator is guarded and zero yields NULL.
+    branch = fraction.parent
+    while branch is not None and not isinstance(branch, (exp.Select, exp.Case)):
+        branch = branch.parent
+    if not isinstance(branch, exp.Case) or branch.this is not None:
+        return False
+    arms = branch.args.get("ifs") or []
+    if len(arms) != 1:
+        return False
+    arm = arms[0]
+    predicate = arm.this
+    if not isinstance(predicate, (exp.EQ, exp.NEQ, exp.GT, exp.LT)):
+        return False
+    left, right = predicate.this, predicate.expression
+    if _number(left, 0):
+        left, right = right, left
+        operator = {exp.GT: exp.LT, exp.LT: exp.GT}.get(type(predicate), type(predicate))
+    else:
+        operator = type(predicate)
+    if not _number(right, 0) or not _same_value(left, scope, denominator, scope):
+        return False
+    positive = arm.args.get("true")
+    negative = branch.args.get("default")
+    if operator is exp.EQ:
+        positive, negative = negative, positive
+    elif operator not in {exp.GT, exp.NEQ}:
+        return False
+    return (isinstance(negative, exp.Null) and positive is not None
+            and any(node is fraction for node in positive.walk()))
+
+
+def _effective_rate_valid(output: exp.Expression | None, root: Scope, outputs: dict) -> bool:
+    if output is None:
+        return False
+    fractions = list(_metric_nodes(output, root, exp.Div))
+    if not fractions:
+        return False
+    for fraction, scope in fractions:
+        numerator, denominator = fraction.this, fraction.expression
+        if isinstance(denominator, exp.Nullif):
+            denominator = denominator.this
+        if not isinstance(numerator, exp.Mul) or not _safe_rate_division(fraction, scope):
+            return False
+        a, b = numerator.this, numerator.expression
+        if _number(a, 100):
+            a, b = b, a
+        if (not _number(b, 100)
+                or not _rate_value_matches(a, scope, outputs["effective_touch_count"], root)
+                or not _rate_value_matches(denominator, scope, outputs["total_touch_count"], root)):
+            return False
+    return True
+
+
 def _touch_metric_issues(scopes: list[Scope], matches: list[Scope], groups: list[dict]) -> list[str]:
     issues = []
     root = scopes[-1]
@@ -319,33 +598,24 @@ def _touch_metric_issues(scopes: list[Scope], matches: list[Scope], groups: list
             if (not isinstance(distinct, exp.Distinct) or len(distinct.expressions) != 1
                     or _column_names(distinct) != {key}):
                 issues.append(f"归因 {metric} 必须 COUNT(DISTINCT {key})，同一触点多次归因仍只计一次。")
+            if metric == "effective_entity_count" and not _entity_count_uses_touch(count, owner, matches):
+                issues.append("归因有效用户必须来自触点侧；使用目标侧主体时，必须在计数前排除未匹配触点的记录。")
             matched = _depends_on_match(owner, matches)
             if metric == "total_touch_count" and matched:
                 issues.append("归因总触发数必须从关联目标前的触点全集统计，不能只统计匹配成功或获选触点。")
             elif metric != "total_touch_count" and not matched:
                 issues.append(f"归因 {metric} 必须来自实际获选触点，不能直接使用触点全集。")
-    # Preserve the full touch dimension set when attaching matched contributions.
-    for scope in scopes:
-        output = (_outputs(scope) or {}).get("total_touch_count")
-        if output is None:
-            continue
-        for column in output.find_all(exp.Column):
-            source = _source(scope, column)
-            if not isinstance(source, Scope) or _depends_on_match(source, matches):
-                continue
-            for join in scope.expression.args.get("joins") or []:
-                joined = scope.selected_sources.get(join.this.alias_or_name)
-                if joined and isinstance(joined[1], Scope) and _depends_on_match(joined[1], matches):
-                    if join.side not in {"LEFT", "FULL"}:
-                        issues.append("归因结果必须保留触点全集的零贡献行，触点统计关联贡献统计时应使用 LEFT JOIN 或 FULL JOIN。")
+            if metric == "total_touch_count" and not _preserves_rows(root, owner):
+                issues.append("归因结果必须保留触点全集的零贡献行：以触点统计 LEFT JOIN 贡献统计，再 UNION ALL 直接转化；不能以贡献统计为主表。")
     effective_rate = outputs.get("effective_touch_rate")
-    fractions = list(_metric_nodes(effective_rate, root, exp.Div)) if effective_rate is not None else []
-    if not fractions or any(not {"effective_touch_count", "total_touch_count"}.issubset(_column_names(fraction))
-                            or not fraction.expression.find(exp.Nullif) for fraction, _ in fractions):
-        issues.append("归因有效触发率必须为 effective_touch_count * 100.0 / NULLIF(total_touch_count, 0)。")
+    if not {"effective_touch_count", "total_touch_count"}.issubset(outputs) or not _effective_rate_valid(effective_rate, root, outputs):
+        issues.append("归因有效触发率必须为 effective_touch_count * 100.0 / total_touch_count，分母为零时用 NULLIF 或等价 CASE 返回 NULL。")
     contribution = outputs.get("contribution_rate")
     expected = {f"group_{index + 1}" for index, group in enumerate(groups) if group.get("attributionSide") != "touch"}
     if contribution is not None:
+        fractions = list(_metric_nodes(contribution, root, exp.Div))
+        if not fractions or any(not _safe_rate_division(fraction, owner) for fraction, owner in fractions):
+            issues.append("归因贡献度必须在分母为零时用 NULLIF 或等价 CASE 返回 NULL。")
         for window, _ in _metric_nodes(contribution, root, exp.Window):
             if isinstance(window.this, exp.Sum):
                 keys = set().union(*(_column_names(key) for key in window.args.get("partition_by") or []))
@@ -424,8 +694,8 @@ def attribution_structure_issues(statement: exp.Expression, config: dict, groups
         scope = next(scope for scope in matching_scopes if scope.expression is select)
         outputs = _outputs(scope) or {}
         output_names = {item.alias_or_name for item in select.selects}
-        if not {"target_id", "touch_id", "entity_id", "target_time", "target_value", "target_date", "touch_date"}.issubset(output_names):
-            issues.append("归因匹配层必须保留目标值、事件时间和自然日字段，供后续权重计算使用。")
+        if not {"target_id", "touch_id", "target_time", "touch_time", "target_value"}.issubset(output_names):
+            issues.append("归因匹配层必须保留目标值、目标/触点标识和事件时间，供后续权重计算使用。")
         predicates = [join.args.get("on") for join in select.args.get("joins") or []]
         if select.args.get("where"):
             predicates.append(select.args["where"].this)
@@ -457,15 +727,6 @@ def attribution_structure_issues(statement: exp.Expression, config: dict, groups
                     physical = {column.name for column, _ in _metric_nodes(value, value_scope, exp.Column)}
                     if field_name and field_name not in physical:
                         issues.append("归因求和的 target_value 必须读取配置的目标数值属性，不能替换成次数或其他字段。")
-        entity = outputs.get("entity_id")
-        touch = outputs.get("touch_id")
-        if isinstance(entity, exp.Alias):
-            entity = entity.this
-        if isinstance(touch, exp.Alias):
-            touch = touch.this
-        if (isinstance(entity, exp.Column) and isinstance(touch, exp.Column)
-                and _source(scope, entity) is not _source(scope, touch)):
-            issues.append("归因匹配层 entity_id 必须来自触点侧，避免将直接转化目标计为有效触发用户。")
         if not any(isinstance(term, exp.EQ) and isinstance(term.this, exp.Column)
                    and isinstance(term.expression, exp.Column) and term.this.name == term.expression.name == "entity_id"
                    and _source(scope, term.this) is not _source(scope, term.expression) for term in terms):
@@ -480,10 +741,7 @@ def attribution_structure_issues(statement: exp.Expression, config: dict, groups
         if not ordered:
             issues.append("归因匹配必须强制 touch_time <= target_time，不能使用日期字段替代事件先后顺序。")
         if window.get("mode") == "same_day":
-            same_day = any(isinstance(term, exp.EQ) and (
-                isinstance(term.this, exp.Column) and isinstance(term.expression, exp.Column)
-                and {term.this.name, term.expression.name} == {"target_date", "touch_date"}
-            ) for term in terms)
+            same_day = any(_same_day_match(term, scope) for term in terms)
             if not same_day:
                 issues.append("归因当天窗口必须强制 target_date = touch_date；当天不是过去 24 小时。")
         else:

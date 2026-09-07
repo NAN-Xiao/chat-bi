@@ -2198,13 +2198,15 @@ function setBuilderAgentAdvice(value: {
   const cleanIssues = cleanBuilderAdviceItems(value.issues, 'issue')
   const actionSuggestions = fallbackBuilderConfigSuggestions()
   const cleanSuggestions = cleanBuilderAdviceItems(value.suggestions, 'suggestion')
-  const mergedSuggestions = mergeBuilderSuggestions(actionSuggestions, cleanSuggestions)
-  const issues = unique([...localIssues, ...cleanIssues]).slice(0, 3)
+  const issues = unique([...localIssues, ...cleanIssues])
+  const mergedSuggestions = issues.length
+    ? cleanSuggestions
+    : mergeBuilderSuggestions(actionSuggestions, cleanSuggestions)
   const message = cleanBuilderAdviceText(value.message)
   builderAgentAdvice.severity = value.severity || ''
   builderAgentAdvice.intent = cleanBuilderAdviceText(value.intent) || inferBuilderIntentText()
   builderAgentAdvice.message = issues.length ? issues[0] || message : message
-  builderAgentAdvice.advice = issues.length ? '照着下面改，不用在“分组项”里加时间字段。' : ''
+  builderAgentAdvice.advice = cleanBuilderAdviceText(value.advice)
   builderAgentAdvice.issues = issues
   builderAgentAdvice.suggestions = mergedSuggestions.slice(0, 5)
   builderAgentAdvice.raw = value.raw || ''
@@ -2231,9 +2233,6 @@ function cleanBuilderAdviceText(value: any) {
     .replace(/manual-dashboard-context/gi, '当前配置')
     .replace(/分析指标\s+(\d+)/g, '分析指标$1')
     .trim()
-  if (/已根据|已按|已自动|自动添加|自动应用|自动转换|已转换|SQL|UTC\+?8|系统口径|JOIN|主表|跨表/i.test(text)) {
-    return ''
-  }
   return text
 }
 
@@ -2241,6 +2240,10 @@ function shouldHideBuilderAdviceItem(text: string, type: 'issue' | 'suggestion')
   const value = String(text || '')
   if (!value.trim()) {
     return true
+  }
+  // Blocking errors must remain reviewable, including SQL/CTE/JOIN diagnostics.
+  if (type === 'issue') {
+    return false
   }
   if (/selectedFields\s*包含|已选字段\s*包含/i.test(value)) {
     return true
@@ -2258,9 +2261,6 @@ function shouldHideBuilderAdviceItem(text: string, type: 'issue' | 'suggestion')
     return true
   }
   if (type === 'suggestion' && !/(时间范围|分析指标|筛选条件|分组项|字段选|聚合选|别名填|条件选|值填|值输入框|手动填|添加|改成)/.test(value)) {
-    return true
-  }
-  if (type === 'issue' && /表格无分组维度|仅显示时间.*指标|无法按天|分组维度/i.test(value)) {
     return true
   }
   return false
@@ -8540,6 +8540,7 @@ const analysisModelFormContext = {
                 <button
                   type="button"
                   class="builder-advice-button"
+                  aria-label="查看配置 Agent 建议"
                   :class="{ warning: builderAgentAdvice.severity === 'warning' }"
                   @click="builderAgentAdvice.visible = true"
                 >
