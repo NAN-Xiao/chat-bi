@@ -4042,8 +4042,6 @@ def _attribution_sql_result_issues(
     issues = [f"归因 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
     if not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
         issues.append("归因 SQL 必须按目标事件去重统计 target_count。")
-    if not re.search(r"\bnullif\s*\(", normalized_sql):
-        issues.append("归因 SQL 的线性权重或贡献占比必须使用 NULLIF 保护分母。")
     attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
     method = str(attribution.get("method") or "linear").strip().lower()
     if method == "linear" and not re.search(r"(?:1(?:\.0)?\s*/|/\s*nullif|linear_weight|touch_count)", normalized_sql):
@@ -4323,6 +4321,14 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "aggregated AS (...按配置 groups、attribution_event 汇总目标数和 target_value * linear_weight...),\n"
             "当配置 groups 非空时，最终 SELECT 必须先输出 group_1...group_N，并按相同 groups 与 attribution_event 分组；无 groups 时仅按 attribution_event 分组。\n"
             "在贡献汇总之外单独计算 touches_total 和 effective_touches，再以完整触点类型/分组集合关联贡献；最终输出完整 result_contract.required_columns，贡献度分母仅按目标侧分组，不能按触点侧分组。\n"
+            "匹配层建议明确使用触点侧主体：tc.entity_id AS entity_id。若使用目标侧主体，effective_touches 必须先 WHERE touch_id IS NOT NULL，再 COUNT(DISTINCT entity_id)，直接转化不可计入有效用户。\n"
+            "first/last 的 selected_touches 必须先在匹配明细中按 target_id 做 ROW_NUMBER()，然后在外层 WHERE touch_rank = 1 AND touch_id IS NOT NULL，获选记录的 linear_weight=1.0。不能只 CASE WHEN touch_rank=1 THEN 1 ELSE 0 END 而保留其余记录，否则有效触点数和目标次数会把未获选记录也统计进去。contributions 与 effective_touches 都只能读取 selected_touches；无匹配目标单独计算直接转化。\n"
+            "所有 UNION ALL 分支及其中间查询必须显式列出同序字段，避免 SELECT * 使结果列来源不明确。\n"
+            "结果组装必须遵循以下完整集合结构，不能从 contributions 或有效触点开始：\n"
+            "touches_total AS (SELECT <触点类型及配置分组>, COUNT(DISTINCT touch_id) AS total_touch_count FROM touches GROUP BY <相同键>),\n"
+            "touch_results AS (SELECT <触点统计中的类型及分组>, COALESCE(c.target_count,0) AS target_count, s.total_touch_count, COALESCE(e.effective_touch_count,0) AS effective_touch_count, COALESCE(e.effective_entity_count,0) AS effective_entity_count, COALESCE(c.attributed_value,0) AS attributed_value FROM touches_total s LEFT JOIN contributions c ON <完整键匹配> LEFT JOIN effective_touches e ON <完整键匹配>),\n"
+            "complete AS (SELECT <逐项列出同序字段> FROM touch_results UNION ALL SELECT <直接转化类型及分组>, COUNT(DISTINCT target_id), 0, 0, 0, SUM(target_value) FROM <无匹配触点的目标明细> <按配置分组；仅 includeDirect=true 添加此分支>),\n"
+            "最终从 complete 计算有效触发率和贡献度。直接转化必须输出完整目标值，不能只保留其名称后再关联不含直接转化的 contributions。所有触点均未匹配目标时仍必须显示其总触发数及零贡献，不能丢行。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；触点只能发生在目标之前或同一时刻，且每个目标的线性权重之和必须为 1。\n"
             "count 的 target_value=1；权重仅为分配比例，不得先在权重中乘 target_value 后又重复相乘。贡献率必须在汇总 attributed_value 后的外层 SELECT 计算。\n"
             + "\n".join(ATTRIBUTION_RULES) + "\n"
