@@ -5853,6 +5853,8 @@ function builderAgentBlockingIssues(result: any) {
   return unique([...localAdvice.issues, ...resultBlockingIssueItems(result)])
 }
 
+const builderSqlGenerationFailureMessage = '生成失败 请重新计算生成'
+
 function stopBuilderExecutionWithAdvice(result: any, generatedSql = '') {
   const localAdvice = collectLocalBuilderConfigIssues()
   const blockingIssues = unique([...localAdvice.issues, ...resultBlockingIssueItems(result)])
@@ -5873,9 +5875,7 @@ function stopBuilderExecutionWithAdvice(result: any, generatedSql = '') {
   if (generatedSql && sqlBuilder.activeTab === 'sql') {
     form.sql = generatedSql
   }
-  ElMessage.warning(
-    blockingIssues[0] || result?.message || '配置 Agent 发现问题，已停止执行，请查看提示建议'
-  )
+  ElMessage.warning(builderSqlGenerationFailureMessage)
 }
 
 function showLocalBuilderAgentAdvice() {
@@ -6050,7 +6050,7 @@ async function generateBuilderAiSql() {
         ? localAdvice.suggestions
         : sqlBuilder.metricItems.map((item, index) => describeBuilderMetricConfig(item, index)),
     })
-    ElMessage.warning(`${message}，请查看提示建议`)
+    ElMessage.warning(builderSqlGenerationFailureMessage)
     return false
   } finally {
     clearBuilderLoading()
@@ -6208,7 +6208,7 @@ async function generateBuilderAiSql() {
   if (result.success) {
     ElMessage.success('已生成 SQL')
   } else {
-    ElMessage.warning(result.message || 'AI 生成的 SQL 需要调整，已放入 SQL 明细')
+    ElMessage.warning(builderSqlGenerationFailureMessage)
   }
   await previewAndPersistBuilderDraft()
   return result.success !== false
