@@ -3231,7 +3231,7 @@ def _dashboard_config_prompt(
         "</data-skill>",
         "",
         "<tracking-config>",
-        _trim_text(tracking_config, 8000),
+        tracking_config,
         "</tracking-config>",
         "",
         "当前工作空间 <tracking-config> 中的 SQL 约束是生成 SQL 的强制规则；涉及物理表固定筛选时，必须直接写入该物理表所在查询块的 WHERE 或 JOIN ON，不得使用 SELECT * 派生表包裹代替。",
