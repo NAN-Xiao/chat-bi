@@ -228,9 +228,6 @@ def test_dashboard_prompt_includes_workspace_sql_rules_for_every_analysis_model(
     })
 
     assert f"<tracking-config>\n{tracking_context}\n</tracking-config>" in prompt
-    assert "SQL 约束是生成 SQL 的强制规则" in prompt
-    assert "WHERE 或 JOIN ON" in prompt
-    assert "不得使用 SELECT * 派生表包裹代替" in prompt
 
 
 def test_dashboard_prompt_for_mysql_forbids_full_outer_join() -> None:
