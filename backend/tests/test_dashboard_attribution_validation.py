@@ -85,7 +85,10 @@ def test_duration_executes_across_month_boundary_with_earlier_touch():
                 ])
             return node
         sqlite_query = sqlglot.parse_one(query, read="mysql").transform(sqlite_interval).sql(dialect="sqlite")
-        assert db.execute(sqlite_query).fetchall() == [("email", 1, 1.0, 100.0)]
+        assert db.execute(sqlite_query).fetchall() == [
+            ("email", 1, 1.0, 100.0, 1, 1, 100.0, 1),
+            ("search", 0, 0, 0.0, 1, 0, 0.0, 0),
+        ]
 
 
 def test_revenue_lineage_failure_reports_missing_column():
@@ -154,7 +157,7 @@ def test_missing_cte_field_routes_to_repair_with_accurate_issue():
 
 @pytest.mark.parametrize("method, expected", [
     ("linear", {"email": (2, 1.5), "search": (1, 0.5), "direct": (1, 1.0)}),
-    ("first", {"email": (2, 2.0), "direct": (1, 1.0)}),
+    ("first", {"email": (2, 2.0), "search": (0, 0), "direct": (1, 1.0)}),
     ("last", {"email": (1, 1.0), "search": (1, 1.0), "direct": (1, 1.0)}),
 ])
 @pytest.mark.parametrize("include_direct", [True, False])

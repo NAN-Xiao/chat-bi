@@ -33,6 +33,7 @@ from apps.dashboard.crud.sql_generation_validation import (
     derived_column_issues,
     encoded_date_issues,
 )
+from apps.dashboard.crud.attribution_rules import ATTRIBUTION_METRIC_COLUMNS, ATTRIBUTION_RULES
 from apps.dashboard.models.dashboard_model import (
     DashboardAiSqlGenerateRequest,
     DashboardAiSqlGenerateResponse,
@@ -280,8 +281,7 @@ def _analysis_result_display_names(
             **group_names,
             "attribution_event": "归因事件",
             "target_count": "目标事件数",
-            "attributed_value": "归因值",
-            "contribution_rate": "贡献率",
+            **ATTRIBUTION_METRIC_COLUMNS,
         }
 
     if analysis_model == "ranking":
@@ -1800,6 +1800,9 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
     ))
     for event_item in _list_dict_items(attribution.get("events")):
         attribution_fields.append(event_item.get("event"))
+        related = event_item.get("relatedProperty") or {}
+        if related.get("enabled") is True:
+            attribution_fields.extend([related.get("targetProperty"), related.get("touchProperty")])
         attribution_fields.extend(_iter_filter_rule_fields(event_item.get("filters")))
     for field in attribution_fields:
         table_name = _field_table_name(field)
@@ -2537,8 +2540,8 @@ def _deterministic_validate_manual_config(
             issues.append("归因分析请至少选择一个归因事件。")
         if len(attribution_events) > ATTRIBUTION_EVENT_LIMIT:
             issues.append(f"归因分析最多支持 {ATTRIBUTION_EVENT_LIMIT} 个归因事件。")
-        if target_aggregation not in {"count", "sum", "avg", "max", "min", "count_distinct"}:
-            issues.append(f"归因分析使用了不支持的目标指标聚合方式：{target_aggregation}。")
+        if target_aggregation not in {"count", "sum"}:
+            issues.append("归因目标指标必须可逐事件分配，请选择总次数或数值属性求和；去重用户数应查看有效触发用户数，不能作为目标次数计算。")
         if target_aggregation != "count" and not _field_has_resolvable_reference(target_metric_field):
             issues.append("目标事件使用非次数聚合时，请选择计算字段。")
         if target_aggregation in {"sum", "avg", "max", "min"} and target_metric_field and _field_is_known_non_numeric(target_metric_field):
@@ -2557,6 +2560,16 @@ def _deterministic_validate_manual_config(
             issues.extend(_field_schema_permission_issues(field, label, allowed_fields_by_table))
 
         target_event_name = _tracking_event_name_from_field(target_event)
+        for index, group in enumerate(_list_dict_items(normalized_config.get("groups"))):
+            side = group.get("attributionSide")
+            if side not in {None, "", "target", "touch"}:
+                issues.append(f"归因分组{index + 1}的 attributionSide 配置无效。")
+            group_event = _tracking_event_name_from_field(group)
+            allowed_events = ({target_event_name} if side in {None, "", "target"} else {
+                _tracking_event_name_from_field(item.get("event")) for item in attribution_events
+            })
+            if group_event and group_event not in allowed_events:
+                issues.append(f"归因分组{index + 1}的字段不属于所选来源侧事件。")
         metric_event_name = _tracking_event_name_from_field(target_metric_field)
         if target_metric_field and metric_event_name and target_event_name and metric_event_name != target_event_name:
             issues.append("归因分析目标指标字段不属于当前目标事件。")
@@ -2582,6 +2595,19 @@ def _deterministic_validate_manual_config(
             issues.extend(_field_table_permission_issues(event, label, allowed_tables))
             issues.extend(_field_schema_permission_issues(event, label, allowed_fields_by_table))
             event_name = _tracking_event_name_from_field(event)
+            related = event_item.get("relatedProperty") or {}
+            if related.get("enabled") is True:
+                for key, expected_event in (("targetProperty", target_event_name), ("touchProperty", event_name)):
+                    field = related.get(key)
+                    related_label = f"{label}关联属性{key}"
+                    if not _field_has_resolvable_reference(field):
+                        issues.append(f"{related_label}请选择字段。")
+                    issues.extend(_json_subfield_mapping_issues(field, related_label))
+                    issues.extend(_field_table_permission_issues(field, related_label, allowed_tables))
+                    issues.extend(_field_schema_permission_issues(field, related_label, allowed_fields_by_table))
+                    field_event = _tracking_event_name_from_field(field)
+                    if field_event and field_event != expected_event:
+                        issues.append(f"{related_label}不属于对应事件。")
             for filter_index, filter_field in enumerate(_iter_filter_rule_fields(event_item.get("filters"))):
                 filter_label = f"{label}筛选{filter_index + 1}"
                 issues.extend(_json_subfield_mapping_issues(filter_field, filter_label))
@@ -2840,8 +2866,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
                 *[f"group_{index + 1}" for index, _ in enumerate(groups)],
                 "attribution_event",
                 "target_count",
-                "attributed_value",
-                "contribution_rate",
+                *ATTRIBUTION_METRIC_COLUMNS,
             ],
             "method": str(attribution.get("method") or "linear").strip().lower()
             if str(attribution.get("method") or "linear").strip().lower() in {"first", "last", "linear"}
@@ -2849,7 +2874,12 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "window_mode": window["mode"],
             "window_seconds": None if window.get("mode") == "same_day" else window_value * ATTRIBUTION_WINDOW_UNIT_SECONDS.get(window_unit, 0),
             "target_grain": "one_row_per_target_event",
-            "match_columns": ["target_id", "target_time", "target_date", "touch_time", "touch_date", "target_value"],
+            "touch_grain": "one_row_per_touch_event",
+            "target_metric": attribution.get("targetMetric") or {"aggregation": "count"},
+            "calculation_range": "start_of_first_day" if window["mode"] == "same_day" else "target_start_minus_window",
+            "target_group_fields": [f"group_{index + 1}" for index, group in enumerate(groups) if group.get("attributionSide") != "touch"],
+            "touch_group_fields": [f"group_{index + 1}" for index, group in enumerate(groups) if group.get("attributionSide") == "touch"],
+            "match_columns": ["target_id", "touch_id", "entity_id", "target_time", "target_date", "touch_time", "touch_date", "target_value"],
             "final_grain": [
                 *[f"group_{index + 1}" for index, _ in enumerate(groups)],
                 "attribution_event",
@@ -3094,8 +3124,9 @@ def _dashboard_config_prompt(
             "归因窗口 mode=same_day 时只匹配目标事件所在自然日内且发生在目标事件之前的触点；不得用 target_date - INTERVAL 表达当天。mode=duration 时才按 value 和 unit 的精确时长回溯。目标事件之后的触点、窗口之外的触点以及其他未配置事件不得参与归因。",
             "每个 attribution.events[i].filters 只应用于该归因事件；事件与筛选不得交换。",
             "includeDirect=true 时，没有匹配归因事件的目标转化归入 attribution_event='直接转化'；false 时必须排除这些目标转化。",
-            "最终结果固定输出 attribution_event、target_count、attributed_value、contribution_rate；target_count 是获得归因贡献的目标事件数，attributed_value 按所选归因方式分配目标值，contribution_rate 是 attributed_value 占全部已归因目标值的比例并使用 NULLIF 保护分母。",
+            "最终结果固定输出 attribution_event、target_count、total_touch_count、effective_touch_count、effective_touch_rate、effective_entity_count、attributed_value、contribution_rate；target_count 是获得归因贡献的目标事件数，触发指标按 touch_id 与触点主体去重，贡献度使用 NULLIF 保护分母。",
             f"当前归因事件数量：{len(attribution_events)}；归因窗口：{_safe_json(attribution.get('window'))}；直接转化：{attribution.get('includeDirect') is True}。",
+            *ATTRIBUTION_RULES,
             "最终返回 chart_type 必须为 table。",
         ]
     funnel = dict(context.get("funnel") or {}) if isinstance(context.get("funnel"), dict) else {}
@@ -4004,8 +4035,7 @@ def _attribution_sql_result_issues(
         *[f"group_{index + 1}" for index, _ in enumerate(groups)],
         "attribution_event",
         "target_count",
-        "attributed_value",
-        "contribution_rate",
+        *ATTRIBUTION_METRIC_COLUMNS,
     ]
     normalized_sql = str(sql or "").lower()
     missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
@@ -4022,7 +4052,10 @@ def _attribution_sql_result_issues(
     if not statements:
         issues.append("归因 SQL 无法按当前数据源方言解析，请修复语法后重新校验。")
     for statement in statements:
-        issues.extend(attribution_structure_issues(statement, attribution))
+        missing_outputs = set(required_aliases) - {item.alias_or_name for item in statement.selects}
+        if missing_outputs:
+            issues.append(f"归因 SQL 最终 SELECT 缺少结果列：{'、'.join(sorted(missing_outputs))}。")
+        issues.extend(attribution_structure_issues(statement, attribution, groups))
     return _unique_text_items(issues)
 
 
@@ -4282,17 +4315,17 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "WITH targets AS (...仅保留目标事件，输出 target_id、entity_id、target_time、target_date、target_value，并应用目标事件筛选...),\n"
             "target_id 优先使用元数据确认的事件唯一键；没有唯一键时，在目标明细筛选后、触点关联前使用无 PARTITION BY 的 ROW_NUMBER() 标识查询内每条目标记录，ORDER BY 使用已授权的主体和事件时间字段，不得去重或聚合明细。该编号只用于本次查询。\n"
             "target_time/touch_time 必须使用元数据确认的事件时间字段，精确时长运算前按声明的时间戳单位解析为 TIMESTAMP；时间单位或时区语义不足时返回 success=false 并说明缺少配置，不得猜测。target_date/touch_date 表示配置时区的自然日。\n"
-            "touches AS (...仅保留配置的归因事件，输出 entity_id、touch_time、touch_date、attribution_event，并应用各自筛选；duration 必须把触点扫描起点向前扩展窗口时长，不能仅扫描目标日期范围...),\n"
-            "matched AS (...必须输出 target_id、target_time、target_date、touch_time、touch_date、target_value；同一主体且 touch_time <= target_time；same_day 必须 target_date = touch_date，duration 才按已转换的 TIMESTAMP 做精确时长判断...),\n"
+            "touches AS (...仅保留配置的归因事件，输出 touch_id、entity_id、touch_time、touch_date、attribution_event，并应用各自筛选；duration 必须把触点扫描起点向前扩展窗口时长，不能仅扫描目标日期范围...),\n"
+            "matched AS (...必须输出 target_id、touch_id、entity_id、target_time、target_date、touch_time、touch_date、target_value；同一主体且 touch_time <= target_time；same_day 必须 target_date = touch_date，duration 才按已转换的 TIMESTAMP 做精确时长判断...),\n"
             "weighted AS (...按 target_id 分区选择最早触点、最晚触点或计算匹配触点数并以 linear_weight=1.0/NULLIF(touch_count, 0) 等分；必须继续输出 target_value；按 includeDirect 处理无触点目标...),\n"
+            "线性触点计数允许 COUNT(touch_time) OVER (PARTITION BY target_id)，也允许单独按 target_id GROUP BY 计数后按该完整键关联回明细；分母可以内联窗口表达式或引用计数字段，不要求固定中间别名。COUNT(*) 仅用于已排除空触点的匹配明细，LEFT JOIN 保留无触点目标时使用 COUNT(touch_time)。\n"
+            "窗口条件应在目标与触点首次匹配的关联层应用；后续关联触点计数表沿用匹配结果，不重复匹配触点。UNION ALL 必须逐列输出相同数量和顺序的字段，不得 SELECT * 合并结构不同的分支。\n"
             "aggregated AS (...按配置 groups、attribution_event 汇总目标数和 target_value * linear_weight...),\n"
             "当配置 groups 非空时，最终 SELECT 必须先输出 group_1...group_N，并按相同 groups 与 attribution_event 分组；无 groups 时仅按 attribution_event 分组。\n"
-            "SELECT attribution_event, COUNT(DISTINCT target_id) AS target_count,\n"
-            "       SUM(weighted_target_value) AS attributed_value,\n"
-            "       ROUND(SUM(weighted_target_value) * 100.0 / NULLIF(SUM(SUM(weighted_target_value)) OVER (PARTITION BY <configured_groups>), 0), 2) AS contribution_rate\n"
-            "FROM weighted GROUP BY <configured_groups>, attribution_event ORDER BY <configured_groups>, attributed_value DESC。\n"
+            "在贡献汇总之外单独计算 touches_total 和 effective_touches，再以完整触点类型/分组集合关联贡献；最终输出完整 result_contract.required_columns，贡献度分母仅按目标侧分组，不能按触点侧分组。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；触点只能发生在目标之前或同一时刻，且每个目标的线性权重之和必须为 1。\n"
             "count 的 target_value=1；权重仅为分配比例，不得先在权重中乘 target_value 后又重复相乘。贡献率必须在汇总 attributed_value 后的外层 SELECT 计算。\n"
+            + "\n".join(ATTRIBUTION_RULES) + "\n"
         )
     else:
         structure_prompt = (
@@ -5136,6 +5169,10 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "group_fields": [f"group_{index + 1}" for index, _ in enumerate(groups)],
             "event_field": "attribution_event",
             "target_count_field": "target_count",
+            "total_touch_count_field": "total_touch_count",
+            "effective_touch_count_field": "effective_touch_count",
+            "effective_touch_rate_field": "effective_touch_rate",
+            "effective_entity_count_field": "effective_entity_count",
             "attributed_value_field": "attributed_value",
             "contribution_rate_field": "contribution_rate",
             "method": str(attribution.get("method") or "linear").strip().lower()
