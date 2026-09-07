@@ -3742,12 +3742,20 @@ function builderBlockingScopeIssues() {
   ].filter(Boolean))
 }
 
+function preferredAnalysisEntityField(options: SchemaFieldOption[]) {
+  const scope = eventFieldScope.value
+  return preferredBuilderEntityField(options, scope.status === 'active' ? {
+    table: scope.defaultEventTable,
+    field: String(trackingConfig.value?.default_subject_field || trackingConfig.value?.defaultSubjectField || '').trim(),
+  } : undefined)
+}
+
 function sanitizeAnalysisEntityField(
   config: { entityField: string },
   options: SchemaFieldOption[],
 ) {
   if (!config.entityField) {
-    config.entityField = preferredBuilderEntityField(options)
+    config.entityField = preferredAnalysisEntityField(options)
     return false
   }
   if (optionExists(config.entityField, options)) {
@@ -3758,7 +3766,7 @@ function sanitizeAnalysisEntityField(
 }
 
 function resetRetentionConfig() {
-  sqlBuilder.retention.entityField = preferredBuilderEntityField(retentionEntityFieldOptions.value)
+  sqlBuilder.retention.entityField = preferredAnalysisEntityField(retentionEntityFieldOptions.value)
   sqlBuilder.retention.initialEvent = ''
   sqlBuilder.retention.initialEventAlias = ''
   sqlBuilder.retention.initialEventFilterLogic = 'and'
@@ -3810,7 +3818,7 @@ function restoreFunnelRelatedProperty(funnel: any, legacySteps: any) {
 }
 
 function resetFunnelConfig() {
-  sqlBuilder.funnel.entityField = preferredBuilderEntityField(funnelEntityFieldOptions.value)
+  sqlBuilder.funnel.entityField = preferredAnalysisEntityField(funnelEntityFieldOptions.value)
   sqlBuilder.funnel.steps = [createFunnelStep(), createFunnelStep(), createFunnelStep()]
   sqlBuilder.funnel.window = { ...DEFAULT_FUNNEL_WINDOW }
   sqlBuilder.funnel.relatedPropertyEnabled = false
@@ -3826,7 +3834,7 @@ function resetFunnelConfig() {
 }
 
 function resetDistributionConfig() {
-  sqlBuilder.distribution.entityField = preferredBuilderEntityField(distributionEntityFieldOptions.value)
+  sqlBuilder.distribution.entityField = preferredAnalysisEntityField(distributionEntityFieldOptions.value)
   sqlBuilder.distribution.event = ''
   sqlBuilder.distribution.eventFilterLogic = 'and'
   sqlBuilder.distribution.eventFilters = []
@@ -3840,7 +3848,7 @@ function resetDistributionConfig() {
 }
 
 function resetIntervalConfig() {
-  sqlBuilder.interval.entityField = preferredBuilderEntityField(intervalEntityFieldOptions.value)
+  sqlBuilder.interval.entityField = preferredAnalysisEntityField(intervalEntityFieldOptions.value)
   sqlBuilder.interval.startEvent = ''
   sqlBuilder.interval.startEventFilterLogic = 'and'
   sqlBuilder.interval.startEventFilters = []
@@ -3862,7 +3870,7 @@ function resetPathConfig() {
 }
 
 function resetRevenueConfig() {
-  sqlBuilder.revenue.entityField = preferredBuilderEntityField(revenueEntityFieldOptions.value)
+  sqlBuilder.revenue.entityField = preferredAnalysisEntityField(revenueEntityFieldOptions.value)
   sqlBuilder.revenue.initialEvent = ''
   sqlBuilder.revenue.paymentEvent = ''
   sqlBuilder.revenue.metric = { method: 'count', field: '' }
@@ -3881,7 +3889,7 @@ function createAttributionEvent(): SqlBuilderAttributionEvent {
 }
 
 function resetAttributionConfig() {
-  sqlBuilder.attribution.entityField = preferredBuilderEntityField(attributionEntityFieldOptions.value)
+  sqlBuilder.attribution.entityField = preferredAnalysisEntityField(attributionEntityFieldOptions.value)
   sqlBuilder.attribution.method = 'linear'
   sqlBuilder.attribution.window = { ...DEFAULT_ATTRIBUTION_WINDOW }
   sqlBuilder.attribution.targetEvent = ''
@@ -3897,7 +3905,7 @@ function resetAttributionConfig() {
 }
 
 function resetRankingConfig() {
-  sqlBuilder.ranking.entityField = preferredBuilderEntityField(rankingEntityFieldOptions.value)
+  sqlBuilder.ranking.entityField = preferredAnalysisEntityField(rankingEntityFieldOptions.value)
   sqlBuilder.ranking.metric = createRankingMetric('ranking-primary-metric')
   sqlBuilder.ranking.tieHandling = 'default'
   sqlBuilder.ranking.simultaneousMetrics = []
