@@ -42,6 +42,11 @@ assert.match(
   /:global\(\.builder-field-hover-popper\)\s*\{[\s\S]*?pointer-events:\s*none/,
   '字段悬浮说明层不能拦截字段选择器的鼠标事件'
 )
+assert.doesNotMatch(
+  source,
+  /z-index\s*:|zIndex\s*:/,
+  '字段弹层必须使用组件库的动态层级，不能在多次切换模型或重开抽屉后被遮挡'
+)
 assert.match(
   source,
   /<el-popover[\s\S]*?trigger="manual"[\s\S]*?>[\s\S]*?class="builder-field-picker-trigger"[\s\S]*?@click\.stop="visible = !visible"[\s\S]*?>/,

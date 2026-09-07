@@ -300,7 +300,6 @@ watch(
     trigger="manual"
     placement="bottom-start"
     popper-class="builder-field-picker-popper"
-    :popper-style="{ zIndex: 5001 }"
     :disabled="disabled"
   >
     <template #reference>
@@ -351,7 +350,6 @@ watch(
               :hide-after="0"
               width="260"
               popper-class="builder-field-hover-popper"
-              :popper-style="{ zIndex: 5002 }"
             >
               <template #reference>
                 <button
@@ -407,7 +405,6 @@ watch(
                   :hide-after="0"
                   width="260"
                   popper-class="builder-field-hover-popper"
-                  :popper-style="{ zIndex: 5002 }"
                 >
                   <template #reference>
                     <button
@@ -761,13 +758,7 @@ watch(
   font-size: 12px;
 }
 
-:global(.builder-field-picker-popper),
 :global(.builder-field-hover-popper) {
-  z-index: 5001 !important;
-}
-
-:global(.builder-field-hover-popper) {
-  z-index: 5002 !important;
   /* Hover cards are informational; never let a stale teleported card block the picker. */
   pointer-events: none;
 }
