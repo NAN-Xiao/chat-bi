@@ -619,7 +619,7 @@ const {
                     mode="property"
                     placeholder="选择排行主体"
                   />
-                  <span>进行排名</span>
+                  <span>按指标排名</span>
                 </div>
               </div>
 
