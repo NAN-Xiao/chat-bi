@@ -28,6 +28,11 @@ from apps.dashboard.crud.dashboard_date_filter import (
     dashboard_date_parameter_tokens,
     validate_dashboard_date_parameter_sql,
 )
+from apps.dashboard.crud.sql_generation_validation import (
+    attribution_structure_issues,
+    derived_column_issues,
+    encoded_date_issues,
+)
 from apps.dashboard.models.dashboard_model import (
     DashboardAiSqlGenerateRequest,
     DashboardAiSqlGenerateResponse,
@@ -2516,7 +2521,8 @@ def _deterministic_validate_manual_config(
         if method not in {"first", "last", "linear"}:
             issues.append("归因分析使用了不支持的归因方式。")
         if window_mode == "same_day":
-            window_seconds = 24 * 60 * 60
+            # same_day is a calendar-day constraint, not a rolling 24-hour window.
+            window_seconds = 0
         elif window_mode != "duration" or window_unit not in ATTRIBUTION_WINDOW_UNIT_SECONDS:
             issues.append("归因分析窗口期配置无效。")
         elif window_seconds < 60 or window_seconds > ATTRIBUTION_WINDOW_MAX_SECONDS:
@@ -2840,7 +2846,10 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "method": str(attribution.get("method") or "linear").strip().lower()
             if str(attribution.get("method") or "linear").strip().lower() in {"first", "last", "linear"}
             else "linear",
-            "window_seconds": 24 * 60 * 60 if window.get("mode") == "same_day" else window_value * ATTRIBUTION_WINDOW_UNIT_SECONDS.get(window_unit, 0),
+            "window_mode": window["mode"],
+            "window_seconds": None if window.get("mode") == "same_day" else window_value * ATTRIBUTION_WINDOW_UNIT_SECONDS.get(window_unit, 0),
+            "target_grain": "one_row_per_target_event",
+            "match_columns": ["target_id", "target_time", "target_date", "touch_time", "touch_date", "target_value"],
             "final_grain": [
                 *[f"group_{index + 1}" for index, _ in enumerate(groups)],
                 "attribution_event",
@@ -3082,7 +3091,7 @@ def _dashboard_config_prompt(
             "当前 analysisModel=attribution，只能使用 attribution 配置生成归因查询；不得读取或套用事件、留存、漏斗、分布、间隔或路径模型的指标语义。",
             "归因方式由 attribution.method 决定：首次归因（first）只保留每个目标最早匹配触点，末次归因（last）只保留最晚匹配触点，线性归因（linear）在所有匹配触点之间等分贡献。",
             "目标事件必须使用 attribution.targetEvent，目标值必须严格按 targetMetric.aggregation 和 targetMetric.metricField 计算；targetEventFilters 只应用于目标事件明细。",
-            "归因窗口 mode=same_day 时只匹配目标事件所在自然日内且发生在目标事件之前的触点；mode=duration 时按 value 和 unit 的精确时长回溯。目标事件之后的触点、窗口之外的触点以及其他未配置事件不得参与归因。",
+            "归因窗口 mode=same_day 时只匹配目标事件所在自然日内且发生在目标事件之前的触点；不得用 target_date - INTERVAL 表达当天。mode=duration 时才按 value 和 unit 的精确时长回溯。目标事件之后的触点、窗口之外的触点以及其他未配置事件不得参与归因。",
             "每个 attribution.events[i].filters 只应用于该归因事件；事件与筛选不得交换。",
             "includeDirect=true 时，没有匹配归因事件的目标转化归入 attribution_event='直接转化'；false 时必须排除这些目标转化。",
             "最终结果固定输出 attribution_event、target_count、attributed_value、contribution_rate；target_count 是获得归因贡献的目标事件数，attributed_value 按所选归因方式分配目标值，contribution_rate 是 attributed_value 占全部已归因目标值的比例并使用 NULLIF 保护分母。",
@@ -3927,8 +3936,8 @@ def _revenue_date_output_issues(
             continue
         try:
             output_lineage = build_sql_lineage("cohort_date", statement)
-        except sqlglot.errors.SqlglotError:
-            continue
+        except sqlglot.errors.SqlglotError as exc:
+            return [f"收入 SQL 的字段来源无法解析：{exc}。请检查 CTE 输出字段，不能据此判断日期转换缺失。"]
         if any(
             isinstance(node, exp.StrToDate)
             for lineage_node in output_lineage.walk()
@@ -3985,6 +3994,8 @@ def _revenue_sql_result_issues(
 def _attribution_sql_result_issues(
         sql: str,
         normalized_config: dict[str, Any],
+        *,
+        sql_dialect: str | None = None,
 ) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "attribution":
         return []
@@ -4007,6 +4018,11 @@ def _attribution_sql_result_issues(
     method = str(attribution.get("method") or "linear").strip().lower()
     if method == "linear" and not re.search(r"(?:1(?:\.0)?\s*/|/\s*nullif|linear_weight|touch_count)", normalized_sql):
         issues.append("归因 SQL 必须按每个目标的匹配触点数计算线性归因权重。")
+    statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+    if not statements:
+        issues.append("归因 SQL 无法按当前数据源方言解析，请修复语法后重新校验。")
+    for statement in statements:
+        issues.extend(attribution_structure_issues(statement, attribution))
     return _unique_text_items(issues)
 
 
@@ -4263,10 +4279,12 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
         structure_prompt = (
             "当前 SQL plan 的 analysis_model=attribution，必须使用归因分析专用的目标识别、窗口触点匹配、归因方式和贡献汇总结构；禁止改写成漏斗或普通事件计数。\n"
             "归因 SQL 结构范式：\n"
-            "WITH targets AS (...仅保留目标事件，输出 target_id、entity_id、target_time、target_value，并应用目标事件筛选...),\n"
-            "touches AS (...仅保留配置的归因事件，输出 entity_id、touch_time、attribution_event，并应用各自筛选...),\n"
-            "matched AS (...按同一主体连接 touch_time <= target_time 且时间差不超过配置 window_seconds 的触点...),\n"
-            "weighted AS (...按 attribution.method 选择最早触点、最晚触点或按 target_id 计算匹配触点数并以 linear_weight=1.0/NULLIF(touch_count, 0) 等分；按 includeDirect 处理无触点目标...),\n"
+            "WITH targets AS (...仅保留目标事件，输出 target_id、entity_id、target_time、target_date、target_value，并应用目标事件筛选...),\n"
+            "target_id 优先使用元数据确认的事件唯一键；没有唯一键时，在目标明细筛选后、触点关联前使用无 PARTITION BY 的 ROW_NUMBER() 标识查询内每条目标记录，ORDER BY 使用已授权的主体和事件时间字段，不得去重或聚合明细。该编号只用于本次查询。\n"
+            "target_time/touch_time 必须使用元数据确认的事件时间字段，精确时长运算前按声明的时间戳单位解析为 TIMESTAMP；时间单位或时区语义不足时返回 success=false 并说明缺少配置，不得猜测。target_date/touch_date 表示配置时区的自然日。\n"
+            "touches AS (...仅保留配置的归因事件，输出 entity_id、touch_time、touch_date、attribution_event，并应用各自筛选；duration 必须把触点扫描起点向前扩展窗口时长，不能仅扫描目标日期范围...),\n"
+            "matched AS (...必须输出 target_id、target_time、target_date、touch_time、touch_date、target_value；同一主体且 touch_time <= target_time；same_day 必须 target_date = touch_date，duration 才按已转换的 TIMESTAMP 做精确时长判断...),\n"
+            "weighted AS (...按 target_id 分区选择最早触点、最晚触点或计算匹配触点数并以 linear_weight=1.0/NULLIF(touch_count, 0) 等分；必须继续输出 target_value；按 includeDirect 处理无触点目标...),\n"
             "aggregated AS (...按配置 groups、attribution_event 汇总目标数和 target_value * linear_weight...),\n"
             "当配置 groups 非空时，最终 SELECT 必须先输出 group_1...group_N，并按相同 groups 与 attribution_event 分组；无 groups 时仅按 attribution_event 分组。\n"
             "SELECT attribution_event, COUNT(DISTINCT target_id) AS target_count,\n"
@@ -4274,6 +4292,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "       ROUND(SUM(weighted_target_value) * 100.0 / NULLIF(SUM(SUM(weighted_target_value)) OVER (PARTITION BY <configured_groups>), 0), 2) AS contribution_rate\n"
             "FROM weighted GROUP BY <configured_groups>, attribution_event ORDER BY <configured_groups>, attributed_value DESC。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；触点只能发生在目标之前或同一时刻，且每个目标的线性权重之和必须为 1。\n"
+            "count 的 target_value=1；权重仅为分配比例，不得先在权重中乘 target_value 后又重复相乘。贡献率必须在汇总 attributed_value 后的外层 SELECT 计算。\n"
         )
     else:
         structure_prompt = (
@@ -4753,6 +4772,18 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
             response.suggestions = _unique_text_items(list(response.suggestions or []) + list(response.issues or []))
             response.issues = []
 
+    structural_issues: list[str] = []
+    normalized = state.get("normalized_config") or {}
+    time_config = normalized.get("time") or {}
+    for statement in _sqlglot_statements_for_generation_validation(sql, state.get("sql_dialect") or datasource_type):
+        try:
+            structural_issues.extend(derived_column_issues(statement))
+            structural_issues.extend(encoded_date_issues(
+                statement, time_config.get("field") or {}, time_config.get("date_parameter_type") or "",
+            ))
+        except sqlglot.errors.SqlglotError as exc:
+            structural_issues.append(f"SQL 结构无法解析：{exc}。请检查查询块和字段来源。")
+
     if not sql:
         response.success = False
         response.message = response.message or "Agent 未生成 SQL。"
@@ -4896,6 +4927,7 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     elif attribution_issues := _attribution_sql_result_issues(
         sql,
         state.get("normalized_config") or {},
+        sql_dialect=state.get("sql_dialect") or datasource_type,
     ):
         response.success = False
         response.message = "生成 SQL 未满足归因分析生成要求。"
@@ -4942,6 +4974,11 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
             _mark_sql_valid()
     else:
         _mark_sql_valid()
+    if structural_issues:
+        response.success = False
+        response.message = "生成 SQL 存在字段引用或日期类型错误。"
+        response.advice = "请根据字段来源和实际类型修复完整查询。"
+        response.issues = _unique_text_items(list(response.issues or []) + structural_issues)
     return {
         "response": response,
         "graph_trace": _append_trace(state, "validate_sql"),
