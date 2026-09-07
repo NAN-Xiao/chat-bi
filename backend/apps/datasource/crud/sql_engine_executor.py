@@ -235,7 +235,7 @@ def _merge_standard_result_fields(result: dict[str, Any], engine_result: SqlEngi
     return result
 
 
-def safe_query_error_message(current_user: CurrentUser, message: str) -> str:
+def safe_query_error_message(current_user: CurrentUser, message: Any) -> str:
     """
     是什么：safe_query_error_message 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -243,10 +243,10 @@ def safe_query_error_message(current_user: CurrentUser, message: str) -> str:
     """
     if is_normal_user(current_user) and looks_like_permission_scope_error(message):
         return USER_QUERY_PERMISSION_DENIED_MESSAGE
-    return message
+    return str(message)
 
 
-def safe_query_error_type(current_user: CurrentUser, message: str) -> str | None:
+def safe_query_error_type(current_user: CurrentUser, message: Any) -> str | None:
     """
     是什么：safe_query_error_type 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -862,13 +862,11 @@ def execute_user_query(
         )
     except Exception as exc:
         AppLogUtil.error(f"User query execution failed: {exc}")
-        message = safe_query_error_message(current_user, f"{exc}")
-        error_type = safe_query_error_type(current_user, f"{exc}")
         classification = classify_error(exc)
-        if error_type is None and classification.error_type == PERMISSION_DENIED_ERROR_TYPE:
-            message = USER_QUERY_PERMISSION_DENIED_MESSAGE if is_normal_user(current_user) else str(exc)
-            error_type = PERMISSION_DENIED_ERROR_TYPE
+        message = str(exc)
+        error_type = classification.error_type
         if error_type == PERMISSION_DENIED_ERROR_TYPE:
+            message = USER_QUERY_PERMISSION_DENIED_MESSAGE if is_normal_user(current_user) else str(exc)
             audit_permission_denied(
                 current_user=current_user,
                 datasource_id=datasource_id,
@@ -878,9 +876,8 @@ def execute_user_query(
                 json_paths=getattr(exc, "json_paths", None),
                 rule_type=getattr(exc, "rule_type", None),
             )
-        if error_type is None and classification.error_type == DATA_UNAVAILABLE_ERROR_TYPE:
+        if error_type == DATA_UNAVAILABLE_ERROR_TYPE:
             message = user_data_unavailable_message(str(exc))
-            error_type = DATA_UNAVAILABLE_ERROR_TYPE
         return _merge_standard_result_fields(
             _failed_query_result(message, error_type),
             SqlEngineResult.failed(

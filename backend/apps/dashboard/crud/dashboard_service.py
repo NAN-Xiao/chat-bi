@@ -2394,10 +2394,9 @@ def _dashboard_chart_permission_audit(
             row_permission_policy="deny_on_overlap",
         )
     except Exception as exc:
-        message = f"{exc}"
-        error_type = safe_query_error_type(current_user, message)
+        error_type = safe_query_error_type(current_user, exc)
         failure = _failed_chart_result(
-            safe_query_error_message(current_user, message),
+            safe_query_error_message(current_user, exc),
             PERMISSION_DENIED_ERROR_TYPE if error_type else None,
         )
         if failure.get("error_type") == PERMISSION_DENIED_ERROR_TYPE:

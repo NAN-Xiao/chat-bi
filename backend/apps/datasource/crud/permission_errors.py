@@ -17,6 +17,8 @@ from common.utils.utils import AppLogUtil
 
 
 class SqlPermissionScopeError(ValueError):
+    error_type = PERMISSION_DENIED_ERROR_TYPE
+
     def __init__(
             self,
             message: str,
@@ -48,7 +50,7 @@ class SqlSchemaScopeError(SingleMessageError):
         self.tables = tuple(sorted({str(item) for item in tables or []}))
 
 
-def looks_like_permission_scope_error(message: str) -> bool:
+def looks_like_permission_scope_error(message: Any) -> bool:
     """
     是什么：looks_like_permission_scope_error 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
