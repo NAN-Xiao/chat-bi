@@ -3125,7 +3125,7 @@ const {
   box-sizing: border-box;
   padding: 0;
   display: grid;
-  grid-template-columns: auto minmax(160px, 280px) auto;
+  grid-template-columns: auto minmax(80px, 140px) auto;
   align-items: center;
   justify-content: start;
   gap: 10px;
@@ -3165,7 +3165,7 @@ const {
 
   .retention-heading-row .retention-subject-line {
     flex-basis: 100%;
-    grid-template-columns: auto minmax(160px, 1fr) auto;
+    grid-template-columns: auto minmax(80px, 140px) auto;
   }
 
   .funnel-heading-row .funnel-subject-line {
@@ -4242,7 +4242,7 @@ const {
 
 .group-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 26px 26px;
+  grid-template-columns: 28px minmax(0, 30%) 26px 26px;
   gap: 6px;
   align-items: center;
 }
