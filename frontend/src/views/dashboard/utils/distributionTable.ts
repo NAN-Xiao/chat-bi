@@ -67,8 +67,14 @@ function normalizedComparableValue(value: any) {
 
 function normalizedTotalEntitiesValue(value: any) {
   if (value === null || value === undefined || value === '') return ''
-  const numericValue = Number(value)
-  return Number.isFinite(numericValue) ? String(numericValue) : normalizedComparableValue(value)
+  const text = String(value).trim()
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(text)) return normalizedComparableValue(value)
+  const sign = text.startsWith('-') ? '-' : ''
+  const unsigned = text.replace(/^[+-]/, '')
+  const [integerPart = '0', fractionPart = ''] = unsigned.split('.')
+  const integer = integerPart.replace(/^0+(?=\d)/, '') || '0'
+  const fraction = fractionPart.replace(/0+$/, '')
+  return `${sign}${integer}${fraction ? `.${fraction}` : ''}`
 }
 
 function isValidDateParts(year: string, month: string, day: string) {

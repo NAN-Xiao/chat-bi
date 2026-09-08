@@ -4258,6 +4258,8 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "GROUP BY distribution_date, <groups>, interval_order, interval_label, total_entities\n"
             "ORDER BY distribution_date, <groups>, interval_order。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；interval_order 只负责稳定排序，interval_label 是展示文本。\n"
+            "最终 SELECT 还必须输出参与 entity_values、totals、bucketed_metrics 分组或 JOIN 键的全部业务分组字段；"
+            "任何用于 totals 分母粒度的字段都不能只存在于 CTE 而在最终结果中省略，否则不同分组会被错误合并。\n"
             "主体必须先聚合再分桶，禁止直接按事件明细行分桶；entity_rate 分母只包含当期参与配置事件的主体。\n"
             "禁止在 JOIN 条件中使用引用外层 distribution_date、interval_order 或 entity_id 的 EXISTS、IN 或标量关联子查询；必须在聚合前按日期、主体和全部分组键显式 JOIN。\n"
         )
