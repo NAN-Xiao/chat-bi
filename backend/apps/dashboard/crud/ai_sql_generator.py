@@ -1401,6 +1401,26 @@ def _normalized_identifier(value: Any) -> str:
     return str(value or "").strip().strip('"`[]').lower()
 
 
+def _distribution_entity_result_name(distribution: Any) -> str:
+    """Return the configured descriptive distribution subject's result identifier."""
+    if not isinstance(distribution, dict):
+        return ""
+    entity_field = distribution.get("entityField") or distribution.get("entity_field")
+    if not isinstance(entity_field, dict):
+        return ""
+    entity_name = str(
+        entity_field.get("field")
+        or entity_field.get("value")
+        or entity_field.get("jsonPath")
+        or entity_field.get("sourceField")
+        or ""
+    ).strip().split(".")[-1].strip("`")
+    normalized_name = _normalized_identifier(entity_name)
+    if normalized_name in {"id", "uid", "user_id", "userid", "entity_id", "player_id", "openid"}:
+        return ""
+    return normalized_name
+
+
 def _schema_table_lookup_keys(table_name: str) -> set[str]:
     candidates = _normalized_table_candidates(table_name)
     for candidate in list(candidates):
@@ -2733,6 +2753,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
     elif analysis_model == "distribution":
         distribution = normalized_config.get("distribution") if isinstance(normalized_config.get("distribution"), dict) else {}
         simultaneous = distribution.get("simultaneous") if isinstance(distribution.get("simultaneous"), dict) else {}
+        entity_result_name = _distribution_entity_result_name(distribution)
         required_columns = [
             "distribution_date",
             "total_entities",
@@ -2741,6 +2762,8 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "entity_count",
             "entity_rate",
         ]
+        if entity_result_name:
+            required_columns.insert(1, entity_result_name)
         if simultaneous.get("enabled") is True:
             required_columns.append("simultaneous_value")
         result_contract = {
@@ -2748,6 +2771,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "required_columns": required_columns,
             "final_grain": [
                 "distribution_date",
+                *([entity_result_name] if entity_result_name else []),
                 *[f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])],
                 "interval_order",
                 "interval_label",
@@ -3843,19 +3867,12 @@ def _distribution_sql_result_issues(
         # currentinfo), while field/value identify the selected leaf
         # (currentinfo.country). The leaf is the result dimension that must be
         # projected; using the host column creates a false repair requirement.
-        entity_name = str(
-            entity_field.get("field")
-            or entity_field.get("value")
-            or entity_field.get("jsonPath")
-            or entity_field.get("sourceField")
-            or ""
-        ).strip().split(".")[-1].strip("`").lower()
+        entity_name = _distribution_entity_result_name(distribution)
         # A descriptive subject such as country is a result dimension. If it
         # only exists inside totals/bucket CTEs, the preview flattener cannot
         # distinguish subjects and reports conflicting denominators. Stable
         # identity keys remain per-entity aggregation keys and are excluded.
-        identity_names = {"id", "uid", "user_id", "userid", "entity_id", "player_id", "openid"}
-        if entity_name and entity_name not in identity_names:
+        if entity_name:
             statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
             final_select = None
             if statements:
@@ -4302,6 +4319,8 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；interval_order 只负责稳定排序，interval_label 是展示文本。\n"
             "最终 SELECT 还必须输出参与 entity_values、totals、bucketed_metrics 分组或 JOIN 键的全部业务分组字段；"
             "任何用于 totals 分母粒度的字段都不能只存在于 CTE 而在最终结果中省略，否则不同分组会被错误合并。\n"
+            "当 sql-plan.result_contract.required_columns 中包含 distribution.entityField 的主体结果字段时，"
+            "最终 SELECT 必须按该契约的精确标识符输出该字段（包括字段别名）；不能自行改写成近似别名。\n"
             "主体必须先聚合再分桶，禁止直接按事件明细行分桶；entity_rate 分母只包含当期参与配置事件的主体。\n"
             "禁止在 JOIN 条件中使用引用外层 distribution_date、interval_order 或 entity_id 的 EXISTS、IN 或标量关联子查询；必须在聚合前按日期、主体和全部分组键显式 JOIN。\n"
             "分布 SQL 参考示例（首次生成和修复均参考）：\n"
