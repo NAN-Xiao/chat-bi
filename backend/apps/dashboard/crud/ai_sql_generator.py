@@ -3839,10 +3839,15 @@ def _distribution_sql_result_issues(
     issues = [f"分布 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
     entity_field = distribution.get("entityField") or distribution.get("entity_field")
     if isinstance(entity_field, dict):
+        # For JSON subfields sourceField is the host JSON column (for example
+        # currentinfo), while field/value identify the selected leaf
+        # (currentinfo.country). The leaf is the result dimension that must be
+        # projected; using the host column creates a false repair requirement.
         entity_name = str(
-            entity_field.get("sourceField")
-            or entity_field.get("field")
+            entity_field.get("field")
             or entity_field.get("value")
+            or entity_field.get("jsonPath")
+            or entity_field.get("sourceField")
             or ""
         ).strip().split(".")[-1].strip("`").lower()
         # A descriptive subject such as country is a result dimension. If it

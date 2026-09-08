@@ -1718,6 +1718,31 @@ def test_distribution_validation_rejects_hidden_descriptive_entity_dimension() -
     assert any("最终结果缺少分析主体字段 country" in issue for issue in issues)
 
 
+@pytest.mark.parametrize(
+    ("field_value", "expected_name"),
+    [("userinfo.channel", "channel"), ("device.osVersion", "osversion"), ("region", "region")],
+)
+def test_distribution_entity_dimension_validation_uses_configured_leaf_name(
+    field_value: str,
+    expected_name: str,
+) -> None:
+    normalized = ai_sql_generator._normalize_manual_config(_distribution_request())
+    normalized["distribution"]["entityField"] = {
+        "table": "event",
+        "field": field_value,
+        "sourceField": field_value.split(".")[0],
+        "value": f"event.{field_value}",
+    }
+    sql = (
+        "SELECT distribution_date, total_entities, interval_order, interval_label, "
+        "entity_count, entity_rate FROM bucketed_metrics"
+    )
+
+    issues = ai_sql_generator._distribution_sql_result_issues(sql, normalized, sql_dialect="mysql")
+
+    assert any(f"最终结果缺少分析主体字段 {expected_name}" in issue for issue in issues)
+
+
 @pytest.mark.parametrize("analysis_model", sorted(ai_sql_generator.ANALYSIS_MODEL_LABELS))
 def test_sql_validation_rejects_same_select_output_alias_references_for_all_models(
     analysis_model: str,
