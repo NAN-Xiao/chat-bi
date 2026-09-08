@@ -1,5 +1,6 @@
 """Executable examples and contract checks for the supplied attribution document."""
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 import sqlglot
@@ -151,12 +152,40 @@ def validate(request):
     return normalized, result
 
 
-@pytest.mark.parametrize("aggregation", ["count_distinct", "avg", "min", "max"])
-def test_non_additive_target_metrics_are_rejected_without_substitution(aggregation):
-    normalized, result = validate(_attribution_request(targetMetric={"aggregation": aggregation, "metricField": {"table": "event", "field": "amount"}}))
+@pytest.mark.parametrize("method", ["first", "last", "linear"])
+@pytest.mark.parametrize("aggregation", ["count", "sum", "count_distinct", "avg", "min", "max"])
+def test_target_metrics_allow_all_supported_aggregations(method, aggregation):
+    metric_field = None if aggregation == "count" else {"table": "event", "field": "amount"}
+    normalized, result = validate(_attribution_request(method=method, targetMetric={"aggregation": aggregation, "metricField": metric_field}))
     assert normalized["attribution"]["targetMetric"]["aggregation"] == aggregation
+    assert result.success, result.issues
+    plan = generator._build_sql_plan(normalized, generator._build_formula_ir(normalized))
+    assert plan["result_contract"]["target_metric"]["aggregation"] == aggregation
+
+
+@pytest.mark.parametrize("aggregation", ["sum", "count_distinct", "avg", "min", "max"])
+def test_target_metrics_still_require_selected_field(aggregation):
+    _, result = validate(_attribution_request(targetMetric={"aggregation": aggregation, "metricField": None}))
     assert not result.success
-    assert any("逐事件分配" in issue for issue in result.issues)
+    assert "目标事件使用非次数聚合时，请选择计算字段。" in result.issues
+
+
+def test_target_metrics_reject_unknown_aggregation():
+    _, result = validate(_attribution_request(targetMetric={"aggregation": "unsupported", "metricField": {"table": "event", "field": "amount"}}))
+    assert not result.success
+    assert "归因分析使用了不支持的目标指标聚合方式。" in result.issues
+
+
+def test_generation_prompts_preserve_target_aggregation_choices():
+    request = _attribution_request(targetMetric={"aggregation": "count_distinct", "metricField": {"table": "event", "field": "user_id"}})
+    prompts = [
+        generator._dashboard_config_prompt(request, SimpleNamespace(name="测试", type="postgresql", type_name="PostgreSQL"), "", ""),
+        generator._dashboard_sql_system_prompt("attribution"),
+    ]
+    for prompt in prompts:
+        assert "目标指标支持 count、sum、avg、max、min、count_distinct" in prompt
+        assert "不能静默改成其他聚合或字段" in prompt
+        assert "目标贡献只支持" not in prompt
 
 
 def test_group_side_and_related_property_permissions_survive_normalization():

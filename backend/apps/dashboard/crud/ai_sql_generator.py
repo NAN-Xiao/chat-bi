@@ -2540,8 +2540,8 @@ def _deterministic_validate_manual_config(
             issues.append("归因分析请至少选择一个归因事件。")
         if len(attribution_events) > ATTRIBUTION_EVENT_LIMIT:
             issues.append(f"归因分析最多支持 {ATTRIBUTION_EVENT_LIMIT} 个归因事件。")
-        if target_aggregation not in {"count", "sum"}:
-            issues.append("归因目标指标必须可逐事件分配，请选择总次数或数值属性求和；去重用户数应查看有效触发用户数，不能作为目标次数计算。")
+        if target_aggregation not in {"count", "sum", "avg", "max", "min", "count_distinct"}:
+            issues.append("归因分析使用了不支持的目标指标聚合方式。")
         if target_aggregation != "count" and not _field_has_resolvable_reference(target_metric_field):
             issues.append("目标事件使用非次数聚合时，请选择计算字段。")
         if target_aggregation in {"sum", "avg", "max", "min"} and target_metric_field and _field_is_known_non_numeric(target_metric_field):
@@ -4318,7 +4318,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "weighted AS (...按 target_id 分区选择最早触点、最晚触点或计算匹配触点数并以 linear_weight=1.0/NULLIF(touch_count, 0) 等分；必须继续输出 target_value；按 includeDirect 处理无触点目标...),\n"
             "线性触点计数允许 COUNT(touch_time) OVER (PARTITION BY target_id)，也允许单独按 target_id GROUP BY 计数后按该完整键关联回明细；分母可以内联窗口表达式或引用计数字段，不要求固定中间别名。COUNT(*) 仅用于已排除空触点的匹配明细，LEFT JOIN 保留无触点目标时使用 COUNT(touch_time)。\n"
             "窗口条件应在目标与触点首次匹配的关联层应用；后续关联触点计数表沿用匹配结果，不重复匹配触点。UNION ALL 必须逐列输出相同数量和顺序的字段，不得 SELECT * 合并结构不同的分支。\n"
-            "aggregated AS (...按配置 groups、attribution_event 汇总目标数和 target_value * linear_weight...),\n"
+            "aggregated AS (...按配置 groups、attribution_event 汇总目标数，并按 targetMetric.aggregation 计算贡献指标；count/sum 汇总 target_value * linear_weight，其他聚合必须保留其去重、平均或极值语义...),\n"
             "当配置 groups 非空时，最终 SELECT 必须先输出 group_1...group_N，并按相同 groups 与 attribution_event 分组；无 groups 时仅按 attribution_event 分组。\n"
             "在贡献汇总之外单独计算 touches_total 和 effective_touches，再以完整触点类型/分组集合关联贡献；最终输出完整 result_contract.required_columns，贡献度分母仅按目标侧分组，不能按触点侧分组。\n"
             "匹配层建议明确使用触点侧主体：tc.entity_id AS entity_id。若使用目标侧主体，effective_touches 必须先 WHERE touch_id IS NOT NULL，再 COUNT(DISTINCT entity_id)，直接转化不可计入有效用户。\n"
@@ -4327,7 +4327,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "结果组装必须遵循以下完整集合结构，不能从 contributions 或有效触点开始：\n"
             "touches_total AS (SELECT <触点类型及配置分组>, COUNT(DISTINCT touch_id) AS total_touch_count FROM touches GROUP BY <相同键>),\n"
             "touch_results AS (SELECT <触点统计中的类型及分组>, COALESCE(c.target_count,0) AS target_count, s.total_touch_count, COALESCE(e.effective_touch_count,0) AS effective_touch_count, COALESCE(e.effective_entity_count,0) AS effective_entity_count, COALESCE(c.attributed_value,0) AS attributed_value FROM touches_total s LEFT JOIN contributions c ON <完整键匹配> LEFT JOIN effective_touches e ON <完整键匹配>),\n"
-            "complete AS (SELECT <逐项列出同序字段> FROM touch_results UNION ALL SELECT <直接转化类型及分组>, COUNT(DISTINCT target_id), 0, 0, 0, SUM(target_value) FROM <无匹配触点的目标明细> <按配置分组；仅 includeDirect=true 添加此分支>),\n"
+            "complete AS (SELECT <逐项列出同序字段> FROM touch_results UNION ALL SELECT <直接转化类型及分组>, COUNT(DISTINCT target_id), 0, 0, 0, <按 targetMetric.aggregation 计算直接转化目标指标> FROM <无匹配触点的目标明细> <按配置分组；仅 includeDirect=true 添加此分支>),\n"
             "最终从 complete 计算有效触发率和贡献度。直接转化必须输出完整目标值，不能只保留其名称后再关联不含直接转化的 contributions。所有触点均未匹配目标时仍必须显示其总触发数及零贡献，不能丢行。\n"
             "贡献率分母使用独立总计 CTE，避免依赖数据源对 UNION 结果再做窗口聚合的兼容性：无目标侧分组时 total_value AS (SELECT SUM(attributed_value) AS total FROM complete)，外层用 attributed_value * 100.0 / NULLIF((SELECT total FROM total_value), 0)；有目标侧分组时，total_value 按全部目标侧分组键汇总 complete，并按这些完整键关联，NULL 分组键也必须正确匹配。分母必须包括已配置纳入的直接转化，不得按触点类型或触点侧分组拆分分母；不生成 SUM(attributed_value) OVER () 作为分母。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；触点只能发生在目标之前或同一时刻，且每个目标的线性权重之和必须为 1。\n"
