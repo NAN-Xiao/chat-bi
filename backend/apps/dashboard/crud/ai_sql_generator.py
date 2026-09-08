@@ -3854,6 +3854,18 @@ def _distribution_sql_result_issues(
                 issues.append("分布 SQL 未将 YYYYMMDD 通过 TO_DATE 转换为 DATE。")
     if not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
         issues.append("分布 SQL 必须按分析主体去重统计 entity_count。")
+    # total_entities is the denominator for every interval row. It must be
+    # materialized from the date/group population before bucket aggregation;
+    # accepting an arbitrary expression here lets interval-local counts leak
+    # into the denominator and produces inconsistent totals for one group.
+    if not re.search(
+        r"\bcount\s*\(\s*distinct\s+(?:[a-z_][\w]*\.)?entity_id\s*\)\s*as\s+total_entities\b",
+        normalized_sql,
+    ):
+        issues.append(
+            "分布 SQL 必须在日期和全部分组键粒度先计算 COUNT(DISTINCT entity_id) AS total_entities，"
+            "再关联到各区间；不能按区间分别计算分母。"
+        )
     if not re.search(r"\bnullif\s*\(", normalized_sql):
         issues.append("分布 SQL 的 entity_rate 必须使用 NULLIF 保护分母。")
     if _has_placeholder_distribution_interval_label(sql, sql_dialect):
