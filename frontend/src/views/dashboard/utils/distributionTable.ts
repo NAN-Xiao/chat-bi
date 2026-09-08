@@ -65,6 +65,12 @@ function normalizedComparableValue(value: any) {
   return String(value)
 }
 
+function normalizedTotalEntitiesValue(value: any) {
+  if (value === null || value === undefined || value === '') return ''
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) ? String(numericValue) : normalizedComparableValue(value)
+}
+
 function isValidDateParts(year: string, month: string, day: string) {
   const timestamp = Date.UTC(Number(year), Number(month) - 1, Number(day))
   const parsed = new Date(timestamp)
@@ -195,7 +201,7 @@ export function shapeDistributionTableResult(result: TabularResult, context: any
     }
 
     const outputRow = rowMap.get(key)!
-    if (normalizedComparableValue(outputRow[DISTRIBUTION_TOTAL_COLUMN]) !== normalizedComparableValue(row?.total_entities)) {
+    if (normalizedTotalEntitiesValue(outputRow[DISTRIBUTION_TOTAL_COLUMN]) !== normalizedTotalEntitiesValue(row?.total_entities)) {
       return failedResult(result, '同一日期和分组的全部用户数不一致，无法展开分布结果。')
     }
     if (Object.prototype.hasOwnProperty.call(outputRow, intervalLabel)) {
