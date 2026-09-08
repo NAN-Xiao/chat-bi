@@ -1685,6 +1685,10 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
     assert "禁止在 JOIN 条件中使用引用外层" in prompt
     assert "同一个 SELECT 的输出列之间不能互相引用刚定义的别名" in prompt
     assert "必须先在子查询或 CTE 中生成被依赖字段" in prompt
+    assert "分布 SQL 参考示例（首次生成和修复均参考）" in prompt
+    assert "COUNT(DISTINCT entity_id) AS total_entities" in prompt
+    assert "group_1 IS NULL" in prompt
+    assert "无分组时同步删除 group_1" in prompt
     assert normalized["analysis_model"] == "distribution"
     assert normalized["chart"]["type"] == "table"
     assert ai_sql_generator._distribution_sql_result_issues(valid_sql, normalized) == []
@@ -1695,6 +1699,14 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
     assert invalid
     assert any("distribution_date" in issue for issue in invalid)
     assert any("total_entities" in issue for issue in invalid)
+
+
+def test_distribution_reference_example_is_scoped_to_distribution_prompt() -> None:
+    example_marker = "分布 SQL 参考示例（首次生成和修复均参考）"
+
+    assert example_marker in ai_sql_generator._dashboard_sql_system_prompt("distribution")
+    assert example_marker not in ai_sql_generator._dashboard_sql_system_prompt("event")
+    assert example_marker not in ai_sql_generator._dashboard_sql_system_prompt("retention")
 
 
 def test_distribution_validation_rejects_hidden_descriptive_entity_dimension() -> None:
