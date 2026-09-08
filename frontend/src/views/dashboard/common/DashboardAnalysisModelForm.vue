@@ -2263,7 +2263,6 @@ const {
 .ranking-subject-line {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: auto minmax(160px, 280px) auto;
   align-items: center;
   justify-content: start;
   gap: 10px;
@@ -2378,7 +2377,6 @@ const {
 
 .interval-subject-line {
   display: grid;
-  grid-template-columns: auto minmax(160px, 280px) auto;
   align-items: center;
   width: auto;
   min-width: 0;
@@ -2604,7 +2602,6 @@ const {
 .attribution-subject-line {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: auto minmax(160px, 280px) auto;
   align-items: center;
   justify-content: start;
   gap: 10px;
@@ -2826,7 +2823,6 @@ const {
 .distribution-subject-line {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: auto minmax(160px, 280px) auto;
   align-items: center;
   justify-content: start;
   gap: 10px;
@@ -2923,7 +2919,6 @@ const {
 .funnel-subject-line {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: auto minmax(160px, 280px) auto;
   align-items: center;
   justify-content: start;
   gap: 10px;
@@ -3125,12 +3120,21 @@ const {
   box-sizing: border-box;
   padding: 0;
   display: grid;
-  grid-template-columns: auto minmax(80px, 140px) auto;
   align-items: center;
   justify-content: start;
   gap: 10px;
   color: #505968;
   font-size: 13px;
+}
+
+.ranking-subject-line,
+.interval-subject-line,
+.revenue-subject-line,
+.attribution-subject-line,
+.distribution-subject-line,
+.funnel-subject-line,
+.retention-subject-line {
+  grid-template-columns: auto minmax(80px, 140px) auto;
 }
 
 @media (max-width: 720px) {
@@ -3152,7 +3156,6 @@ const {
 
   .attribution-heading-row .attribution-subject-line {
     flex-basis: 100%;
-    grid-template-columns: auto minmax(160px, 1fr) auto;
   }
 
   .attribution-target-row {
@@ -3165,12 +3168,10 @@ const {
 
   .retention-heading-row .retention-subject-line {
     flex-basis: 100%;
-    grid-template-columns: auto minmax(80px, 140px) auto;
   }
 
   .funnel-heading-row .funnel-subject-line {
     flex-basis: 100%;
-    grid-template-columns: auto minmax(160px, 1fr) auto;
   }
 
   .path-heading-row {
@@ -3179,22 +3180,18 @@ const {
 
   .distribution-heading-row .distribution-subject-line {
     flex-basis: 100%;
-    grid-template-columns: auto minmax(160px, 1fr) auto;
   }
 
   .interval-heading-row .interval-subject-line {
     width: 100%;
-    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .revenue-heading-row .revenue-subject-line {
     flex-basis: 100%;
-    grid-template-columns: auto minmax(160px, 1fr) auto;
   }
 
   .ranking-heading-row .ranking-subject-line {
     flex-basis: 100%;
-    grid-template-columns: auto minmax(160px, 1fr) auto;
   }
 
   .revenue-event-flow,
