@@ -4871,6 +4871,20 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     structural_issues: list[str] = []
     normalized = state.get("normalized_config") or {}
     time_config = normalized.get("time") or {}
+    parameter_type = str(time_config.get("date_parameter_type") or "").strip()
+    if parameter_type in {"yyyymmdd_number", "yyyymmdd_text"}:
+        # LLMs occasionally wrap dashboard tokens in quotes. For encoded date
+        # parameters this changes the token into a string literal, so the
+        # dashboard date filter cannot detect or render it. Normalize only the
+        # controlled date tokens at the validation boundary.
+        normalized_sql = re.sub(
+            r"(['\"])(\{\{dashboard_(?:start|end)_yyyymmdd\}\})\1",
+            r"\2",
+            sql,
+        )
+        if normalized_sql != sql:
+            sql = normalized_sql
+            response.sql = normalized_sql
     for statement in _sqlglot_statements_for_generation_validation(sql, state.get("sql_dialect") or datasource_type):
         try:
             structural_issues.extend(derived_column_issues(statement))
