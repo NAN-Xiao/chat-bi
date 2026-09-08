@@ -1662,10 +1662,15 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
         "",
     ) + "\n" + ai_sql_generator._dashboard_sql_system_prompt("distribution")
     valid_sql = (
-        "SELECT distribution_date, total_entities, interval_order, interval_label, "
-        "COUNT(DISTINCT entity_id) AS entity_count, "
-        "COUNT(DISTINCT entity_id) * 100.0 / NULLIF(total_entities, 0) AS entity_rate "
-        "FROM distribution_result GROUP BY distribution_date, interval_order, interval_label, total_entities"
+        "WITH totals AS (SELECT distribution_date, COUNT(DISTINCT entity_id) AS total_entities "
+        "FROM distribution_result GROUP BY distribution_date), "
+        "bucketed AS (SELECT distribution_date, interval_order, interval_label, entity_id "
+        "FROM distribution_result) "
+        "SELECT b.distribution_date, t.total_entities, b.interval_order, b.interval_label, "
+        "COUNT(DISTINCT b.entity_id) AS entity_count, "
+        "COUNT(DISTINCT b.entity_id) * 100.0 / NULLIF(t.total_entities, 0) AS entity_rate "
+        "FROM bucketed b JOIN totals t ON t.distribution_date = b.distribution_date "
+        "GROUP BY b.distribution_date, t.total_entities, b.interval_order, b.interval_label"
     )
 
     assert "只使用 distribution 配置" in prompt or "只能使用 distribution 配置" in prompt
