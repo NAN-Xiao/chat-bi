@@ -3837,6 +3837,40 @@ def _distribution_sql_result_issues(
     normalized_sql = str(sql or "").lower()
     missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
     issues = [f"分布 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    entity_field = distribution.get("entityField") or distribution.get("entity_field")
+    if isinstance(entity_field, dict):
+        entity_name = str(
+            entity_field.get("sourceField")
+            or entity_field.get("field")
+            or entity_field.get("value")
+            or ""
+        ).strip().split(".")[-1].strip("`").lower()
+        # A descriptive subject such as country is a result dimension. If it
+        # only exists inside totals/bucket CTEs, the preview flattener cannot
+        # distinguish subjects and reports conflicting denominators. Stable
+        # identity keys remain per-entity aggregation keys and are excluded.
+        identity_names = {"id", "uid", "user_id", "userid", "entity_id", "player_id", "openid"}
+        if entity_name and entity_name not in identity_names:
+            statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+            final_select = None
+            if statements:
+                selects = [node for node in statements[-1].find_all(exp.Select)]
+                final_select = selects[-1] if selects else None
+            projected_names = {
+                _normalized_identifier(alias.alias)
+                for alias in (final_select.expressions if final_select is not None else [])
+                if isinstance(alias, exp.Alias)
+            }
+            projected_names.update(
+                _normalized_identifier(column.name)
+                for column in (final_select.expressions if final_select is not None else [])
+                if isinstance(column, exp.Column)
+            )
+            if entity_name not in projected_names:
+                issues.append(
+                    f"分布 SQL 最终结果缺少分析主体字段 {entity_name}；"
+                    "该字段参与分组分母计算时必须输出，避免不同主体被合并。"
+                )
     time_config = normalized_config.get("time") if isinstance(normalized_config.get("time"), dict) else {}
     parameter_type = str(time_config.get("date_parameter_type") or "").strip()
     if parameter_type in {"yyyymmdd_number", "yyyymmdd_text"}:

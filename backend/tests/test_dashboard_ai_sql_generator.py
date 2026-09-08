@@ -1697,6 +1697,27 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
     assert any("total_entities" in issue for issue in invalid)
 
 
+def test_distribution_validation_rejects_hidden_descriptive_entity_dimension() -> None:
+    request = _distribution_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    normalized["distribution"]["entityField"] = {
+        "table": "event",
+        "field": "currentinfo.country",
+        "sourceField": "currentinfo",
+        "value": "event.currentinfo.country",
+    }
+    sql = (
+        "WITH totals AS (SELECT distribution_date, country, COUNT(DISTINCT entity_id) AS total_entities "
+        "FROM bucketed GROUP BY distribution_date, country) "
+        "SELECT distribution_date, total_entities, interval_order, interval_label, "
+        "entity_count, entity_rate FROM bucketed_metrics"
+    )
+
+    issues = ai_sql_generator._distribution_sql_result_issues(sql, normalized, sql_dialect="mysql")
+
+    assert any("最终结果缺少分析主体字段 country" in issue for issue in issues)
+
+
 @pytest.mark.parametrize("analysis_model", sorted(ai_sql_generator.ANALYSIS_MODEL_LABELS))
 def test_sql_validation_rejects_same_select_output_alias_references_for_all_models(
     analysis_model: str,
