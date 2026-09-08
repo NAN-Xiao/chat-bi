@@ -94,6 +94,18 @@ test('同一日期和分组的数值格式不同但总用户数相等时可以�
   assert.equal(result.data[0]['2次'], 4)
 })
 
+test('大整数总用户数比较不因 Number 精度丢失而误判', () => {
+  const result = shapeDistributionTableResult({
+    fields: ['distribution_date', 'total_entities', 'interval_order', 'interval_label', 'entity_count'],
+    data: [
+      { distribution_date: 20260831, total_entities: '9007199254740992', interval_order: 1, interval_label: '1', entity_count: 1 },
+      { distribution_date: 20260831, total_entities: '9007199254740992.00', interval_order: 2, interval_label: '2', entity_count: 1 },
+    ],
+  }, countContext)
+
+  assert.equal(result.status, undefined)
+})
+
 test('旧分布图禁用会改变主体分布口径的通用透视聚合', () => {
   const viewInfo = {
     pivot: {
