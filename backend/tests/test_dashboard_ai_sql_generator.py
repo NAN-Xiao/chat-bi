@@ -1730,6 +1730,25 @@ def test_distribution_validation_rejects_hidden_descriptive_entity_dimension() -
     assert any("最终结果缺少分析主体字段 country" in issue for issue in issues)
 
 
+def test_distribution_result_contract_exposes_descriptive_entity_field() -> None:
+    normalized = ai_sql_generator._normalize_manual_config(_distribution_request())
+    normalized["distribution"]["entityField"] = {
+        "table": "event",
+        "field": "adinfo.mediaSource",
+        "sourceField": "adinfo",
+        "jsonPath": "$.mediaSource",
+        "value": "event.adinfo.mediaSource",
+    }
+
+    plan = ai_sql_generator._build_sql_plan(
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+    )
+
+    assert "mediasource" in plan["result_contract"]["required_columns"]
+    assert plan["result_contract"]["final_grain"][:2] == ["distribution_date", "mediasource"]
+
+
 @pytest.mark.parametrize(
     ("field_value", "expected_name"),
     [("userinfo.channel", "channel"), ("device.osVersion", "osversion"), ("region", "region")],
