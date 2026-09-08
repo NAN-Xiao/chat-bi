@@ -4,6 +4,9 @@ import { chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat.ts'
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import { parseSseChunk } from '@/utils/sse'
+import { useI18n } from 'vue-i18n'
+import { resolveSmartQaErrorMessage } from './smartQaErrorMessage'
+const { t } = useI18n()
 const props = withDefaults(
   defineProps<{
     chatList?: Array<ChatInfo>
@@ -157,7 +160,7 @@ const sendMessage = async () => {
             console.info(data.msg)
             break
           case 'error':
-            currentRecord.error = data.content
+            currentRecord.error = resolveSmartQaErrorMessage(data.content, t)
             emits('error', currentRecord.id)
             break
           case 'analysis-result':
@@ -180,7 +183,7 @@ const sendMessage = async () => {
     if (currentRecord.error.trim().length !== 0) {
       currentRecord.error = currentRecord.error + '\n'
     }
-    currentRecord.error = currentRecord.error + 'Error:' + error
+    currentRecord.error = resolveSmartQaErrorMessage(error, t)
     console.error('Error:', error)
     emits('error')
   } finally {

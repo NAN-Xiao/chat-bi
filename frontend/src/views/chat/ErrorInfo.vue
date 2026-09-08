@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAssistantStore } from '@/stores/assistant.ts'
+import { chineseErrorMessage } from '@/utils/chineseErrorMessage'
 
 const props = defineProps<{
   error?: string
@@ -109,6 +110,9 @@ const errorMessage = computed(() => {
     obj.traceback = ''
     obj.type = dataUnavailableType
   }
+  obj.message = chineseErrorMessage(obj.message, obj.type === dataUnavailableType
+    ? dataUnavailableFallback
+    : t('chat.task_error.generic'))
   return obj
 })
 

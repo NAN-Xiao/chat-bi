@@ -5,6 +5,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import ChartBlock from '@/views/chat/chat-block/ChartBlock.vue'
 import { parseSseChunk } from '@/utils/sse'
+import { useI18n } from 'vue-i18n'
+import { resolveSmartQaErrorMessage } from './smartQaErrorMessage'
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -161,7 +164,7 @@ const sendMessage = async () => {
             console.info(data.msg)
             break
           case 'error':
-            currentRecord.error = data.content
+            currentRecord.error = resolveSmartQaErrorMessage(data.content, t)
             emits('error', currentRecord.id)
             break
           case 'predict-result':
@@ -191,7 +194,7 @@ const sendMessage = async () => {
     if (currentRecord.error.trim().length !== 0) {
       currentRecord.error = currentRecord.error + '\n'
     }
-    currentRecord.error = currentRecord.error + 'Error:' + error
+    currentRecord.error = resolveSmartQaErrorMessage(error, t)
     console.error('Error:', error)
     emits('error')
   } finally {

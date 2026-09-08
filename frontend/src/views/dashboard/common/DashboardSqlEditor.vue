@@ -7,7 +7,7 @@ import { dashboardApi } from '@/api/dashboard.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
 import { trackingConfigApi } from '@/api/system.ts'
 import { request } from '@/utils/request.ts'
-import { formatRequestErrorMessage } from '@/utils/request.ts'
+import { chineseErrorMessage } from '@/utils/chineseErrorMessage'
 import DashboardAnalysisModelForm from './DashboardAnalysisModelForm.vue'
 import {
   ATTRIBUTION_EVENT_LIMIT,
@@ -6037,7 +6037,7 @@ async function generateBuilderAiSql() {
       requestOptions: { silent: true, retryCount: 0 },
     })
   } catch (error: any) {
-    const message = formatRequestErrorMessage(error, '配置 Agent 调用失败')
+    const message = chineseErrorMessage(error, 'SQL 生成请求失败，请稍后重试。')
     const localAdvice = collectLocalBuilderConfigIssues()
     setBuilderAgentAdvice({
       severity: 'warning',
@@ -6998,7 +6998,9 @@ function clearMergeState() {
 
 function updatePreviewResult(result: any) {
   preview.status = result?.status || 'success'
-  preview.message = result?.message || ''
+  preview.message = preview.status === 'failed'
+    ? chineseErrorMessage(result, 'SQL 执行失败，请检查查询配置后重试。')
+    : result?.message || ''
   preview.data = result?.data || []
   preview.fields = getPreviewResultFields(result)
   preview.raw = result?.raw

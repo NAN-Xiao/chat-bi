@@ -301,7 +301,7 @@ async function handlePayload(
 
   if (data.code && data.code !== 200) {
     ElMessage({
-      message: data.msg,
+      message: resolveSmartQaErrorMessage(data.msg, t),
       type: 'error',
       showClose: true,
     })

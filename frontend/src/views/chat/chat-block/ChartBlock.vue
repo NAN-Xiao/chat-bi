@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { chineseErrorMessage } from '@/utils/chineseErrorMessage'
 import type { ChatMessage } from '@/api/chat.ts'
 import DisplayChartBlock from '@/views/chat/component/DisplayChartBlock.vue'
 import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
@@ -108,9 +109,7 @@ const hasDisplayData = computed(() => Array.isArray(data.value) && data.value.le
 const dataFailureMessage = computed(() =>
   dataPermissionDenied.value
     ? '没有查看权限'
-    : dataObject.value?.message ||
-      dataObject.value?.reason ||
-      '当前数据源缺少本次问题所需的表、字段或埋点数据。'
+    : chineseErrorMessage(dataObject.value, '当前数据源缺少本次问题所需的表、字段或埋点数据。')
 )
 const isFinalChartAnswer = computed(() => {
   const record = props.message?.record
