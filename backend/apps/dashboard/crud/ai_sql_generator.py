@@ -3860,7 +3860,10 @@ def _distribution_sql_result_issues(
             final_select = None
             if statements:
                 selects = [node for node in statements[-1].find_all(exp.Select)]
-                final_select = selects[-1] if selects else None
+                # sqlglot walks the outer SELECT before its CTE/subquery
+                # SELECTs. The outer projection is the result contract we
+                # need to validate.
+                final_select = selects[0] if selects else None
             projected_names = {
                 _normalized_identifier(alias.alias)
                 for alias in (final_select.expressions if final_select is not None else [])
