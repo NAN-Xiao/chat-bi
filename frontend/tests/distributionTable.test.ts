@@ -74,6 +74,26 @@ test('同一日期和分组的重复区间会显式报错', () => {
   assert.match(result.message, /出现多条记录/)
 })
 
+test('同一日期和分组的数值格式不同但总用户数相等时可以展开', () => {
+  const result = shapeDistributionTableResult({
+    fields: [
+      'distribution_date',
+      'total_entities',
+      'interval_order',
+      'interval_label',
+      'entity_count',
+    ],
+    data: [
+      { distribution_date: 20260831, total_entities: 10, interval_order: 1, interval_label: '1', entity_count: 6 },
+      { distribution_date: 20260831, total_entities: '10.00', interval_order: 2, interval_label: '2', entity_count: 4 },
+    ],
+  }, countContext)
+
+  assert.equal(result.status, undefined)
+  assert.equal(result.data[0]['全部用户'], 10)
+  assert.equal(result.data[0]['2次'], 4)
+})
+
 test('旧分布图禁用会改变主体分布口径的通用透视聚合', () => {
   const viewInfo = {
     pivot: {
