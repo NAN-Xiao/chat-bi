@@ -6023,16 +6023,25 @@ async function generateBuilderAiSql() {
     await setLoadingPhase('正在分析')
     showLocalBuilderAgentAdvice()
     await setLoadingPhase('正在生成建议')
-    result = await dashboardApi.generate_ai_sql({
+    const sqlGenerationPayload = {
       datasource: selectedExecutionDatasourceId.value,
       intent: '',
       chart_type: form.chartType,
       title: form.title,
       context: collectBuilderAiContext(),
-    }, {
-      timeout: 180000,
-      requestOptions: { silent: true, retryCount: 0 },
-    })
+    }
+    result = sqlBuilder.analysisModel === 'funnel'
+      ? await dashboardApi.generate_funnel_base_sql({
+          datasource: selectedExecutionDatasourceId.value,
+          context: sqlGenerationPayload.context,
+        }, {
+          timeout: 30000,
+          requestOptions: { silent: true, retryCount: 0 },
+        })
+      : await dashboardApi.generate_ai_sql(sqlGenerationPayload, {
+          timeout: 180000,
+          requestOptions: { silent: true, retryCount: 0 },
+        })
   } catch (error: any) {
     const message = chineseErrorMessage(error, 'SQL 生成请求失败，请稍后重试。')
     const localAdvice = collectLocalBuilderConfigIssues()
@@ -7887,6 +7896,7 @@ async function previewSqlSource() {
       sql: form.sql.trim(),
       pivot: sourcePreviewPivotPayload(),
       date_filter: dashboardDateFilterRequestPayload(),
+      builder: sqlBuilder.analysisModel === 'funnel' ? builderConfigForSave() : undefined,
     })
     const sourceSnapshot = previewResultSnapshot(shapeDistributionTableResult(sourceResult, sqlBuilder))
     setSourceResult('sql', sourceSnapshot)
@@ -7907,6 +7917,7 @@ async function previewSqlSource() {
     sql: form.sql.trim(),
     pivot: previewPivotPayload(),
     date_filter: dashboardDateFilterRequestPayload(),
+    builder: sqlBuilder.analysisModel === 'funnel' ? builderConfigForSave() : undefined,
   })
   const snapshot = previewResultSnapshot(shapeDistributionTableResult(result, sqlBuilder))
   setSourceResult('sql', snapshot)
