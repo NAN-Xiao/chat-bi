@@ -750,7 +750,7 @@ const previewVersion = ref(0)
 const lastPreviewSql = ref('')
 const lastPreviewSignature = ref('')
 const initialChartTitle = ref('')
-const initialQuerySignature = ref('')
+const initialEditorSignature = ref('')
 const initializedPivotGroupValueField = ref('')
 const dateExpressionConfigError = ref('')
 const PIVOT_GROUP_SELECT_ALL_VALUE = '__dashboard_pivot_group_select_all__'
@@ -1286,10 +1286,7 @@ const titleOnlyChange = computed(
   () =>
     Boolean(props.viewInfo) &&
     form.title !== initialChartTitle.value &&
-    currentPreviewSignature() === initialQuerySignature.value &&
-    currentPreviewSignature() === lastPreviewSignature.value &&
-    preview.status !== 'failed' &&
-    hasCurrentPreviewData()
+    currentEditorSignature() === initialEditorSignature.value
 )
 const previewDisplayFields = computed(() => visiblePreviewFields(preview.fields, preview.data))
 const previewTableFields = computed(() => previewDisplayFields.value.slice(0, 10))
@@ -6313,6 +6310,9 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
     trackingConfig.value = metadata.trackingConfig
     trackingEventCatalog.value = metadata.trackingEventCatalog
     schemaTables.value = metadata.schemaTables.length ? metadata.schemaTables : previewSchemaTables()
+    // Schema loading normalizes persisted builder selections. Rebase the editor
+    // baseline only when no user edit happened while metadata loaded.
+    const signatureBeforeSchemaSanitize = currentEditorSignature()
     sanitizePropertyConfig()
     sanitizeRetentionConfig()
     sanitizeFunnelConfig()
@@ -6327,6 +6327,9 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
       if (!sqlBuilder.metricItems.length && !sqlBuilder.calculatedMetrics.length) {
         addMetricItem()
       }
+    }
+    if (signatureBeforeSchemaSanitize === initialEditorSignature.value) {
+      initialEditorSignature.value = currentEditorSignature()
     }
   } catch {
     if (!isCurrentSchemaLoad()) {
@@ -6766,6 +6769,17 @@ function currentPreviewSignature() {
           dateFilter: dashboardDateFilterRequestPayload(),
         }
       : null,
+    time: hasSqlSource.value
+      ? {
+          field: sqlBuilder.timeField,
+          grain: sqlBuilder.timeGrain,
+          range: sqlBuilder.timeRange,
+          customRange: [...sqlBuilder.timeCustomRange],
+          dateExpressionPickerEnabled: sqlBuilder.dateExpressionPickerEnabled,
+          metricDateExpressionEnabled: sqlBuilder.metricDateExpressionEnabled,
+          expression: sqlBuilder.timeExpression,
+        }
+      : null,
     mcp: hasMcpSource.value
       ? {
           externalMcpServerId: currentExternalMcpServerId.value || null,
@@ -6776,6 +6790,20 @@ function currentPreviewSignature() {
           valueField: form.mcpValueField || '',
         }
       : null,
+  })
+}
+
+function currentEditorSignature() {
+  const { title: _title, ...formState } = form
+  const { activeTab: _activeTab, ...builderState } = sqlBuilder
+  void _title
+  void _activeTab
+  return JSON.stringify({
+    form: formState,
+    builder: builderState,
+    datasource: selectedExecutionDatasourceId.value,
+    donutSeriesFields: donutSeriesFields.value,
+    analysisResultDisplayNames: analysisResultDisplayNames.value,
   })
 }
 
@@ -7611,7 +7639,7 @@ function initEditor() {
   initPivotConfig(normalizedConfig.pivot)
   form.pivotDateParameterType = SQL_EDITOR_DATE_PARAMETER_TYPE
   lastPreviewSignature.value = currentPreviewSignature()
-  initialQuerySignature.value = currentPreviewSignature()
+  initialEditorSignature.value = currentEditorSignature()
   previewVersion.value += 1
   if (hasMcpSource.value) {
     void loadMcpServers().then(() => loadMcpTools())
@@ -7676,7 +7704,7 @@ async function loadExecutionDatasources(viewInfo: any) {
     }
     if (canRebaseAutoSelectedDatasource) {
       lastPreviewSignature.value = currentPreviewSignature()
-      initialQuerySignature.value = currentPreviewSignature()
+      initialEditorSignature.value = currentEditorSignature()
     }
     ensureBuilderSchemaLoaded()
   } catch {
@@ -7715,7 +7743,7 @@ function resetExecutionDatasourceDependentState() {
   lastPreviewSql.value = ''
   lastPreviewSignature.value = ''
   initialChartTitle.value = ''
-  initialQuerySignature.value = ''
+  initialEditorSignature.value = ''
   previewVersion.value += 1
 }
 
@@ -8427,7 +8455,19 @@ async function previewAndPersistBuilderDraft() {
 }
 
 function applyChange() {
-  if (!props.viewInfo || !validateBeforeApply()) return
+  if (!props.viewInfo) return
+  if (titleOnlyChange.value) {
+    const sourceChart = props.viewInfo.chart || {}
+    props.viewInfo.chart = {
+      ...sourceChart,
+      title: form.title || sourceChart.title || t('dashboard.view'),
+    }
+    emits('applied', props.viewInfo)
+    visible.value = false
+    ElMessage.success(t('dashboard.sql_editor_applied'))
+    return
+  }
+  if (!validateBeforeApply()) return
   writeEditorStateToViewInfo({
     strictMcpArguments: true,
     emit: true,
