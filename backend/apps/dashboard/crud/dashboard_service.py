@@ -37,6 +37,7 @@ from apps.dashboard.models.dashboard_model import (
 )
 from apps.dashboard.crud.dashboard_date_filter import (
     has_dashboard_date_filter_parameters,
+    has_unresolved_dashboard_date_parameters,
     prepare_dashboard_date_filter,
 )
 from apps.dashboard.crud.dashboard_date_filter_legacy import (
@@ -2966,6 +2967,7 @@ def _execute_dashboard_chart_sql(
         sql: str,
         pivot: Any | None = None,
         funnel_builder: dict[str, Any] | None = None,
+        date_filter: Any | None = None,
 ) -> dict[str, Any]:
     """
     是什么：_execute_dashboard_chart_sql 是一个可以复用的小步骤，负责仪表盘相关的一件事。
@@ -2984,6 +2986,34 @@ def _execute_dashboard_chart_sql(
             try:
                 funnel_plan = build_funnel_base_sql(normalize_funnel_builder_context(funnel_builder))
                 sql = funnel_plan.sql
+                if has_unresolved_dashboard_date_parameters(sql):
+                    effective_date_filter = date_filter
+                    if effective_date_filter is None:
+                        builder_time = funnel_builder.get("time") if isinstance(funnel_builder.get("time"), dict) else {}
+                        effective_date_filter = {
+                            "parameter_type": builder_time.get("parameter_type")
+                            or builder_time.get("parameterType")
+                            or builder_time.get("dateParameterType")
+                            or "yyyymmdd_number",
+                            "expression": builder_time.get("expression")
+                            or builder_time.get("dateExpression")
+                            or funnel_builder.get("timeExpression")
+                            or funnel_builder.get("time_expression"),
+                        }
+                        effective_date_filter = builder_time
+                    prepared_dates = prepare_dashboard_date_filter(
+                        sql,
+                        ds_type=getattr(session.get(CoreDatasource, datasource_id), "type", None),
+                        pivot=None,
+                        date_filter=effective_date_filter,
+                        require_time_field=False,
+                    )
+                    if prepared_dates.capability.get("status") != "available":
+                        return _failed_chart_result(
+                            "漏斗日期参数未配置或无法解析",
+                            "funnel_date_filter_unconfigured",
+                        )
+                    sql = prepared_dates.sql
             except ValueError as exc:
                 return _failed_chart_result(str(exc), "funnel_configuration_invalid")
     if _dashboard_pivot_enabled(pivot):
@@ -4275,9 +4305,11 @@ def _dashboard_payload(
                     ),
                 )
                 continue
+            is_local_funnel = str(((_chart_sql_config(item) or {}).get("builder") or {}).get("analysisModel") or "").lower() == "funnel"
             if (
                 prepared_query.date_filter_capability.get("status") == "unconfigured"
                 and has_dashboard_date_filter_parameters(item['sql'])
+                and not is_local_funnel
             ):
                 _apply_dashboard_chart_result(
                     item,
@@ -4313,6 +4345,7 @@ def _dashboard_payload(
                     prepared_query.source_sql,
                     prepared_query.pivot,
                     (_chart_sql_config(item) or {}).get("builder"),
+                    prepared_query.date_filter,
                 )
             else:
                 data_result = _execute_dashboard_chart_sql(
@@ -4321,6 +4354,7 @@ def _dashboard_payload(
                     item_datasource,
                     prepared_query.source_sql,
                     funnel_builder=(_chart_sql_config(item) or {}).get("builder"),
+                    date_filter=prepared_query.date_filter,
                 )
             if data_result.get("error_type") == PERMISSION_DENIED_ERROR_TYPE:
                 item["dateFilterCapability"] = {
@@ -5562,9 +5596,11 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
         ),
     )
     date_filter_capability = prepared_query.date_filter_capability
+    is_local_funnel = str(((request.builder or {}).get("analysisModel") or (request.builder or {}).get("analysis_model") or "")).lower() == "funnel"
     if (
         date_filter_capability.get("status") == "unconfigured"
         and has_dashboard_date_filter_parameters(normalized_sql)
+        and not is_local_funnel
     ):
         return _dashboard_date_filter_result(
             _failed_chart_result("图表日期参数配置不完整", "dashboard_date_filter_unconfigured"),
@@ -5641,6 +5677,7 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
             source_sql,
             prepared_query.pivot,
             request.builder,
+            request.date_filter,
         )
         result = _dashboard_date_filter_result(result, date_filter_capability)
         if not permissions_apply:

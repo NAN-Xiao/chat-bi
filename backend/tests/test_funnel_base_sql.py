@@ -25,6 +25,7 @@ def test_build_funnel_base_sql_from_config():
     assert "e.`time` AS event_time" in plan.sql
     assert "e.`dt` AS event_date_key" in plan.sql
     assert "e.`channel` AS `group_1`" in plan.sql
+    assert "e.`prod` = 110000039" in plan.sql
     assert plan.steps[1]["alias"] == "进入游戏"
 
 
