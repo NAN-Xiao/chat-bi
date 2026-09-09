@@ -3067,11 +3067,10 @@ const {
 
 .funnel-related-property-control :deep(.builder-field-picker) {
   min-width: 0;
-  flex: 0 1 180px;
 }
 
 .funnel-related-property-control :deep(.builder-field-picker-trigger) {
-  width: 100%;
+  width: 40%;
 }
 
 .funnel-related-property-control > span {
