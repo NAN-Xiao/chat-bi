@@ -1591,6 +1591,9 @@ def test_path_prompt_sql_plan_and_result_contract_keep_sankey_semantics() -> Non
     assert "30 个" in prompt
     assert "sessionGapSeconds" in prompt
     assert "相邻" in prompt
+    assert "窗口函数别名" in prompt
+    assert "session_steps" in prompt
+    assert "TIMESTAMPDIFF" in prompt
     assert plan["analysis_model"] == "path"
     assert plan["result_contract"]["type"] == "path_sankey"
     assert plan["result_contract"]["required_columns"] == ["path_source", "path_target", "path_value", "path_step"]

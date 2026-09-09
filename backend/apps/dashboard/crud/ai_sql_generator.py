@@ -4398,12 +4398,15 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "WITH scoped_events AS (...按 path.events 只保留配置事件，输出 entity_id、event_time、event_name、拆分属性和分组...),\n"
             "ordered_events AS (...按 entity_id 和配置分组排序，并用会话间隔识别会话边界...),\n"
             "sessionized AS (...为每条事件生成 session_id，并保留每个会话的事件顺序...),\n"
-            "path_nodes AS (...从 path.initialEvent 开始向后取最多 10 个步骤；事件拆分属性参与节点身份...),\n"
+            "session_steps AS (...先用 ROW_NUMBER() 生成 step_in_session ...),\n"
+            "path_nodes AS (...从 session_steps 读取 step_in_session，从 path.initialEvent 开始向后取最多 10 个步骤；事件拆分属性参与节点身份...),\n"
             "edges AS (...使用 LAG/LEAD 在同一会话内生成相邻 path_source/path_target，过滤跨会话边...),\n"
             "SELECT path_source, path_target, COUNT(*) AS path_value, path_step\n"
             "FROM edges\n"
             "GROUP BY path_step, path_source, path_target\n"
             "ORDER BY path_step, path_value DESC。\n"
+            "SQL 方言约束：窗口函数别名（例如 step_in_session）不能在生成该别名的同一 SELECT 层 WHERE、JOIN 或 HAVING 中引用；必须先在 session_steps 等中间 CTE 生成，再由外层过滤。禁止写 WHERE step_in_session <= 10 与 ROW_NUMBER() AS step_in_session 同层。\n"
+            "会话间隔必须按声明的时间字段类型计算；若 event_time 为 DATETIME/TIMESTAMP，使用 TIMESTAMPDIFF(SECOND, prev_time, event_time)，不得直接对日期值做毫秒数减法。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；path_value 是边的会话流量，必须应用 sessionGapSeconds。\n"
         )
     elif str(analysis_model or "event") == "revenue":
