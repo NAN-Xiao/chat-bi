@@ -3227,6 +3227,7 @@ def _dashboard_config_prompt(
             "参与分析事件最多 30 个，事件本身不支持事件筛选；每个事件最多配置一个 splitProperties 拆分属性，该属性是事件节点身份的一部分，同一事件不同属性值必须作为不同节点。",
             "必须按同一主体和事件时间排序，先切分会话，再从初始事件开始为相邻节点生成 source/target 边；不要把路径分析实现成漏斗步骤计数，也不要按固定步骤直接聚合事件次数。",
             "最多展示 10 个路径步骤；每一步按节点流量聚合，但最终边结果必须固定输出 path_source、path_target、path_value、path_step，并可额外输出 session_count。path_value 是边的会话数。",
+            "path_step 必须是边源节点在当前会话中的真实步骤序号：先在会话内按事件时间生成 step_in_session，再在 edges 中使用源节点的 step_in_session（例如 p1.step_in_session AS path_step）；禁止写死为 1、使用常量步骤号，或只保留初始事件的第一跳。必须保留 step_in_session > 1 的后续边。",
             f"当前路径参与事件数量：{len(path_events)}；初始事件：{_safe_json(path.get('initialEvent') or path.get('initial_event'))}；会话间隔：{path.get('sessionGapSeconds') or path.get('session_gap_seconds') or 1800} 秒。",
             "最终返回 chart_type 必须为 sankey。",
         ]
@@ -4010,6 +4011,10 @@ def _path_sql_result_issues(
         issues.append("路径 SQL 必须按会话内事件时间生成相邻节点。")
     if not re.search(r"\bsession(?:_|\b)|\bsession_gap\b|\b(?:datediff|timestampdiff|date_diff|extract)\b", normalized_sql):
         issues.append("路径 SQL 必须应用会话间隔规则。")
+    if re.search(r"\b(?:0|1)\s+as\s+path_step\b", normalized_sql):
+        issues.append("路径 SQL 的 path_step 不能使用固定常量，必须来自会话内源节点的步骤序号。")
+    if not re.search(r"\b(?:step_in_session|session_step|row_number\s*\()", normalized_sql):
+        issues.append("路径 SQL 必须生成会话内步骤序号，并将源节点步骤映射为 path_step。")
     return _unique_text_items(issues)
 
 

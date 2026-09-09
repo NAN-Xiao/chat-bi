@@ -1580,9 +1580,11 @@ def test_path_prompt_sql_plan_and_result_contract_keep_sankey_semantics() -> Non
     ) + "\n" + ai_sql_generator._dashboard_sql_system_prompt("path")
     plan = ai_sql_generator._build_sql_plan(normalized, formula_ir)
     valid_sql = (
-        "WITH ordered AS (SELECT LAG(event_name) OVER (PARTITION BY session_id ORDER BY dt) AS previous_event, "
-        "session_id, dt FROM event), edges AS (SELECT previous_event AS path_source, event_name AS path_target, "
-        "COUNT(*) AS path_value, 1 AS path_step FROM ordered WHERE session_gap_seconds <= 1800 GROUP BY previous_event, event_name) "
+        "WITH session_steps AS (SELECT ROW_NUMBER() OVER (PARTITION BY uid, session_id ORDER BY dt) AS step_in_session, "
+        "LAG(event_name) OVER (PARTITION BY uid, session_id ORDER BY dt) AS previous_event, "
+        "event_name, session_id, dt FROM event), edges AS (SELECT previous_event AS path_source, event_name AS path_target, "
+        "COUNT(*) AS path_value, step_in_session - 1 AS path_step FROM session_steps "
+        "WHERE session_gap_seconds <= 1800 GROUP BY step_in_session, previous_event, event_name) "
         "SELECT path_source, path_target, path_value, path_step FROM edges"
     )
 
@@ -1594,6 +1596,7 @@ def test_path_prompt_sql_plan_and_result_contract_keep_sankey_semantics() -> Non
     assert "窗口函数别名" in prompt
     assert "session_steps" in prompt
     assert "TIMESTAMPDIFF" in prompt
+    assert "真实步骤序号" in prompt
     assert plan["analysis_model"] == "path"
     assert plan["result_contract"]["type"] == "path_sankey"
     assert plan["result_contract"]["required_columns"] == ["path_source", "path_target", "path_value", "path_step"]
@@ -1601,6 +1604,12 @@ def test_path_prompt_sql_plan_and_result_contract_keep_sankey_semantics() -> Non
     invalid = ai_sql_generator._path_sql_result_issues("SELECT path_source, path_target FROM event", normalized)
     assert invalid
     assert any("path_value" in issue for issue in invalid)
+    constant_step = ai_sql_generator._path_sql_result_issues(
+        "SELECT path_source, path_target, COUNT(*) AS path_value, 1 AS path_step "
+        "FROM event GROUP BY path_source, path_target",
+        normalized,
+    )
+    assert any("固定常量" in issue for issue in constant_step)
 
 
 def test_distribution_config_has_independent_normalization_and_validation() -> None:
