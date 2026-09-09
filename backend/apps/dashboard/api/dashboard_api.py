@@ -15,7 +15,6 @@ from apps.dashboard.crud.dashboard_service import list_resource, load_resource, 
     update_platform_dashboard_template, delete_platform_dashboard_template, copy_platform_template_to_workspace_dashboard, \
     refresh_platform_dashboard_template, list_chart_execution_datasources, get_chart_execution_datasource_metadata
 from apps.dashboard.crud.ai_sql_generator import generate_dashboard_ai_sql
-from apps.dashboard.crud.funnel_base_sql import build_funnel_base_sql
 from apps.dashboard.models.dashboard_model import (
     CreateDashboard,
     BaseDashboard,
@@ -30,8 +29,6 @@ from apps.dashboard.models.dashboard_model import (
     DashboardAiSqlGenerateRequest,
     DashboardAiSqlGenerateResponse,
     DashboardSqlPreview,
-    FunnelBaseSqlGenerateRequest,
-    FunnelBaseSqlGenerateResponse,
     DashboardShareRequest,
     DashboardShareListQuery,
     SharedDashboardQuery,
@@ -473,33 +470,6 @@ async def ai_sql_generate_api(session: SessionDep, current_user: CurrentUser, re
     做了什么：把用户在配置器中选择的字段、指标、筛选和意图交给 AI 生成 SQL，不直接执行 SQL。
     """
     return await generate_dashboard_ai_sql(session=session, current_user=current_user, request=request)
-
-
-@router.post(
-    "/funnel_base_sql_generate",
-    response_model=FunnelBaseSqlGenerateResponse,
-    summary=f"{PLACEHOLDER_PREFIX}dashboard_funnel_base_sql_generate",
-)
-@require_permissions(permission=AppPermission(type="ds", keyExpression="request.datasource"))
-async def funnel_base_sql_generate_api(
-        session: SessionDep,
-        current_user: CurrentUser,
-        request: FunnelBaseSqlGenerateRequest,
-):
-    """按已选漏斗配置生成基础事件 SQL，不调用 LLM，也不执行数据库查询。"""
-    try:
-        plan = build_funnel_base_sql(request.context)
-    except ValueError as exc:
-        return FunnelBaseSqlGenerateResponse(
-            success=False,
-            message=str(exc),
-            issues=[str(exc)],
-        )
-    return FunnelBaseSqlGenerateResponse(
-        sql=plan.sql,
-        tables=plan.tables,
-        execution_plan=plan.as_dict(),
-    )
 
 
 @router.post("/share", summary=f"{PLACEHOLDER_PREFIX}dashboard_share")

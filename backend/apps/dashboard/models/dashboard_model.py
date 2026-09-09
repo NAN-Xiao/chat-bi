@@ -452,33 +452,6 @@ class DashboardSqlPreview(BaseModel):
     date_filter: DashboardDateFilterRequest | None = None
     cache_only: bool = False
     force_refresh: bool = False
-    builder: Dict[str, Any] | None = None
-
-
-class FunnelBaseSqlGenerateRequest(BaseModel):
-    """请求生成漏斗基础事件 SQL，不执行步骤聚合。"""
-    datasource: int
-    context: Dict[str, Any] = Field(default_factory=dict)
-
-
-class FunnelBaseSqlGenerateResponse(BaseModel):
-    """漏斗基础 SQL 及后端确定性执行计划。"""
-    success: bool = True
-    sql: str = ""
-    tables: List[str] = Field(default_factory=list)
-    analysis_model: Literal["funnel"] = "funnel"
-    execution_mode: Literal["funnel_base"] = "funnel_base"
-    execution_plan: Dict[str, Any] = Field(default_factory=dict)
-    chart_type: Literal["funnel"] = "funnel"
-    result_config: Dict[str, Any] = Field(default_factory=lambda: {
-        "type": "funnel",
-        "step_field": "step_name",
-        "value_field": "step_count",
-        "order_field": "step_order",
-        "rate_fields": ["step_rate", "step_conversion_rate", "step_dropoff_rate"],
-    })
-    message: str = ""
-    issues: List[str] = Field(default_factory=list)
 
 
 class DashboardExecutionDatasource(BaseModel):

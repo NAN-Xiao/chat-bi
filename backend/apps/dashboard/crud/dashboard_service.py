@@ -44,8 +44,6 @@ from apps.dashboard.crud.dashboard_date_filter_legacy import (
     MIGRATION_REQUIRED_ERROR,
     resolve_dashboard_chart_date_filter,
 )
-from apps.dashboard.crud.funnel_base_sql import build_funnel_base_sql, normalize_funnel_builder_context
-from apps.dashboard.crud.funnel_executor import compute_funnel
 from apps.roi_dashboard.service import list_roi_workspace_config_rows
 from apps.external_mcp.crud import external_mcp_bound_to_tenant, get_bound_external_mcp_id_for_tenant
 from apps.datasource.crud.permission import (
@@ -2550,7 +2548,6 @@ def _dashboard_sql_preview_cache_key(
         *,
         date_filter: Any | None = None,
         date_filter_capability: dict[str, Any] | None = None,
-        funnel_builder: dict[str, Any] | None = None,
 ) -> DashboardSqlPreviewCacheKey:
     """
     是什么：_dashboard_sql_preview_cache_key 是一个可以复用的小步骤，负责仪表盘相关的一件事。
@@ -2566,7 +2563,6 @@ def _dashboard_sql_preview_cache_key(
         "datasource_id": datasource_id,
         "sql": sql.strip(),
         "pivot": _dashboard_sql_preview_pivot_payload(pivot),
-        "funnel_builder": funnel_builder if isinstance(funnel_builder, dict) else None,
         "date_filter": {
             "request": _dashboard_sql_preview_pivot_payload(date_filter),
             "timezone": date_filter_context.get("timezone", settings.DASHBOARD_BUSINESS_TIMEZONE),
@@ -2965,7 +2961,6 @@ def _execute_dashboard_chart_sql(
         datasource_id: int,
         sql: str,
         pivot: Any | None = None,
-        funnel_builder: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     是什么：_execute_dashboard_chart_sql 是一个可以复用的小步骤，负责仪表盘相关的一件事。
@@ -2975,17 +2970,6 @@ def _execute_dashboard_chart_sql(
     datasource_id = resolve_chart_execution_datasource(session, current_user, datasource_id)
     configured_roles = dict(_configured_chart_execution_datasources(session, current_user))
     datasource_access_checked = configured_roles.get(datasource_id) == "roi"
-    funnel_plan = None
-    if isinstance(funnel_builder, dict):
-        analysis_model = str(funnel_builder.get("analysisModel") or funnel_builder.get("analysis_model") or "").strip().lower()
-        if analysis_model == "funnel":
-            if _dashboard_pivot_enabled(pivot):
-                return _failed_chart_result("漏斗分析不支持透视配置", "funnel_pivot_unsupported")
-            try:
-                funnel_plan = build_funnel_base_sql(normalize_funnel_builder_context(funnel_builder))
-                sql = funnel_plan.sql
-            except ValueError as exc:
-                return _failed_chart_result(str(exc), "funnel_configuration_invalid")
     if _dashboard_pivot_enabled(pivot):
         datasource = session.get(CoreDatasource, datasource_id)
         if datasource is None:
@@ -3006,23 +2990,6 @@ def _execute_dashboard_chart_sql(
         datasource_access_checked=datasource_access_checked,
         row_permission_policy="deny_on_overlap",
     )
-    if funnel_plan is not None and result.get("status") != "failed":
-        funnel_config = normalize_funnel_builder_context(funnel_builder or {}).get("funnel") or {}
-        try:
-            result["data"] = compute_funnel(
-                result.get("data") or [],
-                funnel_plan.steps,
-                window=funnel_config.get("window"),
-                group_keys=funnel_plan.group_fields,
-                related_key=funnel_plan.related_field,
-            )
-            result["fields"] = list(result["data"][0].keys()) if result["data"] else [
-                *funnel_plan.group_fields,
-                "step_order", "step_name", "step_count", "step_rate",
-                "step_conversion_rate", "step_dropoff_rate",
-            ]
-        except ValueError as exc:
-            return _failed_chart_result(str(exc), "funnel_compute_failed")
     result = _normalize_dashboard_chart_result(result)
     elapsed_ms = int((time.perf_counter() - started_at) * 1000)
     execution_meta = result.pop("_execution_meta", None)
@@ -3258,7 +3225,6 @@ def _materialize_dashboard_template_canvas_view_info(
                     item_datasource,
                     sql,
                     item.get("pivot"),
-                    (_chart_sql_config(item) or {}).get("builder"),
                 )
                 if data_result.get("status") == "failed":
                     raise HTTPException(
@@ -4312,7 +4278,6 @@ def _dashboard_payload(
                     item_datasource,
                     prepared_query.source_sql,
                     prepared_query.pivot,
-                    (_chart_sql_config(item) or {}).get("builder"),
                 )
             else:
                 data_result = _execute_dashboard_chart_sql(
@@ -4320,7 +4285,6 @@ def _dashboard_payload(
                     current_user,
                     item_datasource,
                     prepared_query.source_sql,
-                    funnel_builder=(_chart_sql_config(item) or {}).get("builder"),
                 )
             if data_result.get("error_type") == PERMISSION_DENIED_ERROR_TYPE:
                 item["dateFilterCapability"] = {
@@ -5590,7 +5554,6 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
         pivot=prepared_query.pivot,
         date_filter=prepared_query.date_filter,
         date_filter_capability=date_filter_capability,
-        funnel_builder=request.builder,
     )
     if not request.force_refresh and not permissions_apply:
         cached = _dashboard_sql_preview_cache_get(cache_key)
@@ -5640,7 +5603,6 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
             datasource_id,
             source_sql,
             prepared_query.pivot,
-            request.builder,
         )
         result = _dashboard_date_filter_result(result, date_filter_capability)
         if not permissions_apply:
