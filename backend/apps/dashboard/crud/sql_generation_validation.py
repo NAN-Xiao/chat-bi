@@ -1,6 +1,8 @@
 """Structural checks for generated dashboard SQL, without executing business queries."""
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from sqlglot import exp
 from sqlglot.optimizer.scope import Scope, traverse_scope
 
@@ -52,6 +54,121 @@ def _source(scope: Scope, column: exp.Column):
 
 def _column_names(node: exp.Expression) -> set[str]:
     return {column.name for column in node.find_all(exp.Column)}
+
+
+def _select_expression_columns(expression: exp.Expression | None) -> list[exp.Column]:
+    """Collect columns from one expression without entering nested SELECTs."""
+    if expression is None:
+        return []
+    columns: list[exp.Column] = []
+
+    def visit(node: exp.Expression) -> None:
+        if isinstance(node, exp.Select):
+            return
+        if isinstance(node, exp.Column):
+            columns.append(node)
+            return
+        for child in node.iter_expressions():
+            visit(child)
+
+    visit(expression)
+    return columns
+
+
+def _normalized_alias(value: object) -> str:
+    return str(value or "").strip().strip('"`[]').lower()
+
+
+def same_select_alias_reference_issues(
+        statements: Iterable[exp.Expression],
+        *,
+        sql_dialect: str | None = None,
+) -> list[str]:
+    """Find query-block alias references before the alias is in scope.
+
+    This validator is shared by SQL generation and execution.  WHERE and JOIN
+    ON cannot see aliases introduced by their SELECT list.  MySQL-compatible
+    engines may allow ordinary or aggregate aliases in HAVING, but a window
+    alias is evaluated too late and must be rejected there as well.
+    """
+    issues: list[str] = []
+    dialect = str(sql_dialect or "mysql").strip().lower()
+    having_aliases_allowed = dialect in {
+        "mysql",
+        "mariadb",
+        "doris",
+        "starrocks",
+        "analyticdb",
+    }
+    for statement in statements:
+        for select in statement.find_all(exp.Select):
+            aliases: dict[str, exp.Expression] = {}
+            for projection in select.expressions:
+                if not isinstance(projection, exp.Alias):
+                    continue
+                alias_name = _normalized_alias(projection.alias)
+                expression = projection.args.get("this")
+                if not alias_name or expression is None:
+                    continue
+                # A pass-through alias does not create a new name that can
+                # shadow its source column in this query block.
+                if (
+                    isinstance(expression, exp.Column)
+                    and _normalized_alias(expression.name) == alias_name
+                ):
+                    continue
+                aliases[alias_name] = expression
+            if not aliases:
+                continue
+
+            for projection in select.expressions:
+                if not isinstance(projection, exp.Alias):
+                    continue
+                projection_alias = _normalized_alias(projection.alias)
+                for column in _select_expression_columns(projection.args.get("this")):
+                    column_name = _normalized_alias(column.name)
+                    if (
+                        column.table
+                        or column_name not in aliases
+                        or column_name == projection_alias
+                    ):
+                        continue
+                    issues.append(
+                        f"查询块输出列 {projection_alias} 引用了同层刚定义的别名 {column_name}；"
+                        "请先在子查询或 CTE 中生成该字段，再由外层查询引用。"
+                    )
+
+            clauses: list[tuple[str, exp.Expression | None, bool]] = []
+            where = select.args.get("where")
+            clauses.append(("WHERE", where.this if where is not None else None, True))
+            having = select.args.get("having")
+            clauses.append((
+                "HAVING",
+                having.this if having is not None else None,
+                not having_aliases_allowed,
+            ))
+            for join in select.args.get("joins") or []:
+                clauses.append(("JOIN ON", join.args.get("on"), True))
+
+            for clause_name, clause_expression, all_aliases_invalid in clauses:
+                if clause_expression is None:
+                    continue
+                for column in _select_expression_columns(clause_expression):
+                    column_name = _normalized_alias(column.name)
+                    alias_expression = aliases.get(column_name)
+                    if column.table or alias_expression is None:
+                        continue
+                    is_window_alias = any(
+                        isinstance(node, exp.Window)
+                        for node in alias_expression.walk()
+                    )
+                    if not all_aliases_invalid and not is_window_alias:
+                        continue
+                    issues.append(
+                        f"查询块 {clause_name} 引用了同层刚定义的别名 {column_name}；"
+                        "请先在子查询或 CTE 中生成该字段，再由外层查询引用。"
+                    )
+    return list(dict.fromkeys(issues))
 
 
 def _seconds(value: exp.Expression | None, unit: exp.Expression | None) -> float | None:

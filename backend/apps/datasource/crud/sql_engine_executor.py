@@ -11,6 +11,12 @@ from typing import Any
 
 from sqlglot import exp
 
+from apps.dashboard.crud.dashboard_date_filter import (
+    has_unresolved_dashboard_date_parameters,
+)
+from apps.dashboard.crud.sql_generation_validation import (
+    same_select_alias_reference_issues,
+)
 from apps.datasource.crud.permission import (
     get_applicable_row_permission_constraints,
     get_row_permission_filters,
@@ -36,7 +42,6 @@ from apps.datasource.crud.sql_permission import (
     validate_sql_scope,
     validate_sql_table_scope,
 )
-from apps.dashboard.crud.dashboard_date_filter import has_unresolved_dashboard_date_parameters
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import (
     _unsafe_exec_sql_after_validation,
@@ -554,7 +559,7 @@ def prepare_query_sql(
         raise ValueError(f"SQL can only contain read operations: {error_reason}")
 
     if validate_columns:
-        _statements, actual_tables, _permission_scope = validate_sql_scope(
+        statements, actual_tables, _permission_scope = validate_sql_scope(
             session,
             current_user,
             datasource,
@@ -562,6 +567,7 @@ def prepare_query_sql(
             apply_user_permission_scope=apply_user_permission_scope,
         )
     else:
+        statements = parse_sql_statements(sql, datasource.type, fallback_to_generic=True)
         actual_tables = validate_sql_table_scope(
             session,
             current_user,
@@ -569,6 +575,16 @@ def prepare_query_sql(
             sql,
             apply_user_permission_scope=apply_user_permission_scope,
         )
+
+    # Column-permission resolution intentionally treats derived names as
+    # selectable outputs.  That is insufficient for SQL clause visibility, so
+    # enforce alias scope independently before sending the query to a source.
+    alias_scope_issues = same_select_alias_reference_issues(
+        statements,
+        sql_dialect=getattr(datasource, "type", None),
+    )
+    if alias_scope_issues:
+        raise ValueError(" ".join(alias_scope_issues))
 
     _validate_allowed_tables(actual_tables, allowed_tables)
 

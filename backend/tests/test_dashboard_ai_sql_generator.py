@@ -9,12 +9,12 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from attribution_sql_fixture import attribution_sql
 from langchain_core.messages import HumanMessage
 
 from apps.ai_model.model_factory import LLMConfig
 from apps.dashboard.crud import ai_sql_generator
 from apps.dashboard.models.dashboard_model import DashboardAiSqlGenerateRequest
-from attribution_sql_fixture import attribution_sql
 
 
 class _Chunk:
@@ -1597,6 +1597,12 @@ def test_path_prompt_sql_plan_and_result_contract_keep_sankey_semantics() -> Non
     assert "session_steps" in prompt
     assert "TIMESTAMPDIFF" in prompt
     assert "真实步骤序号" in prompt
+    assert "错误示例仅用于识别和禁止" in prompt
+    assert "正确示例必须分层" in prompt
+    assert "编号前过滤会改变真实路径顺序" in prompt
+    assert "Unix 毫秒 BIGINT" in prompt
+    assert "LEAD/LAG 生成的 path_target 或 previous_event 也必须在下一层过滤 NULL" in prompt
+    assert "推荐 edge_candidates 先生成 LEAD 列" in prompt
     assert plan["analysis_model"] == "path"
     assert plan["result_contract"]["type"] == "path_sankey"
     assert plan["result_contract"]["required_columns"] == ["path_source", "path_target", "path_value", "path_step"]
@@ -1832,6 +1838,124 @@ def test_sql_validation_ignores_nested_query_columns() -> None:
     )
 
     assert ai_sql_generator._same_select_alias_reference_issues(sql, "mysql") == []
+
+
+@pytest.mark.parametrize(
+    "clause_sql",
+    [
+        (
+            "SELECT ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time) AS step_in_session "
+            "FROM sessionized WHERE step_in_session = 1"
+        ),
+        (
+            "SELECT ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time) AS step_in_session "
+            "FROM sessionized s JOIN session_roots r ON step_in_session = r.step_in_session"
+        ),
+        (
+            "SELECT ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time) AS step_in_session "
+            "FROM sessionized HAVING step_in_session = 1"
+        ),
+    ],
+)
+def test_sql_validation_rejects_window_alias_in_same_select_clause(clause_sql: str) -> None:
+    issues = ai_sql_generator._same_select_alias_reference_issues(clause_sql, "mysql")
+
+    assert issues
+    assert any("step_in_session" in issue for issue in issues)
+
+
+def test_sql_validation_allows_window_alias_after_cte_boundary() -> None:
+    sql = (
+        "WITH session_steps AS ("
+        "SELECT uid, ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time) AS step_in_session "
+        "FROM sessionized) "
+        "SELECT uid, step_in_session FROM session_steps WHERE step_in_session <= 10"
+    )
+
+    assert ai_sql_generator._same_select_alias_reference_issues(sql, "mysql") == []
+
+
+def test_sql_validation_allows_aggregate_alias_in_mysql_having() -> None:
+    sql = "SELECT COUNT(*) AS row_count FROM event HAVING row_count > 1"
+
+    assert ai_sql_generator._same_select_alias_reference_issues(sql, "mysql") == []
+
+
+def test_sql_validation_rejects_aggregate_alias_in_postgres_having() -> None:
+    sql = "SELECT COUNT(*) AS row_count FROM event HAVING row_count > 1"
+
+    issues = ai_sql_generator._same_select_alias_reference_issues(sql, "postgresql")
+
+    assert issues
+    assert any("row_count" in issue and "HAVING" in issue for issue in issues)
+
+
+def test_node_validate_routes_same_select_window_alias_to_repair() -> None:
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql=(
+            "WITH session_steps AS ("
+            "SELECT uid, ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time) AS step_in_session "
+            "FROM sessionized WHERE step_in_session = 1) "
+            "SELECT uid, step_in_session FROM session_steps"
+        ),
+        chart_type="sankey",
+    )
+
+    validated = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": {"analysis_model": "path"},
+        "sql_dialect": "mysql",
+        "graph_trace": [],
+    })["response"]
+
+    assert validated.success is False
+    assert validated.message == "生成 SQL 存在查询列别名作用域错误。"
+    assert ai_sql_generator._route_after_sql_validate({
+        "response": validated,
+        "normalized_config": {"analysis_model": "path"},
+        "sql_repair_attempts": 0,
+    }) == "repair_sql"
+
+
+def test_path_validation_rejects_raw_epoch_milliseconds_in_timestampdiff() -> None:
+    normalized = ai_sql_generator._normalize_manual_config(_path_request())
+    schema = "(time:bigint, event time; role=event_time; encoding=epoch_milliseconds)"
+    invalid_sql = (
+        "SELECT TIMESTAMPDIFF(SECOND, prev_time, time) AS interval_seconds "
+        "FROM event"
+    )
+    valid_sql = (
+        "SELECT TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(prev_time / 1000), "
+        "FROM_UNIXTIME(time / 1000)) AS interval_seconds FROM event"
+    )
+    partially_converted_sql = (
+        "SELECT TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(prev_time / 1000), time) "
+        "AS interval_seconds FROM event"
+    )
+
+    invalid_issues = ai_sql_generator._path_sql_result_issues(
+        invalid_sql,
+        normalized,
+        schema=schema,
+        sql_dialect="mysql",
+    )
+    valid_issues = ai_sql_generator._path_sql_result_issues(
+        valid_sql,
+        normalized,
+        schema=schema,
+        sql_dialect="mysql",
+    )
+    partial_issues = ai_sql_generator._path_sql_result_issues(
+        partially_converted_sql,
+        normalized,
+        schema=schema,
+        sql_dialect="mysql",
+    )
+
+    assert any("Unix 毫秒" in issue for issue in invalid_issues)
+    assert any("Unix 毫秒" in issue for issue in partial_issues)
+    assert not any("Unix 毫秒" in issue for issue in valid_issues)
 
 
 def test_distribution_auto_bucket_rejects_unclamped_thirteenth_interval() -> None:

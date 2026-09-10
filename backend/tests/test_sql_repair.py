@@ -25,9 +25,9 @@ from apps.chat.task.sql_repair import (
     sanitize_sql_repair_error,
     sql_repair_fingerprint,
     validate_mysql_compatible_sql,
+    validate_mysql_date_format_grouping,
     validate_sql_for_datasource,
     validate_sql_for_generation,
-    validate_mysql_date_format_grouping,
 )
 from apps.datasource.crud.permission_errors import SqlSchemaScopeError
 from common.error import (
@@ -667,6 +667,21 @@ def test_mysql_compatible_sql_allows_explicit_join_for_distribution_simultaneous
     """
 
     validate_mysql_compatible_sql(sql)
+
+
+def test_mysql_compatible_sql_rejects_same_select_window_alias_filter() -> None:
+    with pytest.raises(SqlStructureValidationError, match="step_in_session"):
+        validate_mysql_compatible_sql(
+            "SELECT ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time) AS step_in_session "
+            "FROM event WHERE step_in_session = 1"
+        )
+
+
+def test_mysql_compatible_sql_allows_aggregate_alias_in_having() -> None:
+    validate_mysql_compatible_sql(
+        "SELECT uid, COUNT(*) AS event_count FROM event "
+        "GROUP BY uid HAVING event_count > 1"
+    )
 
 
 def test_mysql_compatible_sql_keeps_correlated_where_exists_outside_join_validation() -> None:
