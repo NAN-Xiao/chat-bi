@@ -51,6 +51,11 @@ test('renders the analysis model selector before event metrics', () => {
     const headingPattern = new RegExp(`<span>${modelLabel}</span>[\\s\\S]*?class="analysis-model-info-icon"`)
     assert.match(source, headingPattern, `${modelLabel}标题需要展示说明提示`)
   }
+  assert.match(
+    source,
+    /v-else-if="!isRetentionAnalysis && !isFunnelAnalysis && !isDistributionAnalysis && !isIntervalAnalysis && !isPathAnalysis && !isRevenueAnalysis && !isAttributionAnalysis && !isRankingAnalysis && !isHeatmapAnalysis"[\s\S]*?<span>分析指标<\/span>[\s\S]*?class="analysis-model-info-icon"/,
+    '事件分析标题需要展示说明提示'
+  )
   assert.match(source, /class="retention-heading-row"/)
   assert.match(
     source,
@@ -262,6 +267,13 @@ test('includes retention in AI context and preview signature', () => {
   assert.match(signatureBody, /retention:\s*sqlBuilder\.analysisModel === 'retention'/)
   assert.match(contextBody, /funnel:\s*sqlBuilder\.analysisModel === 'funnel'/)
   assert.match(signatureBody, /funnel:\s*sqlBuilder\.analysisModel === 'funnel'/)
+})
+
+test('includes event-specific context content for AI requests', () => {
+  const contextBody = source.match(/function collectBuilderAiContext\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+
+  assert.match(contextBody, /event:\s*sqlBuilder\.analysisModel === 'event' \? \{[\s\S]*?content:\s*EVENT_ANALYSIS_CONTEXT_CONTENT/)
+  assert.match(contextBody, /EVENT_ANALYSIS_CONTEXT_CONTENT/)
 })
 
 test('model switching clears incompatible state and defaults funnel to a funnel chart', () => {

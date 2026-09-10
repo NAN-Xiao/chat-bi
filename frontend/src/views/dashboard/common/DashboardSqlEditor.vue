@@ -1133,8 +1133,9 @@ const analysisFieldOptions = computed(() => {
 })
 const analysisFieldPickerMode = computed(() => usesTrackingEventPicker.value ? 'tracking-event' : 'property')
 const formulaFieldPickerPlaceholder = computed(() => usesTrackingEventPicker.value ? '选择事件' : '选择字段')
+const EVENT_ANALYSIS_CONTEXT_CONTENT = '分析某段时间内，某个事件或事件属性的整体趋势情况'
 const analysisModelOptions: Array<{ label: string; value: AnalysisModel; content?: string }> = [
-  { label: '事件分析', value: 'event' as AnalysisModel, content: '分析某段时间内，某个事件或事件属性的整体趋势情况' },
+  { label: '事件分析', value: 'event' as AnalysisModel, content: EVENT_ANALYSIS_CONTEXT_CONTENT },
   { label: '属性分析', value: 'property' as AnalysisModel, content: '按用户属性字段分组，统计属性指标在时间范围内的分布情况' },
   { label: '留存分析', value: 'retention' as AnalysisModel, content: RETENTION_ANALYSIS_CONTEXT_CONTENT },
   { label: '漏斗分析', value: 'funnel' as AnalysisModel, content: '以某段时间做过步骤1的用户为样本，查看窗口期内，指定步骤下用户的转化情况' },
@@ -5409,6 +5410,9 @@ function collectBuilderAiContext() {
   })
   return {
     analysisModel: sqlBuilder.analysisModel,
+    event: sqlBuilder.analysisModel === 'event' ? {
+      content: EVENT_ANALYSIS_CONTEXT_CONTENT,
+    } : null,
     property: sqlBuilder.analysisModel === 'property' ? {
       content: '对当前数据源中的属性字段进行聚合统计，并可按属性维度拆分结果',
       groupMode: sqlBuilder.property.groupMode,
