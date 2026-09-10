@@ -6,6 +6,9 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+import sqlglot
+
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
 from apps.datasource.crud import sql_engine, sql_engine_executor
 from apps.system.crud.tracking_expression import compile_tracking_json_expression
@@ -172,6 +175,29 @@ def test_sql_engine_result_keeps_legacy_and_standard_fields() -> None:
     assert payload["executed_sql"] == "select day from event where tenant_id = 1"
     assert payload["tables"] == ["event"]
     assert payload["_execution_meta"]["execution_time_ms"] == 12
+
+
+def test_query_preparation_rejects_same_select_window_alias(monkeypatch) -> None:
+    sql = (
+        "SELECT ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time) AS step_in_session "
+        "FROM event WHERE step_in_session = 1"
+    )
+    statement = sqlglot.parse_one(sql, read="mysql")
+    monkeypatch.setattr(sql_engine_executor, "check_sql_read", lambda *_args, **_kwargs: (True, ""))
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "validate_sql_scope",
+        lambda *_args, **_kwargs: ([statement], {"event"}, {}),
+    )
+
+    with pytest.raises(ValueError, match="step_in_session"):
+        sql_engine_executor.prepare_query_sql(
+            session=object(),
+            current_user=object(),
+            datasource=SimpleNamespace(type="mysql"),
+            sql=sql,
+            apply_row_permissions=False,
+        )
 
 
 def test_tracking_json_expression_compiles_by_runtime_datasource_type() -> None:

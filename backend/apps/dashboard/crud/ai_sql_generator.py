@@ -23,7 +23,14 @@ from sqlglot.lineage import lineage as build_sql_lineage
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
-from apps.chat.task.sql_repair import SqlStructureValidationError, validate_sql_for_generation
+from apps.chat.task.sql_repair import (
+    SqlStructureValidationError,
+    validate_sql_for_generation,
+)
+from apps.dashboard.crud.attribution_rules import (
+    ATTRIBUTION_METRIC_COLUMNS,
+    ATTRIBUTION_RULES,
+)
 from apps.dashboard.crud.dashboard_date_filter import (
     dashboard_date_parameter_tokens,
     validate_dashboard_date_parameter_sql,
@@ -32,8 +39,8 @@ from apps.dashboard.crud.sql_generation_validation import (
     attribution_structure_issues,
     derived_column_issues,
     encoded_date_issues,
+    same_select_alias_reference_issues,
 )
-from apps.dashboard.crud.attribution_rules import ATTRIBUTION_METRIC_COLUMNS, ATTRIBUTION_RULES
 from apps.dashboard.models.dashboard_model import (
     DashboardAiSqlGenerateRequest,
     DashboardAiSqlGenerateResponse,
@@ -3228,6 +3235,8 @@ def _dashboard_config_prompt(
             "必须按同一主体和事件时间排序，先切分会话，再从初始事件开始为相邻节点生成 source/target 边；不要把路径分析实现成漏斗步骤计数，也不要按固定步骤直接聚合事件次数。",
             "最多展示 10 个路径步骤；每一步按节点流量聚合，但最终边结果必须固定输出 path_source、path_target、path_value、path_step，并可额外输出 session_count。path_value 是边的会话数。",
             "path_step 必须是边源节点在当前会话中的真实步骤序号：先在会话内按事件时间生成 step_in_session，再在 edges 中使用源节点的 step_in_session（例如 p1.step_in_session AS path_step）；禁止写死为 1、使用常量步骤号，或只保留初始事件的第一跳。必须保留 step_in_session > 1 的后续边。",
+            "禁止在生成 ROW_NUMBER/LAG/LEAD 别名的同一 SELECT 层使用该别名的 WHERE、JOIN ON 或 HAVING；必须先生成 session_steps 或 edge_candidates，再由外层过滤。",
+            "错误示例仅用于禁止：ROW_NUMBER() ... AS step_in_session 与 WHERE step_in_session ... 同层；正确做法是先完成编号，再在外层 path_nodes 过滤，避免改变真实路径顺序。",
             f"当前路径参与事件数量：{len(path_events)}；初始事件：{_safe_json(path.get('initialEvent') or path.get('initial_event'))}；会话间隔：{path.get('sessionGapSeconds') or path.get('session_gap_seconds') or 1800} 秒。",
             "最终返回 chart_type 必须为 sankey。",
         ]
@@ -3352,66 +3361,12 @@ def _sqlglot_statements_for_generation_validation(sql: str, sql_dialect: str | N
         return []
 
 
-def _select_expression_columns(expression: exp.Expression | None) -> list[exp.Column]:
-    """Collect columns in one projection without descending into nested query blocks."""
-    if expression is None:
-        return []
-    columns: list[exp.Column] = []
-
-    def visit(node: exp.Expression) -> None:
-        if isinstance(node, exp.Select):
-            return
-        if isinstance(node, exp.Column):
-            columns.append(node)
-            return
-        for child in node.iter_expressions():
-            visit(child)
-
-    visit(expression)
-    return columns
-
-
 def _same_select_alias_reference_issues(sql: str, sql_dialect: str | None) -> list[str]:
-    """Reject projections that reference another alias defined by the same SELECT."""
-    issues: list[str] = []
+    """Validate alias scope using the same AST rule as the execution layer."""
     statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
-    for statement in statements:
-        for select in statement.find_all(exp.Select):
-            aliases: set[str] = set()
-            for projection in select.expressions:
-                if not isinstance(projection, exp.Alias):
-                    continue
-                alias_name = _normalized_identifier(projection.alias)
-                expression = projection.args.get("this")
-                if not alias_name:
-                    continue
-                # `source_column AS source_column` does not introduce a new
-                # name that could shadow the source column in this query block.
-                if (
-                    isinstance(expression, exp.Column)
-                    and _normalized_identifier(expression.name) == alias_name
-                ):
-                    continue
-                aliases.add(alias_name)
-            if not aliases:
-                continue
-            for projection in select.expressions:
-                if not isinstance(projection, exp.Alias):
-                    continue
-                projection_alias = _normalized_identifier(projection.alias)
-                for column in _select_expression_columns(projection.args.get("this")):
-                    column_name = _normalized_identifier(column.name)
-                    if (
-                        column.table
-                        or column_name not in aliases
-                        or column_name == projection_alias
-                    ):
-                        continue
-                    issues.append(
-                        f"查询块输出列 {projection_alias} 引用了同层刚定义的别名 {column_name}；"
-                        "请先在子查询或 CTE 中生成该字段，再由外层查询引用。"
-                    )
-    return _unique_text_items(issues)
+    return _unique_text_items(
+        same_select_alias_reference_issues(statements, sql_dialect=sql_dialect)
+    )
 
 
 def _sql_uses_unix_time_for_yyyymmdd_field(sql: str, time_config: dict[str, Any]) -> bool:
@@ -3998,6 +3953,9 @@ def _interval_sql_result_issues(
 def _path_sql_result_issues(
         sql: str,
         normalized_config: dict[str, Any],
+        *,
+        schema: str = "",
+        sql_dialect: str | None = None,
 ) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "path":
         return []
@@ -4011,11 +3969,89 @@ def _path_sql_result_issues(
         issues.append("路径 SQL 必须按会话内事件时间生成相邻节点。")
     if not re.search(r"\bsession(?:_|\b)|\bsession_gap\b|\b(?:datediff|timestampdiff|date_diff|extract)\b", normalized_sql):
         issues.append("路径 SQL 必须应用会话间隔规则。")
-    if re.search(r"\b(?:0|1)\s+as\s+path_step\b", normalized_sql):
+    # Inspect the parsed projection instead of searching for ``1 AS
+    # path_step`` text.  A valid expression such as ``step_in_session - 1 AS
+    # path_step`` contains that substring but is not a constant step.
+    constant_path_step = False
+    for statement in _sqlglot_statements_for_generation_validation(sql, None):
+        for select in statement.find_all(exp.Select):
+            for projection in select.expressions:
+                if not isinstance(projection, exp.Alias):
+                    continue
+                if _normalized_identifier(projection.alias) != "path_step":
+                    continue
+                value = projection.args.get("this")
+                if (
+                    isinstance(value, exp.Literal)
+                    and not value.is_string
+                    and str(value.this).strip() in {"0", "1"}
+                ):
+                    constant_path_step = True
+                    break
+            if constant_path_step:
+                break
+        if constant_path_step:
+            break
+    if constant_path_step:
         issues.append("路径 SQL 的 path_step 不能使用固定常量，必须来自会话内源节点的步骤序号。")
     if not re.search(r"\b(?:step_in_session|session_step|row_number\s*\()", normalized_sql):
         issues.append("路径 SQL 必须生成会话内步骤序号，并将源节点步骤映射为 path_step。")
+    issues.extend(_path_epoch_timestampdiff_issues(sql, schema, sql_dialect))
     return _unique_text_items(issues)
+
+
+def _path_epoch_timestampdiff_issues(
+        sql: str,
+        schema: str,
+        sql_dialect: str | None,
+) -> list[str]:
+    """Reject raw epoch-millisecond values passed to TIMESTAMPDIFF in paths.
+
+    The event-time encoding is taken from the workspace schema metadata.  A
+    query against a DATETIME/TIMESTAMP event field is left untouched; only a
+    field explicitly declared as ``role=event_time`` and
+    ``encoding=epoch_milliseconds`` enables this check.
+    """
+    if not re.search(
+        r"\brole\s*=\s*event_time\b[^)]*\bencoding\s*=\s*epoch_milliseconds\b",
+        str(schema or ""),
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        return []
+    field_names = {
+        match.group("field").strip('"`[]').lower()
+        for match in re.finditer(
+            r"\((?P<field>[A-Za-z_][A-Za-z0-9_$]*)\s*:[^)]*?"
+            r"\brole\s*=\s*event_time\b[^)]*?"
+            r"\bencoding\s*=\s*epoch_milliseconds\b",
+            str(schema or ""),
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+    }
+    if not field_names:
+        return []
+    raw_time_names = field_names | {
+        f"prev_{name}" for name in field_names
+    } | {
+        "event_time",
+        "prev_event_time",
+    }
+    statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+    for statement in statements:
+        for node in statement.find_all(exp.TimestampDiff):
+            arguments = [node.this, node.expression]
+            if any(
+                isinstance(argument, exp.Column)
+                and _normalized_identifier(argument.name) in raw_time_names
+                and not any(isinstance(child, exp.UnixToTime) for child in argument.walk())
+                for argument in arguments
+            ):
+                return [
+                    "路径 SQL 的事件时间字段在 Schema 中声明为 Unix 毫秒；"
+                    "TIMESTAMPDIFF 必须先用 FROM_UNIXTIME(<time> / 1000) 转换，"
+                    "或直接比较毫秒差，不能把原始 BIGINT 直接传入。"
+                ]
+    return []
 
 
 def _revenue_date_output_issues(
@@ -4191,7 +4227,8 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
         "当用户问题或当前配置涉及复杂分析，例如留存、转化、活跃、复购、漏斗、cohort 分析、分组比率、时间窗口对比时，优先使用 CTE 分层结构。"
         "CTE 只是组织结构范式，所有表名、字段名、事件名、日期表达式、过滤条件、分子分母和成熟窗口必须来自当前配置、business-sql-schema、data-skill 或用户明确规则；不得照抄占位符，也不得编造未提供字段。\n"
         "查询块别名作用域规则（所有分析模型必须遵守）：同一个 SELECT 的输出列之间不能互相引用刚定义的别名。"
-        "如果一个输出列依赖另一个输出列，必须先在子查询或 CTE 中生成被依赖字段，再由外层查询引用；例如 interval_label 依赖 interval_order 时，必须拆成 bucket_numbers 和 bucketed 两个查询层级。"
+        "窗口或计算别名不能在生成它的同一 SELECT 层 WHERE、JOIN ON 或 HAVING 中引用。"
+        "如果一个输出列或过滤条件依赖另一个输出列，必须先在子查询或 CTE 中生成被依赖字段，再由外层查询引用；例如 interval_label 依赖 interval_order 时，必须拆成 bucket_numbers 和 bucketed 两个查询层级。"
         "禁止生成 CASE ... END AS interval_order, CASE ... interval_order ... END AS interval_label 这类同层别名引用。\n"
         "时间边界层规则：\n"
         "- bounds CTE 必须只返回一行时间边界，供后续 CTE 通过 JOIN 或 CROSS JOIN 引用。\n"
@@ -4411,7 +4448,9 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "GROUP BY path_step, path_source, path_target\n"
             "ORDER BY path_step, path_value DESC。\n"
             "SQL 方言约束：窗口函数别名（例如 step_in_session）不能在生成该别名的同一 SELECT 层 WHERE、JOIN 或 HAVING 中引用；必须先在 session_steps 等中间 CTE 生成，再由外层过滤。禁止写 WHERE step_in_session <= 10 与 ROW_NUMBER() AS step_in_session 同层。\n"
-            "会话间隔必须按声明的时间字段类型计算；若 event_time 为 DATETIME/TIMESTAMP，使用 TIMESTAMPDIFF(SECOND, prev_time, event_time)，不得直接对日期值做毫秒数减法。\n"
+            "下面的错误示例仅用于识别和禁止，绝对不要照抄：session_steps AS (SELECT uid, ROW_NUMBER() OVER (PARTITION BY uid ORDER BY event_time) AS step_in_session FROM sessionized WHERE event_name = 'configured_event' OR step_in_session = 1)。错误原因是 step_in_session 在本层才生成，且编号前过滤会改变真实路径顺序。\n"
+            "正确示例必须分层：session_steps AS (SELECT uid, session_id, event_time, event_name, ROW_NUMBER() OVER (PARTITION BY uid, session_id ORDER BY event_time) AS step_in_session FROM sessionized), path_nodes AS (SELECT s.uid, s.session_id, s.event_time, s.event_name, s.step_in_session FROM session_steps s WHERE s.step_in_session <= 10)。示例字段和值仅为结构示意，必须替换为当前配置。\n"
+            "ROW_NUMBER、LAG、LEAD 等所有窗口函数别名都遵守相同分层规则；LEAD/LAG 生成的 path_target 或 previous_event 也必须在下一层过滤 NULL。推荐 edge_candidates 先生成 LEAD 列，再由 edges 外层过滤，避免在生成窗口别名的同层 WHERE 中引用它。会话间隔必须按声明的时间字段类型计算：若 event_time 为 DATETIME/TIMESTAMP，使用 TIMESTAMPDIFF(SECOND, prev_time, event_time)；若为 Unix 毫秒 BIGINT，使用 event_time - prev_time 与当前配置秒数乘以 1000 后的数值比较，例如 1800 秒写成 > 1800000，禁止把 BIGINT 直接传给 TIMESTAMPDIFF。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；path_value 是边的会话流量，必须应用 sessionGapSeconds。\n"
         )
     elif str(analysis_model or "event") == "revenue":
@@ -4973,11 +5012,6 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "SQL 不是只读查询。"
         response.advice = "只能生成 SELECT/WITH 查询，请重新生成。"
         response.issues = list(response.issues or []) + ["生成 SQL 不是只读 SELECT/WITH 查询。"]
-    elif dialect_issue:
-        response.success = False
-        response.message = "生成 SQL 未满足当前数据源方言要求。"
-        response.advice = "请按当前数据源支持的查询结构重新生成 SQL。"
-        response.issues = _unique_text_items(list(response.issues or []) + [dialect_issue])
     elif alias_scope_issues := _same_select_alias_reference_issues(
         sql,
         state.get("sql_dialect") or datasource_type,
@@ -4986,6 +5020,11 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 存在查询列别名作用域错误。"
         response.advice = "请将依赖其他输出列的表达式拆分到子查询或 CTE 的外层查询中。"
         response.issues = _unique_text_items(list(response.issues or []) + alias_scope_issues)
+    elif dialect_issue:
+        response.success = False
+        response.message = "生成 SQL 未满足当前数据源方言要求。"
+        response.advice = "请按当前数据源支持的查询结构重新生成 SQL。"
+        response.issues = _unique_text_items(list(response.issues or []) + [dialect_issue])
     elif isinstance(state.get("normalized_config"), dict) and _uses_dashboard_date_parameters(
         response.chart_type
         or ((state["normalized_config"].get("chart") or {}).get("type")),
@@ -5089,6 +5128,8 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     elif path_issues := _path_sql_result_issues(
         sql,
         state.get("normalized_config") or {},
+        schema=str(state.get("schema") or ""),
+        sql_dialect=state.get("sql_dialect"),
     ):
         response.success = False
         response.message = "生成 SQL 未满足路径分析生成要求。"

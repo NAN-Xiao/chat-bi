@@ -16,6 +16,9 @@ from sqlglot.errors import ParseError, TokenError
 from sqlglot.optimizer.scope import traverse_scope
 
 from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
+from apps.dashboard.crud.sql_generation_validation import (
+    same_select_alias_reference_issues,
+)
 from apps.datasource.crud.permission_errors import SqlSchemaScopeError
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
 from common.user_facing_errors import (
@@ -492,6 +495,13 @@ def validate_mysql_compatible_sql(sql: str) -> None:
             "并只返回修复后的完整 SQL。"
         ) from error
 
+    alias_scope_issues = same_select_alias_reference_issues(
+        statements,
+        sql_dialect="mysql",
+    )
+    if alias_scope_issues:
+        raise SqlStructureValidationError(" ".join(alias_scope_issues))
+
     for statement in statements:
         for cte in statement.find_all(exp.CTE):
             alias = str(cte.alias_or_name or "").strip('"\x60[]').lower()
@@ -566,7 +576,13 @@ def validate_mysql_compatible_sql(sql: str) -> None:
 
 def validate_sql_for_datasource(sql: str, datasource_type: Any) -> None:
     """对生成、模板渲染和最终执行 SQL 使用同一套数据源方言校验。"""
-    if str(datasource_type or "").strip().lower() not in {"mysql", "doris", "starrocks"}:
+    if str(datasource_type or "").strip().lower() not in {
+        "mysql",
+        "mariadb",
+        "analyticdb",
+        "doris",
+        "starrocks",
+    }:
         return
     validate_mysql_compatible_sql(sql)
     validate_mysql_date_format_grouping(sql)
