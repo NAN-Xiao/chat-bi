@@ -39,6 +39,7 @@ from apps.dashboard.crud.sql_generation_validation import (
     attribution_structure_issues,
     derived_column_issues,
     encoded_date_issues,
+    _select_expression_columns,
     same_select_alias_reference_issues,
 )
 from apps.dashboard.models.dashboard_model import (

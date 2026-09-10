@@ -2855,7 +2855,7 @@ def test_ranking_prompt_plan_and_result_contract_keep_rank_semantics() -> None:
     )
 
     assert "只能使用 ranking 配置" in prompt
-    assert "attribution/ranking 字段信息" in prompt
+    assert "attribution/ranking/heatmap 字段信息" in prompt
     assert "并列名次" in prompt
     assert plan["analysis_model"] == "ranking"
     assert plan["result_contract"]["type"] == "ranking_table"
