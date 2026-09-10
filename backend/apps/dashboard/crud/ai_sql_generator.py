@@ -3220,6 +3220,7 @@ def _dashboard_config_prompt(
             f"并列名次处理为 {tie_handling}：default 按稳定的主体值作为并列后的次级排序，skip 使用 RANK 语义跳过名次，dense 使用 DENSE_RANK 语义不跳过名次。",
             "同时展示指标必须在同一主体聚合粒度上分别计算，并按 simultaneous_metric_1、simultaneous_metric_2 等固定别名输出；不能参与主指标排序或改变主体粒度。",
             "同时展示属性必须按配置顺序输出 ranking_property_1、ranking_property_2 等字段，并使用主体同一聚合层的值；不得猜测或替换属性字段。",
+            "同时展示属性必须在 ranking_entity 的聚合层直接返回，不能用 MAX/MIN/AVG/SUM/COUNT 等聚合替代属性值，避免同一主体多值时的语义漂移。",
             "全局 filters 和 time 继续使用公共配置；不得把全局筛选改成某个排行事件的隐式筛选。",
             f"当前同时展示指标数量：{len(simultaneous_metrics)}，同时展示属性数量：{len(simultaneous_properties)}。",
             "最终返回 chart_type 必须为 table。",
@@ -4172,6 +4173,8 @@ def _attribution_sql_result_issues(
 def _ranking_sql_result_issues(
         sql: str,
         normalized_config: dict[str, Any],
+        *,
+        sql_dialect: str | None = None,
 ) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "ranking":
         return []
@@ -4192,6 +4195,64 @@ def _ranking_sql_result_issues(
         issues.append("排行榜 SQL 必须使用窗口函数生成名次。")
     if not re.search(r"\bover\s*\(", normalized_sql):
         issues.append("排行榜 SQL 的名次计算必须使用 OVER 窗口。")
+
+    statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+    if not statements:
+        return _unique_text_items(issues)
+
+    configured_property_candidates: set[str] = {
+        candidate
+        for property_field in simultaneous_properties
+        for candidate in _schema_field_candidates(property_field)
+        if candidate
+    }
+
+    def _contains_disallowed_aggregate(expression: exp.Expression) -> bool:
+        for node in expression.walk():
+            if not isinstance(node, exp.AggFunc):
+                continue
+            agg_name = _normalized_identifier(str(node.sql_name()))
+            if agg_name not in {"any_value"}:
+                return True
+        return False
+
+    def _references_configured_property(expression: exp.Expression) -> bool:
+        if not configured_property_candidates:
+            return True
+        for node in expression.walk():
+            if not isinstance(node, exp.Column):
+                continue
+            candidates = {_normalized_identifier(node.name)}
+            if node.table:
+                candidates.add(_normalized_identifier(f"{node.table}.{node.name}"))
+            if candidates & configured_property_candidates:
+                return True
+        return False
+
+    for statement in statements:
+        for index, _ in enumerate(simultaneous_properties):
+            alias_name = f"ranking_property_{index + 1}"
+            try:
+                output_lineage = build_sql_lineage(alias_name, statement)
+            except sqlglot.errors.SqlglotError:
+                continue
+            lineage_nodes = list(output_lineage.walk())
+            if not lineage_nodes:
+                continue
+            output_expression = lineage_nodes[0].expression
+            upstream_expressions = [node.expression for node in lineage_nodes[1:]]
+            checked_expressions = [output_expression, *upstream_expressions]
+            if any(_contains_disallowed_aggregate(expression) for expression in checked_expressions):
+                issues.append(
+                    "排行榜属性不能使用 MAX/MIN/AVG/SUM/COUNT 等聚合函数取值，请先在排行主体同一聚合层输出属性字段。"
+                )
+                continue
+            if not any(
+                _references_configured_property(expression)
+                for expression in checked_expressions
+                if _select_expression_columns(expression)
+            ):
+                issues.append(f"排行榜属性 {alias_name} 未使用配置的同时展示属性来源。")
     return _unique_text_items(issues)
 
 
@@ -5157,6 +5218,7 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     elif ranking_issues := _ranking_sql_result_issues(
         sql,
         state.get("normalized_config") or {},
+        sql_dialect=state.get("sql_dialect"),
     ):
         response.success = False
         response.message = "生成 SQL 未满足排行榜生成要求。"

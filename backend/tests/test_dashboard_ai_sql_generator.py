@@ -2845,9 +2845,12 @@ def test_ranking_prompt_plan_and_result_contract_keep_rank_semantics() -> None:
     ) + "\n" + ai_sql_generator._dashboard_sql_system_prompt("ranking")
     plan = ai_sql_generator._build_sql_plan(normalized, ai_sql_generator._build_formula_ir(normalized))
     valid_sql = (
-        "WITH entity_values AS (SELECT user_id AS ranking_entity, COUNT(*) AS ranking_value FROM event GROUP BY user_id), "
-        "ranked AS (SELECT RANK() OVER (ORDER BY ranking_value DESC) AS rank, ranking_entity, ranking_value, "
-        "COUNT(*) AS simultaneous_metric_1, MAX(country) AS ranking_property_1 FROM entity_values GROUP BY ranking_entity, ranking_value) "
+        "WITH entity_values AS ("
+        "SELECT user_id AS ranking_entity, country AS ranking_property_1, COUNT(*) AS ranking_value "
+        "FROM event GROUP BY user_id, country), "
+        "ranked AS ("
+        "SELECT RANK() OVER (ORDER BY ranking_value DESC) AS rank, ranking_entity, ranking_value, "
+        "COUNT(*) AS simultaneous_metric_1, ranking_property_1 FROM entity_values) "
         "SELECT rank, ranking_entity, ranking_value, simultaneous_metric_1, ranking_property_1 FROM ranked ORDER BY rank"
     )
 
@@ -2861,11 +2864,14 @@ def test_ranking_prompt_plan_and_result_contract_keep_rank_semantics() -> None:
     ]
     assert ai_sql_generator._ranking_sql_result_issues(valid_sql, normalized) == []
     invalid = ai_sql_generator._ranking_sql_result_issues(
-        "SELECT ranking_entity, ranking_value FROM entity_values",
+        "WITH entity_values AS (SELECT user_id AS ranking_entity, country AS ranking_property_1, COUNT(*) AS ranking_value FROM event GROUP BY user_id), "
+        "ranked AS (SELECT RANK() OVER (ORDER BY ranking_value DESC) AS rank, ranking_entity, ranking_value, "
+        "MAX(country) AS ranking_property_1 FROM entity_values GROUP BY ranking_entity, ranking_value) "
+        "SELECT rank, ranking_entity, ranking_value, ranking_property_1 FROM ranked",
         normalized,
     )
     assert invalid
-    assert any("rank" in issue for issue in invalid)
+    assert any("rank" in issue or "属性" in issue for issue in invalid)
 
 def test_funnel_config_migrates_legacy_window_days() -> None:
     request = _funnel_request(window=None, windowDays=7)
