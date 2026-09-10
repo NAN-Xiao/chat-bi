@@ -1831,7 +1831,7 @@ const {
               />
             </section>
 
-            <section class="builder-section">
+            <section v-if="!isPathAnalysis" class="builder-section">
               <div class="builder-section-head">
                   <div class="builder-section-title">
                     <BuilderSectionIcon class="builder-section-icon" />
