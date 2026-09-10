@@ -269,6 +269,7 @@ const {
                 <div class="builder-section-title">
                   <BuilderSectionIcon class="builder-section-icon" />
                   <span>分析指标</span>
+                  <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
                 </div>
                 <div class="builder-section-actions">
                   <button type="button" class="builder-icon-button" title="添加指标" @click="addMetricItem">
