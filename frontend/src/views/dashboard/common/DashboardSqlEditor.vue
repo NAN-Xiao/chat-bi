@@ -251,9 +251,11 @@ type SqlBuilderDistributionConfig = {
 type SqlBuilderIntervalConfig = {
   entityField: string
   startEvent: string
+  startEventAlias: string
   startEventFilterLogic: SqlBuilderFilterLogic
   startEventFilters: SqlBuilderFilter[]
   endEvent: string
+  endEventAlias: string
   endEventFilterLogic: SqlBuilderFilterLogic
   endEventFilters: SqlBuilderFilter[]
   relatedProperty: {
@@ -555,9 +557,11 @@ const sqlBuilder = reactive({
   interval: {
     entityField: '',
     startEvent: '',
+    startEventAlias: '',
     startEventFilterLogic: 'and',
     startEventFilters: [],
     endEvent: '',
+    endEventAlias: '',
     endEventFilterLogic: 'and',
     endEventFilters: [],
     relatedProperty: {
@@ -651,6 +655,14 @@ const distributionFilterExpanded = ref(false)
 const intervalFilterExpanded = reactive<Record<IntervalEventTarget, boolean>>({
   start: false,
   end: false,
+})
+const intervalAliasEditing = reactive<Record<IntervalEventTarget, boolean>>({
+  start: false,
+  end: false,
+})
+const intervalAliasDraft = reactive<Record<IntervalEventTarget, string>>({
+  start: '',
+  end: '',
 })
 const attributionTargetFilterExpanded = ref(false)
 const heatmapFilterExpanded = ref(false)
@@ -2614,11 +2626,13 @@ function builderConfigForSave() {
     interval: sqlBuilder.analysisModel === 'interval' ? {
       entityField: sqlBuilder.interval.entityField,
       startEvent: sqlBuilder.interval.startEvent,
+      startEventAlias: sqlBuilder.interval.startEventAlias.trim(),
       startEventFilters: {
         logic: builderLogic(sqlBuilder.interval.startEventFilterLogic),
         rules: compactBuilderFilters(sqlBuilder.interval.startEventFilters),
       },
       endEvent: sqlBuilder.interval.endEvent,
+      endEventAlias: sqlBuilder.interval.endEventAlias.trim(),
       endEventFilters: {
         logic: builderLogic(sqlBuilder.interval.endEventFilterLogic),
         rules: compactBuilderFilters(sqlBuilder.interval.endEventFilters),
@@ -2877,9 +2891,11 @@ function restoreSqlBuilderState(value: any) {
   const interval = value.interval && typeof value.interval === 'object' ? value.interval : {}
   sqlBuilder.interval.entityField = typeof interval.entityField === 'string' ? interval.entityField : ''
   sqlBuilder.interval.startEvent = typeof interval.startEvent === 'string' ? interval.startEvent : ''
+  sqlBuilder.interval.startEventAlias = typeof interval.startEventAlias === 'string' ? interval.startEventAlias : ''
   sqlBuilder.interval.startEventFilterLogic = builderLogic(interval.startEventFilters?.logic)
   sqlBuilder.interval.startEventFilters = restoreBuilderFilters(interval.startEventFilters?.rules)
   sqlBuilder.interval.endEvent = typeof interval.endEvent === 'string' ? interval.endEvent : ''
+  sqlBuilder.interval.endEventAlias = typeof interval.endEventAlias === 'string' ? interval.endEventAlias : ''
   sqlBuilder.interval.endEventFilterLogic = builderLogic(interval.endEventFilters?.logic)
   sqlBuilder.interval.endEventFilters = restoreBuilderFilters(interval.endEventFilters?.rules)
   const intervalRelatedProperty = interval.relatedProperty && typeof interval.relatedProperty === 'object'
@@ -2897,6 +2913,10 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.interval.limitSeconds = clampIntervalLimitSeconds(interval.limitSeconds)
   intervalFilterExpanded.start = false
   intervalFilterExpanded.end = false
+  intervalAliasEditing.start = false
+  intervalAliasEditing.end = false
+  intervalAliasDraft.start = ''
+  intervalAliasDraft.end = ''
   const path = value.path && typeof value.path === 'object' ? value.path : {}
   const restoredPathEvents = Array.isArray(path.events)
     ? path.events.slice(0, PATH_EVENT_LIMIT).map((item: any, index: number) => ({
@@ -3869,9 +3889,11 @@ function resetDistributionConfig() {
 function resetIntervalConfig() {
   sqlBuilder.interval.entityField = preferredAnalysisEntityField(intervalEntityFieldOptions.value)
   sqlBuilder.interval.startEvent = ''
+  sqlBuilder.interval.startEventAlias = ''
   sqlBuilder.interval.startEventFilterLogic = 'and'
   sqlBuilder.interval.startEventFilters = []
   sqlBuilder.interval.endEvent = ''
+  sqlBuilder.interval.endEventAlias = ''
   sqlBuilder.interval.endEventFilterLogic = 'and'
   sqlBuilder.interval.endEventFilters = []
   sqlBuilder.interval.relatedProperty.enabled = false
@@ -3880,6 +3902,10 @@ function resetIntervalConfig() {
   sqlBuilder.interval.limitSeconds = DEFAULT_INTERVAL_LIMIT_SECONDS
   intervalFilterExpanded.start = false
   intervalFilterExpanded.end = false
+  intervalAliasEditing.start = false
+  intervalAliasEditing.end = false
+  intervalAliasDraft.start = ''
+  intervalAliasDraft.end = ''
 }
 
 function resetPathConfig() {
@@ -4587,19 +4613,56 @@ function intervalEventFilterFieldOptions(target: IntervalEventTarget) {
 
 function handleIntervalEventChange(target: IntervalEventTarget, eventValue: string) {
   const eventKey = target === 'start' ? 'startEvent' : 'endEvent'
+  const aliasKey = target === 'start' ? 'startEventAlias' : 'endEventAlias'
   const filtersKey = target === 'start' ? 'startEventFilters' : 'endEventFilters'
   const logicKey = target === 'start' ? 'startEventFilterLogic' : 'endEventFilterLogic'
   const propertyKey = target === 'start' ? 'startProperty' : 'endProperty'
+  const hadScopedConfig = Boolean(sqlBuilder.interval[aliasKey].trim() || sqlBuilder.interval[filtersKey].length)
   const changed = sqlBuilder.interval[eventKey] !== eventValue
   sqlBuilder.interval[eventKey] = eventValue
   if (!changed) return
+  sqlBuilder.interval[aliasKey] = ''
   sqlBuilder.interval[filtersKey] = []
   sqlBuilder.interval[logicKey] = 'and'
   sqlBuilder.interval.relatedProperty[propertyKey] = ''
   intervalFilterExpanded[target] = false
+  intervalAliasEditing[target] = false
+  intervalAliasDraft[target] = ''
   if (target === 'start' && sqlBuilder.interval.relatedProperty.endProperty) {
     sqlBuilder.interval.relatedProperty.endProperty = ''
   }
+  if (hadScopedConfig) {
+    ElMessage.warning(`${target === 'start' ? '起点事件' : '终点事件'}已切换，原重命名和筛选条件已清除。`)
+  }
+}
+
+function intervalEventDefaultDisplayName(eventValue: string) {
+  return retentionEventDefaultDisplayName(eventValue)
+}
+
+function beginIntervalEventRename(target: IntervalEventTarget) {
+  const eventValue = target === 'start' ? sqlBuilder.interval.startEvent : sqlBuilder.interval.endEvent
+  if (!eventValue) return
+  intervalAliasDraft[target] = target === 'start'
+    ? sqlBuilder.interval.startEventAlias
+    : sqlBuilder.interval.endEventAlias
+  intervalAliasEditing[target] = true
+}
+
+function finishIntervalEventRename(target: IntervalEventTarget) {
+  if (!intervalAliasEditing[target]) return
+  const alias = intervalAliasDraft[target].trim()
+  if (target === 'start') {
+    sqlBuilder.interval.startEventAlias = alias
+  } else {
+    sqlBuilder.interval.endEventAlias = alias
+  }
+  intervalAliasEditing[target] = false
+}
+
+function cancelIntervalEventRename(target: IntervalEventTarget) {
+  intervalAliasEditing[target] = false
+  intervalAliasDraft[target] = ''
 }
 
 function toggleIntervalEventFilter(target: IntervalEventTarget) {
@@ -4653,12 +4716,16 @@ function sanitizeIntervalConfig() {
   }
   for (const target of ['start', 'end'] as IntervalEventTarget[]) {
     const eventKey = target === 'start' ? 'startEvent' : 'endEvent'
+    const aliasKey = target === 'start' ? 'startEventAlias' : 'endEventAlias'
     const filtersKey = target === 'start' ? 'startEventFilters' : 'endEventFilters'
     const options = intervalEventOptions.value
     if (interval[eventKey] && !optionExists(interval[eventKey], options)) {
       interval[eventKey] = ''
+      interval[aliasKey] = ''
       interval[filtersKey] = []
       intervalFilterExpanded[target] = false
+      intervalAliasEditing[target] = false
+      intervalAliasDraft[target] = ''
       cleared.push(target === 'start' ? '起点事件' : '终点事件')
     }
     const filterOptions = intervalEventFilterFieldOptions(target)
@@ -8541,14 +8608,14 @@ const analysisModelFormContext = {
   analysisModelContent, analysisModelLabel, analysisModelOptions, appendFormulaAtomicMetric, appendFormulaNumber, appendFormulaOperator,
   appendFormulaParen, attributionEntityFieldOptions, attributionEventFilterExpanded, attributionEventOptions,
   attributionMethodOptions, attributionTargetFilterExpanded, attributionTargetMetricFieldOptions, beginFunnelStepRename,
-  beginHeatmapComparisonGroupRename, beginPropertyAudienceRename, beginPropertyMetricRename, beginRetentionEventRename,
+  beginHeatmapComparisonGroupRename, beginIntervalEventRename, beginPropertyAudienceRename, beginPropertyMetricRename, beginRetentionEventRename,
   builderAggregationOptions, builderCalculationOperatorOptions, builderFieldOptions, builderFilterOperatorOptions,
   calculatedMetricFormulaText, calculatedMetricTitle, calculatedMetricValidation, cancelFunnelStepRename,
-  cancelHeatmapComparisonGroupRename, cancelPropertyAudienceRename, cancelPropertyMetricRename, cancelRetentionEventRename,
+  cancelHeatmapComparisonGroupRename, cancelIntervalEventRename, cancelPropertyAudienceRename, cancelPropertyMetricRename, cancelRetentionEventRename,
   clearFormulaTokens, deleteFormulaToken, distributionEntityFieldOptions, distributionEventLabel, distributionEventOptions,
   distributionEventPropertyOptions, distributionFilterExpanded, distributionSimultaneousMetricFieldOptions, emptyBuilderFilter,
   eventFieldScope, eventFilterFieldOptions, eventPublicPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
-  finishPropertyAudienceRename, finishPropertyMetricRename, finishRetentionEventRename, formulaFieldPickerPlaceholder,
+  finishIntervalEventRename, finishPropertyAudienceRename, finishPropertyMetricRename, finishRetentionEventRename, formulaFieldPickerPlaceholder,
   formulaMetricPrecisionText, formulaNumberKeys, formulaParenKeys, formulaTokenText, funnelAliasDraft, funnelAliasEditing,
   funnelEntityFieldOptions, funnelEventOptions, funnelFilterExpanded, funnelRelatedPropertyOptions, handleAnalysisModelChange,
   handleAttributionEventChange, handleAttributionTargetEventChange, handleDistributionEventChange,
@@ -8558,8 +8625,9 @@ const analysisModelFormContext = {
   handleMetricEventChange,
   handleRetentionEventPropertyChange, handleRetentionRelatedPropertyToggle, handleRetentionSimultaneousToggle, handleRevenueCostToggle,
   handleRevenuePaymentEventChange, hasEffectiveBuilderFilters, heatmapComparisonGroupAliasDraft, heatmapComparisonGroupAliasEditing,
-  heatmapFilterExpanded, heatmapMapFileName, intervalEndPropertyOptions, intervalEntityFieldOptions,
-  intervalEventFilterFieldOptions, intervalEventOptions, intervalFilterExpanded, intervalStartPropertyOptions,
+  heatmapFilterExpanded, heatmapMapFileName, intervalAliasDraft, intervalAliasEditing, intervalEndPropertyOptions,
+  intervalEntityFieldOptions, intervalEventDefaultDisplayName, intervalEventFilterFieldOptions, intervalEventOptions,
+  intervalFilterExpanded, intervalStartPropertyOptions,
   isAttributionAnalysis, isDistributionAnalysis, isFunnelAnalysis, isHeatmapAnalysis, isIntervalAnalysis, isPathAnalysis,
   isPropertyAnalysis, isRankingAnalysis, isRetentionAnalysis, isRevenueAnalysis, metricFilterFieldOptions,
   metricMeasureFieldOptions, metricTitle, openHeatmapMapDialog, optionExists, pathEventOptions, pathEventPropertyOptions,

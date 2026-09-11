@@ -27,14 +27,14 @@ const {
   analysisModelContent, analysisModelLabel, analysisModelOptions, appendFormulaAtomicMetric, appendFormulaNumber, appendFormulaOperator,
   appendFormulaParen, attributionEntityFieldOptions, attributionEventFilterExpanded, attributionEventOptions,
   attributionMethodOptions, attributionTargetFilterExpanded, attributionTargetMetricFieldOptions, beginFunnelStepRename,
-  beginHeatmapComparisonGroupRename, beginPropertyAudienceRename, beginPropertyMetricRename, beginRetentionEventRename,
+  beginHeatmapComparisonGroupRename, beginIntervalEventRename, beginPropertyAudienceRename, beginPropertyMetricRename, beginRetentionEventRename,
   builderAggregationOptions, builderCalculationOperatorOptions, builderFieldOptions, builderFilterOperatorOptions,
   calculatedMetricFormulaText, calculatedMetricTitle, calculatedMetricValidation, cancelFunnelStepRename,
-  cancelHeatmapComparisonGroupRename, cancelPropertyAudienceRename, cancelPropertyMetricRename, cancelRetentionEventRename,
+  cancelHeatmapComparisonGroupRename, cancelIntervalEventRename, cancelPropertyAudienceRename, cancelPropertyMetricRename, cancelRetentionEventRename,
   clearFormulaTokens, deleteFormulaToken, distributionEntityFieldOptions, distributionEventLabel, distributionEventOptions,
   distributionEventPropertyOptions, distributionFilterExpanded, distributionSimultaneousMetricFieldOptions, emptyBuilderFilter,
   eventFieldScope, eventFilterFieldOptions, eventPublicPropertyOptions, finishFunnelStepRename, finishHeatmapComparisonGroupRename,
-  finishPropertyAudienceRename, finishPropertyMetricRename, finishRetentionEventRename, formulaFieldPickerPlaceholder,
+  finishIntervalEventRename, finishPropertyAudienceRename, finishPropertyMetricRename, finishRetentionEventRename, formulaFieldPickerPlaceholder,
   formulaMetricPrecisionText, formulaNumberKeys, formulaParenKeys, formulaTokenText, funnelAliasDraft, funnelAliasEditing,
   funnelEntityFieldOptions, funnelEventOptions, funnelFilterExpanded, funnelRelatedPropertyOptions, handleAnalysisModelChange,
   handleAttributionEventChange, handleAttributionTargetEventChange, handleDistributionEventChange,
@@ -44,7 +44,8 @@ const {
   handleRetentionEventPropertyChange, handleRetentionRelatedPropertyToggle, handleRetentionSimultaneousToggle, handleRevenueCostToggle,
   handleRevenuePaymentEventChange, hasEffectiveBuilderFilters, heatmapComparisonGroupAliasDraft, heatmapComparisonGroupAliasEditing,
   heatmapFilterExpanded, heatmapMapFileName, intervalEndPropertyOptions, intervalEntityFieldOptions,
-  intervalEventFilterFieldOptions, intervalEventOptions, intervalFilterExpanded, intervalStartPropertyOptions,
+  intervalAliasDraft, intervalAliasEditing, intervalEventDefaultDisplayName, intervalEventFilterFieldOptions, intervalEventOptions,
+  intervalFilterExpanded, intervalStartPropertyOptions,
   isAttributionAnalysis, isDistributionAnalysis, isFunnelAnalysis, isHeatmapAnalysis, isIntervalAnalysis, isPathAnalysis,
   isPropertyAnalysis, isRankingAnalysis, isRetentionAnalysis, isRevenueAnalysis, metricFilterFieldOptions,
   metricMeasureFieldOptions, metricTitle, openHeatmapMapDialog, optionExists, pathEventOptions, pathEventPropertyOptions,
@@ -884,7 +885,28 @@ const {
               <div class="interval-event-stack">
                 <div class="interval-event-block">
                   <span class="interval-config-label">起点事件</span>
-                  <div class="interval-event-editor" :class="{ 'is-active': intervalFilterExpanded.start }">
+                  <div class="interval-event-editor" :class="{ 'is-active': intervalFilterExpanded.start || intervalAliasEditing.start }">
+                    <div
+                      v-if="intervalAliasEditing.start || sqlBuilder.interval.startEventAlias.trim()"
+                      class="retention-event-alias-row"
+                    >
+                      <el-input
+                        v-if="intervalAliasEditing.start"
+                        v-model="intervalAliasDraft.start"
+                        class="retention-event-alias-input"
+                        clearable
+                        maxlength="80"
+                        :placeholder="intervalEventDefaultDisplayName(sqlBuilder.interval.startEvent)"
+                        aria-label="重命名起点事件"
+                        autofocus
+                        @keydown.stop
+                        @keyup.stop
+                        @keydown.enter.prevent="finishIntervalEventRename('start')"
+                        @keydown.esc.prevent="cancelIntervalEventRename('start')"
+                        @blur="finishIntervalEventRename('start')"
+                      />
+                      <span v-else class="retention-event-alias-text">{{ sqlBuilder.interval.startEventAlias.trim() }}</span>
+                    </div>
                     <div class="interval-event-row">
                       <BuilderFieldPicker
                         :model-value="sqlBuilder.interval.startEvent"
@@ -894,17 +916,29 @@ const {
                         placeholder="选择起点事件"
                         @update:modelValue="handleIntervalEventChange('start', $event)"
                       />
-                      <button
-                        type="button"
-                        class="retention-event-action"
-                        :class="{ 'is-active': intervalFilterExpanded.start || hasEffectiveBuilderFilters(sqlBuilder.interval.startEventFilters) }"
-                        title="筛选起点事件"
-                        aria-label="筛选起点事件"
-                        :disabled="!sqlBuilder.interval.startEvent"
-                        @click="toggleIntervalEventFilter('start')"
-                      >
-                        <el-icon><Filter /></el-icon>
-                      </button>
+                      <div class="retention-event-actions">
+                        <button
+                          type="button"
+                          class="retention-event-action"
+                          title="重命名起点事件"
+                          aria-label="重命名起点事件"
+                          :disabled="!sqlBuilder.interval.startEvent"
+                          @click="beginIntervalEventRename('start')"
+                        >
+                          <el-icon><EditPen /></el-icon>
+                        </button>
+                        <button
+                          type="button"
+                          class="retention-event-action"
+                          :class="{ 'is-active': intervalFilterExpanded.start || hasEffectiveBuilderFilters(sqlBuilder.interval.startEventFilters) }"
+                          title="筛选起点事件"
+                          aria-label="筛选起点事件"
+                          :disabled="!sqlBuilder.interval.startEvent"
+                          @click="toggleIntervalEventFilter('start')"
+                        >
+                          <el-icon><Filter /></el-icon>
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <div v-if="intervalFilterExpanded.start" class="retention-event-filter-panel">
@@ -926,7 +960,28 @@ const {
 
                 <div class="interval-event-block">
                   <span class="interval-config-label">终点事件</span>
-                  <div class="interval-event-editor" :class="{ 'is-active': intervalFilterExpanded.end }">
+                  <div class="interval-event-editor" :class="{ 'is-active': intervalFilterExpanded.end || intervalAliasEditing.end }">
+                    <div
+                      v-if="intervalAliasEditing.end || sqlBuilder.interval.endEventAlias.trim()"
+                      class="retention-event-alias-row"
+                    >
+                      <el-input
+                        v-if="intervalAliasEditing.end"
+                        v-model="intervalAliasDraft.end"
+                        class="retention-event-alias-input"
+                        clearable
+                        maxlength="80"
+                        :placeholder="intervalEventDefaultDisplayName(sqlBuilder.interval.endEvent)"
+                        aria-label="重命名终点事件"
+                        autofocus
+                        @keydown.stop
+                        @keyup.stop
+                        @keydown.enter.prevent="finishIntervalEventRename('end')"
+                        @keydown.esc.prevent="cancelIntervalEventRename('end')"
+                        @blur="finishIntervalEventRename('end')"
+                      />
+                      <span v-else class="retention-event-alias-text">{{ sqlBuilder.interval.endEventAlias.trim() }}</span>
+                    </div>
                     <div class="interval-event-row">
                       <BuilderFieldPicker
                         :model-value="sqlBuilder.interval.endEvent"
@@ -936,17 +991,29 @@ const {
                         placeholder="选择终点事件"
                         @update:modelValue="handleIntervalEventChange('end', $event)"
                       />
-                      <button
-                        type="button"
-                        class="retention-event-action"
-                        :class="{ 'is-active': intervalFilterExpanded.end || hasEffectiveBuilderFilters(sqlBuilder.interval.endEventFilters) }"
-                        title="筛选终点事件"
-                        aria-label="筛选终点事件"
-                        :disabled="!sqlBuilder.interval.endEvent"
-                        @click="toggleIntervalEventFilter('end')"
-                      >
-                        <el-icon><Filter /></el-icon>
-                      </button>
+                      <div class="retention-event-actions">
+                        <button
+                          type="button"
+                          class="retention-event-action"
+                          title="重命名终点事件"
+                          aria-label="重命名终点事件"
+                          :disabled="!sqlBuilder.interval.endEvent"
+                          @click="beginIntervalEventRename('end')"
+                        >
+                          <el-icon><EditPen /></el-icon>
+                        </button>
+                        <button
+                          type="button"
+                          class="retention-event-action"
+                          :class="{ 'is-active': intervalFilterExpanded.end || hasEffectiveBuilderFilters(sqlBuilder.interval.endEventFilters) }"
+                          title="筛选终点事件"
+                          aria-label="筛选终点事件"
+                          :disabled="!sqlBuilder.interval.endEvent"
+                          @click="toggleIntervalEventFilter('end')"
+                        >
+                          <el-icon><Filter /></el-icon>
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <div v-if="intervalFilterExpanded.end" class="retention-event-filter-panel">
@@ -2388,9 +2455,13 @@ const {
 
 .interval-event-row {
   display: grid;
-  grid-template-columns: minmax(190px, 360px) 30px;
+  grid-template-columns: minmax(190px, 360px) auto;
   align-items: center;
   gap: 8px;
+}
+
+.interval-event-row .retention-event-actions {
+  justify-self: end;
 }
 
 .interval-event-row :deep(.builder-field-picker),
@@ -3166,6 +3237,10 @@ const {
     justify-self: start;
   }
 
+  .interval-event-row .retention-event-actions {
+    justify-self: start;
+  }
+
   .interval-limit-row {
     width: 100%;
   }
@@ -3289,7 +3364,10 @@ const {
 
 .retention-event-editor:hover .retention-event-actions,
 .retention-event-editor:focus-within .retention-event-actions,
-.retention-event-editor.is-active .retention-event-actions {
+.retention-event-editor.is-active .retention-event-actions,
+.interval-event-editor:hover .retention-event-actions,
+.interval-event-editor:focus-within .retention-event-actions,
+.interval-event-editor.is-active .retention-event-actions {
   opacity: 1;
   visibility: visible;
 }
