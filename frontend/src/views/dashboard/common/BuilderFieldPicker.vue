@@ -444,8 +444,9 @@ watch(
 <style scoped lang="less">
 .builder-field-picker-trigger {
   display: inline-flex;
-  width: 140px;
+  width: auto;
   max-width: 100%;
+  min-width: min(140px, 100%);
   min-height: 26px;
   align-items: center;
   justify-content: space-between;

@@ -3256,7 +3256,7 @@ const {
 }
 
 .retention-field-block :deep(.builder-field-picker-trigger) {
-  width: 140px;
+  width: auto;
   max-width: 100%;
 }
 
