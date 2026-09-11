@@ -44,3 +44,13 @@ test('resets event-scoped metric state when the selected event changes', () => {
     'AI 上下文只能收集当前聚合实际使用的计算字段，不能携带隐藏旧值',
   )
 })
+
+test('keeps inline revenue labels from collapsing inside flex controls', () => {
+  const source = readFileSync(formPath, 'utf8')
+
+  assert.match(
+    source,
+    /\.revenue-event-flow > span,[\s\S]*?\.revenue-metric-flow > span,[\s\S]*?\.revenue-cost-field-row > span \{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?white-space:\s*nowrap;/,
+    '收入分析行内说明文字必须保持完整宽度，避免被压缩成逐字换行',
+  )
+})
