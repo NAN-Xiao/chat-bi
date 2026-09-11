@@ -1134,7 +1134,7 @@ const analysisFieldOptions = computed(() => {
 const analysisFieldPickerMode = computed(() => usesTrackingEventPicker.value ? 'tracking-event' : 'property')
 const formulaFieldPickerPlaceholder = computed(() => usesTrackingEventPicker.value ? '选择事件' : '选择字段')
 const EVENT_ANALYSIS_CONTEXT_CONTENT = '分析某段时间内，某个事件或事件属性的整体趋势情况'
-const analysisModelOptions: Array<{ label: string; value: AnalysisModel; content?: string }> = [
+const analysisModelDefinitions: Array<{ label: string; value: AnalysisModel; content: string; hidden?: boolean }> = [
   { label: '事件分析', value: 'event' as AnalysisModel, content: EVENT_ANALYSIS_CONTEXT_CONTENT },
   { label: '属性分析', value: 'property' as AnalysisModel, content: '按用户属性字段分组，统计属性指标在时间范围内的分布情况' },
   { label: '留存分析', value: 'retention' as AnalysisModel, content: RETENTION_ANALYSIS_CONTEXT_CONTENT },
@@ -1145,9 +1145,17 @@ const analysisModelOptions: Array<{ label: string; value: AnalysisModel; content
   { label: '收入分析', value: 'revenue' as AnalysisModel, content: '以同期初始事件形成主体 Cohort，统计其在观察期内参与付费事件产生的每日及累计收入指标' },
   { label: '归因分析', value: 'attribution' as AnalysisModel, content: '按目标事件发生前窗口期内的首次、末次或线性归因方式分配贡献，统计各归因事件获得的目标次数、目标值和贡献占比' },
   { label: '排行榜', value: 'ranking' as AnalysisModel, content: '按排行主体聚合主排行指标并生成名次，同时展示附加指标和属性；并列名次严格使用配置规则' },
+  { label: '热力地图', value: 'heatmap' as AnalysisModel, content: '按事件的 X/Y 坐标聚合指标，在地图或二维坐标上展示空间分布热度', hidden: true },
 ]
+const analysisModelOptions = analysisModelDefinitions.filter((model) => !model.hidden)
+const selectedAnalysisModel = computed(() =>
+  analysisModelDefinitions.find((model) => model.value === sqlBuilder.analysisModel)
+)
 const analysisModelContent = computed(() =>
-  analysisModelOptions.find((option) => option.value === sqlBuilder.analysisModel)?.content || ''
+  selectedAnalysisModel.value?.content || ''
+)
+const analysisModelLabel = computed(() =>
+  selectedAnalysisModel.value?.label || ''
 )
 const propertyGroupModeOptions = [
   { label: '人群', value: 'audience' as const },
@@ -8530,7 +8538,7 @@ function closeDrawer() {
 const analysisModelFormContext = {
   activeFormulaMetricId, addAttributionEvent, addCalculatedMetricItem, addFunnelStep, addHeatmapComparisonGroup,
   addMetricItem, addPropertyAudience, addRankingMetric, analysisFieldOptions, analysisFieldPickerMode,
-  analysisModelContent, analysisModelOptions, appendFormulaAtomicMetric, appendFormulaNumber, appendFormulaOperator,
+  analysisModelContent, analysisModelLabel, analysisModelOptions, appendFormulaAtomicMetric, appendFormulaNumber, appendFormulaOperator,
   appendFormulaParen, attributionEntityFieldOptions, attributionEventFilterExpanded, attributionEventOptions,
   attributionMethodOptions, attributionTargetFilterExpanded, attributionTargetMetricFieldOptions, beginFunnelStepRename,
   beginHeatmapComparisonGroupRename, beginPropertyAudienceRename, beginPropertyMetricRename, beginRetentionEventRename,
