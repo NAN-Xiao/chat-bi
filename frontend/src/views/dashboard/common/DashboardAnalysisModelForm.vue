@@ -2469,7 +2469,7 @@ const {
   min-width: 0;
 }
 
-.interval-event-row :deep(.builder-field-picker) {
+.interval-event-row :deep(.builder-field-picker-trigger) {
   justify-self: start;
 }
 
