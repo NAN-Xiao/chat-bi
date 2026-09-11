@@ -2225,9 +2225,7 @@ const chartResultPending = computed(() => {
   return isChartResultPendingState(props.viewInfo, chartLoading.value)
 })
 const chartDataLoading = computed(
-  () =>
-    !hasRenderedChartData.value &&
-    (chartLoading.value || chartResultPending.value || blockingRefreshLoading.value)
+  () => chartLoading.value || chartResultPending.value || blockingRefreshLoading.value
 )
 const chartLoadingText = computed(() =>
   ['waiting', 'queued'].includes(String(props.viewInfo?.refreshState || ''))
@@ -2563,16 +2561,6 @@ defineExpose({
       <div class="title">
         {{ viewInfo.chart.title }}
       </div>
-      <el-tooltip
-        v-if="chartLoading && hasRenderedChartData"
-        effect="dark"
-        :content="chartLoadingText"
-        placement="top"
-      >
-        <span class="chart-refresh-status" role="status" :aria-label="chartLoadingText">
-          <span class="chart-loading-ring small" aria-hidden="true"></span>
-        </span>
-      </el-tooltip>
       <div v-if="showPosition === 'multiplexing'" class="buttons-bar">
         <div class="chart-select-container">
           <el-tooltip effect="dark" :content="t('chat.type')" placement="top">
@@ -2856,7 +2844,7 @@ defineExpose({
       </div>
     </div>
     <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
-      <div v-if="showFullChartLoading" class="chart-loading-info">
+      <div v-if="showFullChartLoading" class="chart-loading-info" role="status">
         <div class="chart-loading-ring" aria-hidden="true"></div>
         <div class="chart-loading-text">{{ chartLoadingText }}</div>
       </div>
@@ -3746,15 +3734,6 @@ defineExpose({
   }
 }
 
-.chart-refresh-status {
-  flex: 0 0 24px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .chart-empty-info {
   flex: 1 1 auto;
   min-height: 0;
@@ -3848,22 +3827,13 @@ defineExpose({
   border-top-color: var(--ed-color-primary, #2f6bff);
   border-radius: 50%;
   animation: chart-loading-spin 0.85s linear infinite;
-
-  &.small {
-    width: 14px;
-    height: 14px;
-    min-width: 14px;
-    min-height: 14px;
-    flex-basis: 14px;
-    border-width: 2px;
-  }
 }
 
 .chart-base-container.insight-density-mini .chart-loading-info {
   gap: 8px;
 }
 
-.chart-base-container.insight-density-mini .chart-loading-ring:not(.small) {
+.chart-base-container.insight-density-mini .chart-loading-ring {
   width: 36px;
   height: 36px;
   min-width: 36px;
@@ -3876,7 +3846,7 @@ defineExpose({
   gap: 6px;
 }
 
-.chart-base-container.insight-density-basic .chart-loading-ring:not(.small) {
+.chart-base-container.insight-density-basic .chart-loading-ring {
   width: 28px;
   height: 28px;
   min-width: 28px;

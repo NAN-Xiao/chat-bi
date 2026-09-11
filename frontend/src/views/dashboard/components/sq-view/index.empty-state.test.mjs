@@ -40,15 +40,15 @@ assert.match(
   /isChartRefreshPendingState\(viewInfo\?\.refreshState\)/,
   '图表刷新排队或等待时应视为 pending，避免 busy 后短暂显示“没有找到数据”'
 )
-assert.match(
+assert.doesNotMatch(
   dataLoadingStateMatch[1],
   /!hasRenderedChartData\.value/,
-  '首次加载且没有可渲染数据时应显示加载态，而不是空数据态'
+  '加载提示不能因存在旧数据而退出内容区；首次加载和再次刷新必须使用同一位置'
 )
 assert.match(
   dataLoadingStateMatch[1],
   /chartResultPending\.value/,
-  '图表结果 pending 时应进入首次数据加载态'
+  '图表结果 pending 时必须保留加载提示，包括带旧数据的排队等待'
 )
 assert.match(
   loadingStateMatch[1],

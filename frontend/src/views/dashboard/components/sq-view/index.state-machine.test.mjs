@@ -134,7 +134,7 @@ assert.match(
 )
 assert.match(
   source,
-  /<div v-if="showFullChartLoading" class="chart-loading-info">[\s\S]*?<div\s+v-if="showChartContent"/,
+  /<div v-if="showFullChartLoading" class="chart-loading-info" role="status">[\s\S]*?<div\s+v-if="showChartContent"/,
   '模板必须让完整加载遮罩与图表挂载独立存在'
 )
 assert.match(
@@ -171,13 +171,13 @@ assert.match(
 )
 assert.match(
   source,
-  /\.chart-base-container\.insight-density-basic \.chart-loading-ring:not\(\.small\) \{[\s\S]*?width: 28px;[\s\S]*?height: 28px;[\s\S]*?flex-basis: 28px;/,
+  /\.chart-base-container\.insight-density-basic \.chart-loading-ring \{[\s\S]*?width: 28px;[\s\S]*?height: 28px;[\s\S]*?flex-basis: 28px;/,
   'basic 密度卡片必须使用适配小高度的加载圆环'
 )
-assert.match(
+assert.doesNotMatch(
   source,
-  /<div class="header-bar">[\s\S]*?v-if="chartLoading && hasRenderedChartData"[\s\S]*?class="chart-refresh-status"/,
-  '有旧数据的后台刷新状态必须显示在标题栏，不能覆盖图例或坐标轴'
+  /chart-refresh-status|chart-loading-ring small/,
+  '保留旧数据的刷新必须复用内容区的加载提示，不能再跳到标题栏'
 )
 assert.doesNotMatch(
   source,
