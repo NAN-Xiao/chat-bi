@@ -24,7 +24,7 @@ const props = defineProps<{ context: Record<string, any> }>()
 const {
   activeFormulaMetricId, addAttributionEvent, addCalculatedMetricItem, addFunnelStep, addHeatmapComparisonGroup,
   addMetricItem, addPropertyAudience, addRankingMetric, analysisFieldOptions, analysisFieldPickerMode,
-  analysisModelContent, analysisModelLabel, analysisModelOptions, appendFormulaAtomicMetric, appendFormulaNumber, appendFormulaOperator,
+  analysisModelContent, analysisModelOptions, appendFormulaAtomicMetric, appendFormulaNumber, appendFormulaOperator,
   appendFormulaParen, attributionEntityFieldOptions, attributionEventFilterExpanded, attributionEventOptions,
   attributionMethodOptions, attributionTargetFilterExpanded, attributionTargetMetricFieldOptions, beginFunnelStepRename,
   beginHeatmapComparisonGroupRename, beginPropertyAudienceRename, beginPropertyMetricRename, beginRetentionEventRename,
@@ -89,18 +89,6 @@ const {
                 </el-select>
               </div>
             </section>
-
-            <div v-if="analysisModelLabel" class="analysis-model-context">
-              <div class="builder-section-head analysis-model-context-name">
-                <div class="builder-section-title">
-                  <BuilderSectionIcon class="builder-section-icon" />
-                  <span>{{ analysisModelLabel }}</span>
-                  <el-tooltip :content="analysisModelContent" placement="top">
-                    <el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon>
-                  </el-tooltip>
-                </div>
-              </div>
-            </div>
 
             <section v-if="isPropertyAnalysis" class="builder-section property-builder-section">
               <div class="builder-section-head">
@@ -2179,14 +2167,6 @@ const {
 
 .analysis-model-row .builder-section-head {
   flex: 0 0 120px;
-  margin-bottom: 0;
-}
-
-.analysis-model-context {
-  margin-bottom: 16px;
-}
-
-.analysis-model-context-name {
   margin-bottom: 0;
 }
 
