@@ -24,7 +24,7 @@ const props = defineProps<{ context: Record<string, any> }>()
 const {
   activeFormulaMetricId, addAttributionEvent, addCalculatedMetricItem, addFunnelStep, addHeatmapComparisonGroup,
   addMetricItem, addPropertyAudience, addRankingMetric, analysisFieldOptions, analysisFieldPickerMode,
-  analysisModelContent, analysisModelOptions, appendFormulaAtomicMetric, appendFormulaNumber, appendFormulaOperator,
+  analysisModelContent, analysisModelLabel, analysisModelOptions, appendFormulaAtomicMetric, appendFormulaNumber, appendFormulaOperator,
   appendFormulaParen, attributionEntityFieldOptions, attributionEventFilterExpanded, attributionEventOptions,
   attributionMethodOptions, attributionTargetFilterExpanded, attributionTargetMetricFieldOptions, beginFunnelStepRename,
   beginHeatmapComparisonGroupRename, beginPropertyAudienceRename, beginPropertyMetricRename, beginRetentionEventRename,
@@ -89,6 +89,19 @@ const {
                 </el-select>
               </div>
             </section>
+
+            <div v-if="analysisModelLabel && analysisModelContent" class="analysis-model-context" aria-live="polite">
+              <div class="builder-section-head analysis-model-context-name">
+                <div class="builder-section-title">
+                  <BuilderSectionIcon class="builder-section-icon" />
+                  <span>{{ analysisModelLabel }}</span>
+                  <el-tooltip :content="analysisModelContent" placement="top">
+                    <el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon>
+                  </el-tooltip>
+                </div>
+              </div>
+              <div class="analysis-model-context-content">{{ analysisModelContent }}</div>
+            </div>
 
             <section v-if="isPropertyAnalysis" class="builder-section property-builder-section">
               <div class="builder-section-head">
@@ -603,13 +616,6 @@ const {
 
             <section v-else-if="isRankingAnalysis" class="builder-section ranking-builder-section">
               <div class="ranking-heading-row">
-                <div class="builder-section-head">
-                  <div class="builder-section-title">
-                    <BuilderSectionIcon class="builder-section-icon" />
-                    <span>排行榜</span>
-                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
-                  </div>
-                </div>
                 <div class="ranking-subject-line">
                   <span>对</span>
                   <BuilderFieldPicker
@@ -745,13 +751,6 @@ const {
 
             <section v-else-if="isDistributionAnalysis" class="builder-section distribution-builder-section">
               <div class="distribution-heading-row">
-                <div class="builder-section-head">
-                  <div class="builder-section-title">
-                    <BuilderSectionIcon class="builder-section-icon" />
-                    <span>分布分析</span>
-                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
-                  </div>
-                </div>
                 <div class="distribution-subject-line">
                   <span>对</span>
                   <BuilderFieldPicker
@@ -868,13 +867,6 @@ const {
 
             <section v-else-if="isIntervalAnalysis" class="builder-section interval-builder-section">
               <div class="interval-heading-row">
-                <div class="builder-section-head">
-                  <div class="builder-section-title">
-                    <BuilderSectionIcon class="builder-section-icon" />
-                    <span>间隔分析</span>
-                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
-                  </div>
-                </div>
                 <div class="interval-subject-line">
                   <span>对</span>
                   <BuilderFieldPicker
@@ -1013,15 +1005,6 @@ const {
             </section>
 
             <section v-else-if="isPathAnalysis" class="builder-section path-builder-section">
-              <div class="path-heading-row">
-                <div class="builder-section-head">
-                  <div class="builder-section-title">
-                    <BuilderSectionIcon class="builder-section-icon" />
-                    <span>路径分析</span>
-                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
-                  </div>
-                </div>
-              </div>
 
               <div class="path-config-block">
                 <span class="path-config-label">参与分析的事件</span>
@@ -1062,13 +1045,6 @@ const {
 
             <section v-else-if="isRevenueAnalysis" class="builder-section revenue-builder-section">
               <div class="revenue-heading-row">
-                <div class="builder-section-head">
-                  <div class="builder-section-title">
-                    <BuilderSectionIcon class="builder-section-icon" />
-                    <span>收入分析</span>
-                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
-                  </div>
-                </div>
                 <div class="revenue-subject-line">
                   <span>对</span>
                   <BuilderFieldPicker
@@ -1176,13 +1152,6 @@ const {
 
             <section v-else-if="isAttributionAnalysis" class="builder-section attribution-builder-section">
               <div class="attribution-heading-row">
-                <div class="builder-section-head">
-                  <div class="builder-section-title">
-                    <BuilderSectionIcon class="builder-section-icon" />
-                    <span>归因分析</span>
-                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
-                  </div>
-                </div>
                 <div class="attribution-subject-line">
                   <span>对</span>
                   <BuilderFieldPicker
@@ -1380,13 +1349,6 @@ const {
 
             <section v-else-if="isFunnelAnalysis" class="builder-section funnel-builder-section">
               <div class="funnel-heading-row">
-                <div class="builder-section-head">
-                  <div class="builder-section-title">
-                    <BuilderSectionIcon class="builder-section-icon" />
-                    <span>漏斗分析</span>
-                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
-                  </div>
-                </div>
                 <div class="funnel-subject-line">
                   <span>对</span>
                   <BuilderFieldPicker
@@ -1526,13 +1488,6 @@ const {
 
             <section v-else class="builder-section retention-builder-section">
               <div class="retention-heading-row">
-                <div class="builder-section-head">
-                  <div class="builder-section-title">
-                    <BuilderSectionIcon class="builder-section-icon" />
-                    <span>留存分析</span>
-                    <el-tooltip v-if="analysisModelContent" :content="analysisModelContent" placement="top"><el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon></el-tooltip>
-                  </div>
-                </div>
                 <div class="retention-subject-line">
                   <span>对</span>
                   <BuilderFieldPicker
@@ -2227,6 +2182,23 @@ const {
   margin-bottom: 0;
 }
 
+.analysis-model-context {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+  line-height: 20px;
+}
+
+.analysis-model-context-name {
+  margin-bottom: 0;
+}
+
+.analysis-model-context-content {
+  color: #646a73;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .retention-heading-row {
   display: flex;
   align-items: center;
@@ -2253,11 +2225,6 @@ const {
   align-items: center;
   gap: 20px;
   margin-bottom: 24px;
-}
-
-.ranking-heading-row .builder-section-head {
-  flex: 0 0 120px;
-  margin-bottom: 0;
 }
 
 .ranking-subject-line {
@@ -2370,11 +2337,6 @@ const {
   gap: 20px;
 }
 
-.interval-heading-row .builder-section-head {
-  width: auto;
-  flex: 0 0 auto;
-}
-
 .interval-subject-line {
   display: grid;
   align-items: center;
@@ -2476,12 +2438,6 @@ const {
   gap: 10px;
 }
 
-.path-heading-row {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
 .analysis-model-info-icon {
   color: #8a93a3;
   cursor: help;
@@ -2581,21 +2537,11 @@ const {
   margin-bottom: 24px;
 }
 
-.revenue-heading-row .builder-section-head {
-  flex: 0 0 120px;
-  margin-bottom: 0;
-}
-
 .attribution-heading-row {
   display: flex;
   align-items: center;
   gap: 20px;
   margin-bottom: 20px;
-}
-
-.attribution-heading-row .builder-section-head {
-  flex: 0 0 120px;
-  margin-bottom: 0;
 }
 
 .revenue-subject-line,
@@ -2815,11 +2761,6 @@ const {
   margin: 4px 0 0 34px;
 }
 
-.distribution-heading-row .builder-section-head {
-  flex: 0 0 120px;
-  margin-bottom: 0;
-}
-
 .distribution-subject-line {
   flex: 1 1 auto;
   display: grid;
@@ -2909,11 +2850,6 @@ const {
 
 .distribution-simultaneous-core-controls :deep(.el-select) {
   width: 160px;
-}
-
-.funnel-heading-row .builder-section-head {
-  flex: 0 0 120px;
-  margin-bottom: 0;
 }
 
 .funnel-subject-line {
@@ -3108,11 +3044,6 @@ const {
   width: 104px;
 }
 
-.retention-heading-row .builder-section-head {
-  flex: 0 0 120px;
-  margin-bottom: 0;
-}
-
 .retention-subject-line {
   width: auto;
   flex: 1 1 auto;
@@ -3171,10 +3102,6 @@ const {
 
   .funnel-heading-row .funnel-subject-line {
     flex-basis: 100%;
-  }
-
-  .path-heading-row {
-    gap: 10px;
   }
 
   .distribution-heading-row .distribution-subject-line {

@@ -37,14 +37,32 @@ async (page) => {
     await page.locator('.analysis-model-select').click()
     const labels = await page.getByRole('option').allTextContents()
     await page.keyboard.press('Escape')
+    assert(!labels.some(label => label.trim() === '热力地图'), 'Hidden heatmap option must remain hidden')
+    const descriptions = new Set()
     for (const label of labels) {
       await switchModel(label.trim())
+      const summary = page.locator('.analysis-model-context')
+      const name = summary.locator('.analysis-model-context-name')
+      const content = summary.locator('.analysis-model-context-content')
+      assert(await summary.count() === 1, 'Expected one shared model summary')
+      assert((await name.innerText()).trim() === label.trim(), `Incorrect model name for ${label}`)
+      const description = (await content.innerText()).trim()
+      assert(description.length > 0 && !descriptions.has(description), `Missing or stale description for ${label}`)
+      descriptions.add(description)
+      const nameBounds = await name.boundingBox()
+      const contentBounds = await content.boundingBox()
+      assert(contentBounds.y >= nameBounds.y + nameBounds.height, `Name and content must occupy separate rows: ${label}`)
+      assert(contentBounds.x >= 0 && contentBounds.x + contentBounds.width <= width, `Model content overflows viewport: ${label}`)
+      assert(await content.evaluate(element => element.scrollWidth <= element.clientWidth), `Model content is clipped: ${label}`)
+      if (['事件分析', '属性分析', '留存分析', '间隔分析'].includes(label.trim())) {
+        await page.screenshot({ path: `output/playwright/model-${label.trim()}-${width}.png` })
+      }
       const picker = page.locator('.sql-builder-content .builder-field-picker-trigger').first()
       if (!await picker.count()) continue
       await picker.click()
       const result = await assertOnTop()
       await picker.click()
-      results.push({ width, model: label.trim(), ...result })
+      results.push({ width, model: label.trim(), description, separateRows: true, ...result })
     }
     await switchModel('漏斗分析')
     await page.locator('.funnel-subject-line .builder-field-picker-trigger').click()
