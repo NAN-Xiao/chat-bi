@@ -562,6 +562,40 @@ test('keeps revenue analysis isolated with cohort, metric, cost, and observation
   assert.match(source, /form\.chartType = 'table'/)
 })
 
+test('shows the selected six attribution columns in the generated result table', () => {
+  assert.match(source, /function normalizeAttributionDisplayColumns\(columns: string\[\]\)/)
+  assert.match(source, /normalizeAttributionDisplayColumns\(axisValues\(chart\.columns\)\)/)
+  const attributionColumnsBody = source.match(
+    /if \(sqlBuilder\.analysisModel === 'attribution'[\s\S]*?form\.columns = \[([\s\S]*?)\n    \]/
+  )?.[1] || ''
+
+  assert.doesNotMatch(
+    attributionColumnsBody,
+    /target_count_field|targetCountField|'target_count'/,
+    '归因结果表不展示目标事件数'
+  )
+  assert.doesNotMatch(
+    attributionColumnsBody,
+    /effective_touch_count_field|effectiveTouchCountField|'effective_touch_count'/,
+    '归因结果表不展示有效触发次数'
+  )
+  assert.match(
+    source,
+    /resultConfig\.total_touch_count_field \|\| resultConfig\.totalTouchCountField \|\| 'total_touch_count'/,
+    '归因结果表需要展示总触发数'
+  )
+  assert.match(
+    source,
+    /resultConfig\.effective_touch_rate_field\s*\|\|\s*resultConfig\.effectiveTouchRateField\s*\|\|\s*'effective_touch_rate'/,
+    '归因结果表需要展示有效触发率'
+  )
+  assert.match(
+    source,
+    /resultConfig\.effective_entity_count_field\s*\|\|\s*resultConfig\.effectiveEntityCountField\s*\|\|\s*'effective_entity_count'/,
+    '归因结果表需要展示有效触发用户数'
+  )
+})
+
 test('keeps ranking analysis isolated with rank, tie, metric, and property controls', () => {
   const saveBody = source.match(/function builderConfigForSave\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
   const restoreBody = source.match(

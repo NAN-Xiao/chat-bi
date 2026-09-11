@@ -39,6 +39,7 @@ from apps.dashboard.crud.sql_generation_validation import (
     attribution_structure_issues,
     derived_column_issues,
     encoded_date_issues,
+    _select_expression_columns,
     same_select_alias_reference_issues,
 )
 from apps.dashboard.models.dashboard_model import (
@@ -136,6 +137,24 @@ def _indexed_display_names(
     }
 
 
+def _property_result_group_fields(normalized_config: dict[str, Any]) -> list[str]:
+    """Return the result dimensions for property analysis.
+
+    Attribute groups are independent dimensions. Audience groups are comparison
+    branches and therefore share one dimension whose value is the audience name;
+    this keeps one result row per date and audience instead of one column per
+    audience.
+    """
+    property_config = normalized_config.get("property")
+    if isinstance(property_config, dict) and str(property_config.get("groupMode") or "property").strip().lower() == "audience":
+        audiences = property_config.get("audiences")
+        return ["group_1"] if isinstance(audiences, list) and audiences else []
+    return [
+        f"group_{index + 1}"
+        for index, _ in enumerate(_list_dict_items(normalized_config.get("groups")))
+    ]
+
+
 def _analysis_result_display_names(
         normalized_config: dict[str, Any],
         analysis_model: str,
@@ -167,8 +186,7 @@ def _analysis_result_display_names(
     if analysis_model == "property":
         property_config = normalized_config.get("property") or {}
         if str(property_config.get("groupMode") or "property") == "audience":
-            groups = _list_dict_items(property_config.get("audiences"))
-            group_names = _indexed_display_names("group", groups, "人群")
+            group_names = {"group_1": "人群"}
         metrics = _list_dict_items(normalized_config.get("metrics"))
         return {
             "property_date": "日期",
@@ -2701,25 +2719,21 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
     attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
     result_contract: dict[str, Any] = {}
     if analysis_model == "property":
-        group_items = normalized_config.get("groups") or []
-        if str(property_config.get("groupMode") or "property").strip().lower() == "audience":
-            group_items = property_config.get("audiences") or []
+        group_fields = _property_result_group_fields(normalized_config)
         required_columns = ["property_date"]
-        required_columns.extend(f"group_{index + 1}" for index, _ in enumerate(group_items))
+        required_columns.extend(group_fields)
         required_columns.extend(f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or []))
         result_contract = {
             "type": "property_table",
             "required_columns": required_columns,
             "date_field": "property_date",
-            "group_fields": [
-                f"group_{index + 1}" for index, _ in enumerate(group_items)
-            ],
+            "group_fields": group_fields,
             "metric_fields": [
                 f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or [])
             ],
             "final_grain": [
                 "property_date",
-                *[f"group_{index + 1}" for index, _ in enumerate(group_items)],
+                *group_fields,
             ],
         }
     elif analysis_model == "retention":
@@ -3099,11 +3113,12 @@ def _dashboard_config_prompt(
     if analysis_model == "property":
         property_rules = [
             "当前 analysisModel=property，只能使用 metrics、groups、filters、time 和 property 配置生成属性分析；不得读取或套用事件、留存、漏斗等模型语义。",
-            "property.groupMode=property 时，groups 只能表示属性字段；property.groupMode=audience 时，property.audiences 是当前数据源上的用户属性筛选组，每个人群必须按其 filters.logic/rules 生成同一属性分析结果中的人群分组。",
+            "property.groupMode=property 时，groups 只能表示属性字段；property.groupMode=audience 时，property.audiences 是当前数据源上的用户属性筛选组，每个人群必须按其 filters.logic/rules 单独生成结果行。",
             "人群筛选只允许使用配置中 field 对象明确提供的用户属性；没有筛选规则的人群表示全部用户。不得虚构人群表、分群 ID、字段或筛选条件，也不得把不同人群的规则互相合并。",
             "metrics[i].field 和 metricField 都是属性字段，不是事件；禁止根据字段名猜测事件条件或补充未配置事件。",
             "聚合规则必须严格按 metrics 顺序执行：count=COUNT(field)，count_distinct=COUNT(DISTINCT metricField)，sum/avg/max/min 分别使用对应 SQL 聚合函数。",
-            "最终按当前时间粒度和 groups 聚合，固定输出 property_date、group_1...group_N、property_metric_1...property_metric_N；无 groups 时不得虚构分组列。",
+            "属性模式最终按当前时间粒度和 groups 聚合，固定输出 property_date、group_1...group_N、property_metric_1...property_metric_N；无 groups 时不得虚构分组列。",
+            "人群模式必须返回长表：固定输出 property_date、group_1（人群名称）、property_metric_1...property_metric_N；每个 property.audiences 人群必须单独产生对应结果行，不能把多个人群条件合并成一个结果，也不能把人群拆成 group_2、group_3 等并列列。",
             "若 property.groupSettings 为时间分组字段提供配置，summarize=true 时按对应 timeGrain(day/week/month) 汇总；summarize=false 时保留原始时间粒度，不得擅自改写其他分组字段。",
             "filters 只作为全局属性筛选应用；属性分析不得扫描当前配置之外的表或字段。",
             "最终返回 chart_type 必须为 table。",
@@ -3634,17 +3649,22 @@ def _property_sql_result_issues(
     if str(normalized_config.get("analysis_model") or "event") != "property":
         return []
     required_aliases = ["property_date"]
-    property_config = normalized_config.get("property") if isinstance(normalized_config.get("property"), dict) else {}
-    group_items = normalized_config.get("groups") or []
-    if str(property_config.get("groupMode") or "property").strip().lower() == "audience":
-        group_items = property_config.get("audiences") or []
-    required_aliases.extend(f"group_{index + 1}" for index, _ in enumerate(group_items))
+    required_aliases.extend(_property_result_group_fields(normalized_config))
     required_aliases.extend(
         f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or [])
     )
     normalized_sql = str(sql or "").lower()
     missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
     issues = [f"属性分析 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    property_config = normalized_config.get("property") if isinstance(normalized_config.get("property"), dict) else {}
+    audiences = property_config.get("audiences") if isinstance(property_config.get("audiences"), list) else []
+    if str(property_config.get("groupMode") or "property").strip().lower() == "audience" and len(audiences) > 1:
+        # 每个人群必须保留为独立结果分支；否则多个筛选条件很容易被合并成一行。
+        union_all_count = len(re.findall(r"\bunion\s+all\b", normalized_sql))
+        if union_all_count < len(audiences) - 1:
+            issues.append(
+                f"属性分析人群模式必须为每个人群保留独立结果分支（至少需要 {len(audiences) - 1} 个 UNION ALL）。"
+            )
     for index, metric in enumerate(_list_dict_items(normalized_config.get("metrics"))):
         aggregation = str(metric.get("aggregation") or "count").strip().lower()
         if aggregation == "count_distinct" and not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
@@ -4303,6 +4323,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
         structure_prompt = (
             "当前 SQL plan 的 analysis_model=property，必须使用属性分析专用的属性筛选和聚合结构；禁止改写为事件次数趋势或其他分析模型。\n"
             "属性分析 SQL 结构范式：\n"
+            "人群模式结果必须按人群展开为长表：每个人群单独计算并通过 UNION ALL（或等价的独立分支）保留，group_1 输出人群名称。\n"
             "WITH scoped_properties AS (...仅保留配置时间范围、filters、metrics 属性和 groups 属性...),\n"
             "aggregated AS (\n"
             "    SELECT <configured_time_grain> AS property_date,\n"
@@ -4315,7 +4336,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "FROM aggregated ORDER BY property_date, <groups>。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。\n"
             "属性字段对象提供 expression 时必须使用该 expression；禁止把 JSON 子属性替换为宿主 JSON 列，禁止补充任何事件名条件。\n"
-            "当 property.groupMode=audience 时，group_1、group_2 等分组列分别对应 property.audiences 的顺序；无筛选规则的人群为全部用户，有筛选规则的人群按各自用户属性条件计算。\n"
+            "当 property.groupMode=audience 时，必须将每个人群作为独立分支（例如 UNION ALL）计算，group_1 输出该分支配置的人群名称；无筛选规则的人群为全部用户，有筛选规则的人群只应用该人群自己的用户属性条件。最终结果按 property_date、group_1 排序。不得把不同人群输出为 group_2、group_3 等并列列，也不得合并不同人群的筛选规则。\n"
         )
     elif str(analysis_model or "event") == "retention":
         structure_prompt = (
@@ -5312,18 +5333,21 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
     response.analysis_model = analysis_model if analysis_model in {"property", "retention", "funnel", "distribution", "interval", "path", "revenue", "attribution", "ranking", "heatmap"} else "event"
     if response.analysis_model == "property":
         property_config = normalized_config.get("property") if isinstance(normalized_config.get("property"), dict) else {}
-        groups = normalized_config.get("groups") or []
-        if str(property_config.get("groupMode") or "property").strip().lower() == "audience":
-            groups = property_config.get("audiences") or []
         metrics = normalized_config.get("metrics") or []
         response.chart_type = "table"
         response.result_config = {
             "type": "property_table",
             "group_mode": str((normalized_config.get("property") or {}).get("groupMode") or "property"),
             "date_field": "property_date",
-            "group_fields": [f"group_{index + 1}" for index, _ in enumerate(groups)],
+            "group_fields": _property_result_group_fields(normalized_config),
             "metric_fields": [f"property_metric_{index + 1}" for index, _ in enumerate(metrics)],
         }
+        if str(property_config.get("groupMode") or "property").strip().lower() == "audience":
+            response.result_config["group_names"] = [
+                str(item.get("name") or f"人群{index + 1}").strip() or f"人群{index + 1}"
+                for index, item in enumerate(property_config.get("audiences") or [])
+                if isinstance(item, dict)
+            ]
     elif response.analysis_model == "retention":
         retention = normalized_config.get("retention") if isinstance(normalized_config.get("retention"), dict) else {}
         simultaneous = retention.get("simultaneous") if isinstance(retention.get("simultaneous"), dict) else {}

@@ -85,117 +85,83 @@ function isPresetActive(value: number) {
 </script>
 
 <template>
-  <div class="funnel-window-picker">
-    <el-popover
-      v-model:visible="visible"
-      placement="bottom-start"
-      :width="304"
-      trigger="click"
-      popper-class="funnel-window-popper"
-      :teleported="false"
-    >
-      <template #reference>
+  <el-popover
+    v-model:visible="visible"
+    placement="bottom-start"
+    :width="304"
+    trigger="click"
+    popper-class="funnel-window-popper"
+    :teleported="false"
+  >
+    <template #reference>
+      <button
+        type="button"
+        class="funnel-window-trigger"
+        :disabled="disabled"
+        aria-label="设置漏斗分析窗口期"
+        title="设置漏斗分析窗口期"
+      >
+        <span>{{ activeLabel }}</span>
+        <el-icon><ArrowDown /></el-icon>
+      </button>
+    </template>
+
+    <div class="funnel-window-panel">
+      <div class="funnel-window-menu">
+        <div class="funnel-window-current">
+          <span>{{ activeLabel }}</span>
+          <el-tooltip content="限制同一分析主体完成全部漏斗步骤的最长时间。" placement="top">
+            <el-icon aria-label="分析窗口期说明"><InfoFilled /></el-icon>
+          </el-tooltip>
+        </div>
         <button
           type="button"
-          class="funnel-window-trigger"
-          :disabled="disabled"
-          aria-label="设置漏斗分析窗口期"
-          title="设置漏斗分析窗口期"
+          :class="{ 'is-active': normalizedValue.mode === 'same_day' }"
+          @click="selectSameDay"
         >
-          <span>{{ activeLabel }}</span>
-          <el-icon><ArrowDown /></el-icon>
+          <span>当天</span>
         </button>
-      </template>
+        <button
+          v-for="unit in unitOptions"
+          :key="unit.value"
+          type="button"
+          :class="{ 'is-active': normalizedValue.mode === 'duration' && selectedUnit === unit.value }"
+          @click="selectUnit(unit.value)"
+        >
+          <span>{{ unit.label }}</span>
+          <el-icon><ArrowRight /></el-icon>
+        </button>
+      </div>
 
-      <div class="funnel-window-panel">
-        <div class="funnel-window-menu">
-          <div class="funnel-window-current">
-            <span>{{ activeLabel }}</span>
-          </div>
-          <button
-            type="button"
-            :class="{ 'is-active': normalizedValue.mode === 'same_day' }"
-            @click="selectSameDay"
-          >
-            <span>当天</span>
-          </button>
-          <button
-            v-for="unit in unitOptions"
-            :key="unit.value"
-            type="button"
-            :class="{ 'is-active': normalizedValue.mode === 'duration' && selectedUnit === unit.value }"
-            @click="selectUnit(unit.value)"
-          >
-            <span>{{ unit.label }}</span>
-            <el-icon><ArrowRight /></el-icon>
-          </button>
-        </div>
-
-        <div class="funnel-window-values">
-          <button
-            v-for="value in presets[selectedUnit]"
-            :key="value"
-            type="button"
-            :class="{ 'is-active': isPresetActive(value) }"
-            @click="selectPreset(value)"
-          >
-            {{ value }}{{ selectedUnit === 'day' ? '天' : selectedUnit === 'hour' ? '小时' : '分钟' }}
-          </button>
-          <div class="funnel-window-custom">
-            <el-input-number
-              v-model="draftValue"
-              :min="1"
-              :max="maxDraftValue"
-              :precision="0"
-              :controls="false"
-              aria-label="自定义漏斗分析窗口数值"
-              @change="applyCustomValue"
-              @keydown.enter.stop="applyCustomValue"
-            />
-            <span>{{ selectedUnit === 'day' ? '天' : selectedUnit === 'hour' ? '小时' : '分钟' }}</span>
-          </div>
+      <div class="funnel-window-values">
+        <button
+          v-for="value in presets[selectedUnit]"
+          :key="value"
+          type="button"
+          :class="{ 'is-active': isPresetActive(value) }"
+          @click="selectPreset(value)"
+        >
+          {{ value }}{{ selectedUnit === 'day' ? '天' : selectedUnit === 'hour' ? '小时' : '分钟' }}
+        </button>
+        <div class="funnel-window-custom">
+          <el-input-number
+            v-model="draftValue"
+            :min="1"
+            :max="maxDraftValue"
+            :precision="0"
+            :controls="false"
+            aria-label="自定义漏斗分析窗口数值"
+            @change="applyCustomValue"
+            @keydown.enter.stop="applyCustomValue"
+          />
+          <span>{{ selectedUnit === 'day' ? '天' : selectedUnit === 'hour' ? '小时' : '分钟' }}</span>
         </div>
       </div>
-    </el-popover>
-    <el-tooltip
-      content="用户触发步骤1起，在窗口期内完成后续步骤，算作后续步骤的转化。"
-      placement="right"
-      :popper-style="{ maxWidth: '240px' }"
-    >
-      <button type="button" class="funnel-window-help" aria-label="分析窗口期说明">
-        <el-icon><InfoFilled /></el-icon>
-      </button>
-    </el-tooltip>
-  </div>
+    </div>
+  </el-popover>
 </template>
 
 <style scoped>
-.funnel-window-picker {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.funnel-window-help {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  color: #6f7785;
-  background: transparent;
-  cursor: help;
-  font-size: 14px;
-}
-
-.funnel-window-help:focus-visible {
-  outline: 2px solid #3154e8;
-  outline-offset: 2px;
-}
-
 .funnel-window-trigger {
   display: inline-flex;
   align-items: center;
@@ -243,6 +209,11 @@ function isPresetActive(value: number) {
   padding: 0 8px;
   color: #3154e8;
   font-weight: 600;
+}
+
+.funnel-window-current .el-icon {
+  color: #6f7785;
+  cursor: help;
 }
 
 .funnel-window-menu button,

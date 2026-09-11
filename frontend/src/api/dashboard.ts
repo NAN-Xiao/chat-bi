@@ -8,7 +8,8 @@ export const dashboardApi = {
   create_canvas: (params: any) => request.post('/dashboard/create_canvas', params),
   update_canvas: (params: any) => request.post('/dashboard/update_canvas', params),
   check_name: (params: any) => request.post('/dashboard/check_name', params),
-  preview_sql: (params: any, config?: any) => request.post('/dashboard/sql_preview', params, config),
+  preview_sql: (params: any, config?: any) =>
+    request.post('/dashboard/sql_preview', params, { timeout: 180000, ...config }),
   execution_datasources: () => request.get('/dashboard/execution-datasources'),
   execution_datasource_metadata: (id: number) => request.get(`/dashboard/execution-datasource-metadata/${id}`),
   generate_ai_sql: (params: any, config?: any) => request.post('/dashboard/ai_sql_generate', params, config),
