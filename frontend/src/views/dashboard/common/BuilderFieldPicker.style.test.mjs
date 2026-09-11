@@ -15,8 +15,15 @@ const fieldTypeStyleMatch = source.match(/\.field-type\s*\{([\s\S]*?)\n\}/)
 const selectedOptionMatch = source.match(/const selectedOption = computed\(\(\) =>[\s\S]*?\n\)/)
 const tableTabsMatch = source.match(/const tableTabs = computed\(\(\) => \{([\s\S]*?)\n\}\)/)
 const hoverJsonMetaMatch = source.match(/<div v-if="item\.isJsonSubfield" class="hover-json-meta">([\s\S]*?)<\/div>/)
+const triggerStyleMatch = source.match(/\.builder-field-picker-trigger\s*\{([\s\S]*?)\n\}/)
 
 assert.ok(arrowStyleMatch, '字段选择器箭头需要有独立样式')
+assert.ok(triggerStyleMatch, '字段选择器需要有触发器样式')
+assert.match(
+  triggerStyleMatch[1],
+  /width:\s*140px/,
+  '字段选择器的默认触发器宽度应统一为 140px',
+)
 assert.match(
   arrowStyleMatch[1],
   /display:\s*inline-flex/,
