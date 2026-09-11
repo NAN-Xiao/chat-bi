@@ -6170,9 +6170,23 @@ async function generateBuilderAiSql() {
         ? (resultConfig.group_fields || resultConfig.groupFields).map(String)
         : []),
       String(resultConfig.event_field || resultConfig.eventField || 'attribution_event'),
-      String(resultConfig.target_count_field || resultConfig.targetCountField || 'target_count'),
+      String(
+        resultConfig.total_touch_count_field || resultConfig.totalTouchCountField || 'total_touch_count'
+      ),
+      String(
+        resultConfig.effective_touch_rate_field ||
+        resultConfig.effectiveTouchRateField ||
+        'effective_touch_rate'
+      ),
+      String(
+        resultConfig.effective_entity_count_field ||
+        resultConfig.effectiveEntityCountField ||
+        'effective_entity_count'
+      ),
       String(resultConfig.attributed_value_field || resultConfig.attributedValueField || 'attributed_value'),
-      String(resultConfig.contribution_rate_field || resultConfig.contributionRateField || 'contribution_rate'),
+      String(
+        resultConfig.contribution_rate_field || resultConfig.contributionRateField || 'contribution_rate'
+      ),
     ]
   }
   if (sqlBuilder.analysisModel === 'ranking' || result.analysis_model === 'ranking') {
