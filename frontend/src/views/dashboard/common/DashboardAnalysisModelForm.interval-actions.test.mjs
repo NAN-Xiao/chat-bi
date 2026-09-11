@@ -14,6 +14,7 @@ test('间隔分析事件操作仅在悬浮或激活时显示，并保持在事�
   assert.match(formSource, /class="interval-event-editor" :class="\{ 'is-active': intervalFilterExpanded\.end \|\| intervalAliasEditing\.end \}"/)
   assert.match(formSource, /\.interval-event-editor:hover \.retention-event-actions[\s\S]*?opacity:\s*1/)
   assert.match(formSource, /\.interval-event-row \{[\s\S]*?grid-template-columns:\s*minmax\(190px, 360px\) auto;/)
+  assert.match(formSource, /\.interval-event-row :deep\(\.builder-field-picker\)\s*\{[\s\S]*?justify-self:\s*start;/)
 })
 
 test('间隔分析事件改名状态随配置保存和恢复', () => {
