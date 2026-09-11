@@ -227,7 +227,7 @@ const form = ref<any>({
   filename: '',
   sheets: [],
   mode: 'service_name',
-  timeout: 90,
+  timeout: 240,
 })
 
 const close = () => {
@@ -263,7 +263,7 @@ const open = (item: any, editTable: boolean = false) => {
       form.value.filename = configuration.filename
       form.value.sheets = configuration.sheets
       form.value.mode = configuration.mode
-      form.value.timeout = configuration.timeout ? configuration.timeout : 90
+      form.value.timeout = configuration.timeout ? configuration.timeout : 240
     }
 
     if (editTable) {
@@ -322,7 +322,7 @@ const open = (item: any, editTable: boolean = false) => {
       filename: '',
       sheets: [],
       mode: 'service_name',
-      timeout: 90,
+      timeout: 240,
     }
   }
   dialogVisible.value = true

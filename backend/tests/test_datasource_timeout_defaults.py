@@ -24,26 +24,26 @@ def _external_datasource() -> SimpleNamespace:
     )
 
 
-def test_datasource_conf_defaults_to_90_seconds() -> None:
+def test_datasource_conf_defaults_to_240_seconds() -> None:
     """
-    是什么：未显式填写 timeout 的数据源配置应默认使用 90 秒。
+    是什么：未显式填写 timeout 的数据源配置应默认使用 240 秒。
     """
-    assert DatasourceConf().timeout == 90
+    assert DatasourceConf().timeout == 240
 
 
-def test_external_datasource_conf_defaults_to_90_seconds() -> None:
+def test_external_datasource_conf_defaults_to_240_seconds() -> None:
     """
-    是什么：外部数据源转换为加密配置时，也应默认写入 90 秒。
+    是什么：外部数据源转换为加密配置时，也应默认写入 240 秒。
     """
     encrypted = get_out_ds_conf(_external_datasource())
     conf = json.loads(aes_decrypt(encrypted))
 
-    assert conf["timeout"] == 90
+    assert conf["timeout"] == 240
 
 
-def test_get_session_uses_90_seconds_for_external_datasource(monkeypatch) -> None:
+def test_get_session_uses_240_seconds_for_external_datasource(monkeypatch) -> None:
     """
-    是什么：运行查询时，外部数据源会通过 90 秒默认值生成连接配置。
+    是什么：运行查询时，外部数据源会通过 240 秒默认值生成连接配置。
     """
     from apps.db import db
     from apps.system.schemas.system_schema import AssistantOutDsSchema
@@ -53,7 +53,7 @@ def test_get_session_uses_90_seconds_for_external_datasource(monkeypatch) -> Non
     class _Session:
         pass
 
-    def fake_get_out_ds_conf(ds, timeout=90):
+    def fake_get_out_ds_conf(ds, timeout=240):
         captured["timeout"] = timeout
         return "{}"
 
@@ -68,5 +68,5 @@ def test_get_session_uses_90_seconds_for_external_datasource(monkeypatch) -> Non
     datasource = AssistantOutDsSchema(name="external", type="mysql")
     db.get_session(datasource)
 
-    assert captured["timeout"] == 90
+    assert captured["timeout"] == 240
     assert captured["engine_timeout"] == 0

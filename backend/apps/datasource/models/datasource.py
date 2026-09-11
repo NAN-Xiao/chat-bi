@@ -187,7 +187,7 @@ class TableObj(BaseModel):
 
 
 # 数据源配置信息
-DEFAULT_DATASOURCE_TIMEOUT_SECONDS = 90
+DEFAULT_DATASOURCE_TIMEOUT_SECONDS = 240
 
 
 class DatasourceConf(BaseModel):
