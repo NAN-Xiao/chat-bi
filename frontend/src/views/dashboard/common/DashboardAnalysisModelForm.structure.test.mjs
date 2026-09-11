@@ -20,6 +20,12 @@ test('keeps global filters and grouping inside the model form component', () => 
   assert.match(source, /BuilderFilterTree/, '模型组件必须复用筛选树')
 })
 
+test('does not repeat the selected analysis model heading below the selector', () => {
+  const source = readFileSync(formPath, 'utf8')
+  assert.doesNotMatch(source, /analysis-model-context/, '模型选择器下方不应重复展示当前模型名称区域')
+  assert.doesNotMatch(source, /analysisModelLabel/, '模型表单不应依赖重复的当前模型名称展示')
+})
+
 test('resets event-scoped metric state when the selected event changes', () => {
   const formSource = readFileSync(formPath, 'utf8')
   const handler = editorSource.match(/function handleMetricEventChange[\s\S]*?\n\}/)?.[0] || ''
