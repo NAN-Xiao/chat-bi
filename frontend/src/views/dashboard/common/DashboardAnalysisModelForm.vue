@@ -2442,6 +2442,10 @@ const {
   min-width: 0;
 }
 
+.interval-event-row :deep(.builder-field-picker) {
+  justify-self: start;
+}
+
 .interval-option-block {
   display: grid;
   gap: 12px;
