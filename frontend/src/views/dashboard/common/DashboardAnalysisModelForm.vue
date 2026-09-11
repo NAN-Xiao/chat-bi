@@ -90,7 +90,7 @@ const {
               </div>
             </section>
 
-            <div v-if="analysisModelLabel && analysisModelContent" class="analysis-model-context" aria-live="polite">
+            <div v-if="analysisModelLabel" class="analysis-model-context">
               <div class="builder-section-head analysis-model-context-name">
                 <div class="builder-section-title">
                   <BuilderSectionIcon class="builder-section-icon" />
@@ -100,7 +100,6 @@ const {
                   </el-tooltip>
                 </div>
               </div>
-              <div class="analysis-model-context-content">{{ analysisModelContent }}</div>
             </div>
 
             <section v-if="isPropertyAnalysis" class="builder-section property-builder-section">
@@ -2184,20 +2183,11 @@ const {
 }
 
 .analysis-model-context {
-  display: grid;
-  gap: 6px;
   margin-bottom: 16px;
-  line-height: 20px;
 }
 
 .analysis-model-context-name {
   margin-bottom: 0;
-}
-
-.analysis-model-context-content {
-  color: #646a73;
-  font-size: 12px;
-  overflow-wrap: anywhere;
 }
 
 .retention-heading-row {
