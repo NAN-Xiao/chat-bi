@@ -551,6 +551,8 @@ test('keeps revenue analysis isolated with cohort, metric, cost, and observation
 })
 
 test('shows the selected six attribution columns in the generated result table', () => {
+  assert.match(source, /function normalizeAttributionDisplayColumns\(columns: string\[\]\)/)
+  assert.match(source, /normalizeAttributionDisplayColumns\(axisValues\(chart\.columns\)\)/)
   const attributionColumnsBody = source.match(
     /if \(sqlBuilder\.analysisModel === 'attribution'[\s\S]*?form\.columns = \[([\s\S]*?)\n    \]/
   )?.[1] || ''

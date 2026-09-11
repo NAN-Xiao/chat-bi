@@ -1488,6 +1488,20 @@ function unique(values: Array<string | undefined | null>) {
   return Array.from(new Set(values.filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '').map((value) => `${value}`)))
 }
 
+const ATTRIBUTION_DISPLAY_COLUMNS = [
+  'attribution_event',
+  'total_touch_count',
+  'effective_touch_rate',
+  'effective_entity_count',
+  'attributed_value',
+  'contribution_rate',
+]
+
+function normalizeAttributionDisplayColumns(columns: string[]) {
+  const groupFields = columns.filter((field) => /^group_\d+$/.test(field))
+  return unique([...groupFields, ...ATTRIBUTION_DISPLAY_COLUMNS])
+}
+
 function normalizeAnalysisResultDisplayNames(value: any) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {}
@@ -6165,7 +6179,7 @@ async function generateBuilderAiSql() {
   if (sqlBuilder.analysisModel === 'attribution' || result.analysis_model === 'attribution') {
     const resultConfig = result.result_config || result.resultConfig || {}
     form.chartType = 'table'
-    form.columns = [
+    form.columns = normalizeAttributionDisplayColumns([
       ...(Array.isArray(resultConfig.group_fields || resultConfig.groupFields)
         ? (resultConfig.group_fields || resultConfig.groupFields).map(String)
         : []),
@@ -6187,7 +6201,7 @@ async function generateBuilderAiSql() {
       String(
         resultConfig.contribution_rate_field || resultConfig.contributionRateField || 'contribution_rate'
       ),
-    ]
+    ])
   }
   if (sqlBuilder.analysisModel === 'ranking' || result.analysis_model === 'ranking') {
     const resultConfig = result.result_config || result.resultConfig || {}
@@ -7611,7 +7625,9 @@ function initEditor() {
         : isFunnelAnalysis.value
           ? 'funnel'
           : 'table'
-  form.columns = axisValues(chart.columns)
+  form.columns = sqlBuilder.analysisModel === 'attribution'
+    ? normalizeAttributionDisplayColumns(axisValues(chart.columns))
+    : axisValues(chart.columns)
   form.x = axisValues(chart.xAxis)[0] || ''
   form.y = axisValues(chart.yAxis)
   pruneAutoSeededMetricItemsForFormulaOnlyBuilder()
