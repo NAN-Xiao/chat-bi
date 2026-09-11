@@ -423,14 +423,10 @@ def _write_llm_output_debug_file(node: str, full_text: str, require_sql: bool) -
 
 async def _create_dashboard_ai_sql_llm(skill_model_id: int | None = None) -> Any:
     """
-    是什么：创建手动看板 AI SQL 生成专用 LLM，并关闭模型思考输出。
+    是什么：按当前模型配置创建手动看板 SQL 生成 LLM。
     """
     config = await get_default_config(skill_model_id)
-    additional_params = dict(config.additional_params or {})
-    extra_body = dict(additional_params.get("extra_body") or {})
-    extra_body["enable_thinking"] = False
-    additional_params["extra_body"] = extra_body
-    config = config.model_copy(update={"additional_params": additional_params})
+    # 思考与采样参数由模型配置声明，不能向任意兼容服务注入供应商专用参数。
     return LLMFactory.create_llm(config).llm
 
 

@@ -490,14 +490,7 @@ async def _create_llm(custom_model_id: int | None = None) -> tuple[Any, LLMConfi
     做了什么：创建或保存分析助手需要的东西，让后续流程能继续往下走。
     """
     config = await get_default_config(custom_model_id)
-    additional_params = dict(config.additional_params or {})
-    extra_body = dict(additional_params.get("extra_body") or {})
-    extra_body["enable_thinking"] = False
-    additional_params["extra_body"] = extra_body
-    # 综合分析助手需要稳定可复现的输出：强制低温度采样，避免同一问题每次召回口径漂移。
-    additional_params["temperature"] = 0
-    additional_params["top_p"] = 1
-    config = config.model_copy(update={"additional_params": additional_params})
+    # 思考与采样参数遵循模型配置；不同服务未必支持相同的请求参数。
     return LLMFactory.create_llm(config).llm, config
 
 

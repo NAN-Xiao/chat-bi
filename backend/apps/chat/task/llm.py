@@ -137,22 +137,6 @@ APP_SYSTEM_MESSAGE_KEY = "app_system"
 APP_TEMP_SQL_TEXT_KEY = "app_temp_sql_text"
 
 
-def _disable_reasoning_for_recommendation(config: LLMConfig) -> None:
-    if config.additional_params is None:
-        additional_params = {}
-        object.__setattr__(config, "additional_params", additional_params)
-    else:
-        additional_params = config.additional_params
-    extra_body = additional_params.get("extra_body")
-    if not isinstance(extra_body, dict):
-        extra_body = {}
-    else:
-        extra_body = dict(extra_body)
-
-    extra_body["enable_thinking"] = False
-    additional_params["extra_body"] = extra_body
-
-
 def looks_like_data_skill_schema_unavailable_error(message: str) -> bool:
     """
     是什么：判断 Data Skill 校验失败是否源于当前 schema 缺表或缺字段。
@@ -1434,7 +1418,7 @@ class LLMService:
     base_message_round_count_limit: int = settings.GENERATE_SQL_QUERY_HISTORY_ROUND_COUNT
 
     def __init__(self, session: Session, current_user: CurrentUser, chat_question: ChatQuestion,
-                 current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
+                 current_assistant: Optional[CurrentAssistant] = None,
                  embedding: bool = False, config: LLMConfig = None):
         """
         是什么：LLMService.__init__ 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
@@ -1507,9 +1491,6 @@ class LLMService:
             ds if isinstance(ds, AssistantOutDsSchema) else CoreDatasource(**ds.model_dump())) if ds else None
         self.chat_question = chat_question
         self.config = config
-        if no_reasoning:
-            # 推荐问题只需要短 JSON，显式关闭通义千问等模型的思考模式，避免耗时被 reasoning 放大。
-            _disable_reasoning_for_recommendation(self.config)
 
         self.chat_question.ai_modal_id = self.config.model_id
         self.chat_question.ai_modal_name = self.config.model_name

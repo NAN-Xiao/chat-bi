@@ -104,9 +104,9 @@ def test_invoke_llm_json_uses_invoke_not_streaming() -> None:
     assert response.sql == "select 1"
 
 
-def test_create_dashboard_ai_sql_llm_disables_enable_thinking(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_dashboard_ai_sql_llm_preserves_model_parameters(monkeypatch: pytest.MonkeyPatch) -> None:
     """
-    是什么：手动看板三次 LLM 调用创建模型时，要统一关闭模型思考输出。
+    是什么：手动看板生成、修复 SQL 时保留模型配置中明确设置的参数。
     """
     config = LLMConfig(
         model_id=7,
@@ -136,7 +136,7 @@ def test_create_dashboard_ai_sql_llm_disables_enable_thinking(monkeypatch: pytes
     assert llm == "fake-llm"
     assert captured["config"].additional_params["temperature"] == 0.6
     assert captured["config"].additional_params["extra_body"] == {
-        "enable_thinking": False,
+        "enable_thinking": True,
         "foo": "bar",
     }
 

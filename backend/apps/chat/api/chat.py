@@ -570,7 +570,7 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
 
         request_question = ChatQuestion(chat_id=record.chat_id, question=record.question if record.question else '')
 
-        llm_service = await LLMService.create(session, current_user, request_question, current_assistant, True)
+        llm_service = await LLMService.create(session, current_user, request_question, current_assistant)
         llm_service.set_record(record)
         llm_service.set_articles_number(articles_number)
         llm_service.run_recommend_questions_task_async()
