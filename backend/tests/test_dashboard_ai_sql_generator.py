@@ -2754,6 +2754,65 @@ def test_property_analysis_accepts_tracking_event_properties() -> None:
     assert not any("必须选择属性字段" in issue for issue in result.issues)
 
 
+def test_property_audience_results_use_one_dimension_with_one_row_per_audience() -> None:
+    request = _property_request(property={
+        "groupMode": "audience",
+        "audiences": [
+            {"name": "\u5168\u90e8\u7528\u6237", "filters": {"logic": "and", "rules": []}},
+            {"name": "\u4ed8\u8d39\u7528\u6237", "filters": {"logic": "and", "rules": [{
+                "field": {"table": "event", "field": "account_id", "value": "event.account_id"},
+                "operator": "eq",
+                "value": "1001",
+            }]}},
+        ],
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    plan = ai_sql_generator._build_sql_plan(normalized, ai_sql_generator._build_formula_ir(normalized))
+
+    assert plan["result_contract"]["required_columns"] == [
+        "property_date", "group_1", "property_metric_1",
+    ]
+    assert plan["result_contract"]["group_fields"] == ["group_1"]
+    assert plan["result_contract"]["final_grain"] == ["property_date", "group_1"]
+
+    prompt = ai_sql_generator._dashboard_sql_system_prompt("property")
+    assert "\u4eba\u7fa4\u6a21\u5f0f\u7ed3\u679c\u5fc5\u987b\u6309\u4eba\u7fa4\u5c55\u5f00\u4e3a\u957f\u8868" in prompt
+    assert "\u6bcf\u4e2a\u4eba\u7fa4\u4f5c\u4e3a\u72ec\u7acb\u5206\u652f" in prompt
+    assert "group_2\u3001group_3" in prompt
+
+    finalized = ai_sql_generator._node_finalize_response({
+        "response": ai_sql_generator.DashboardAiSqlGenerateResponse(success=True),
+        "normalized_config": normalized,
+        "graph_trace": [],
+    })["response"]
+    assert finalized.result_config["group_fields"] == ["group_1"]
+    assert finalized.result_config["group_names"] == ["\u5168\u90e8\u7528\u6237", "\u4ed8\u8d39\u7528\u6237"]
+    assert ai_sql_generator._analysis_result_display_names(normalized, "property")["group_1"] == "\u4eba\u7fa4"
+    assert "group_2" not in ai_sql_generator._analysis_result_display_names(normalized, "property")
+
+
+def test_property_audience_sql_requires_independent_result_branches() -> None:
+    request = _property_request(property={
+        "groupMode": "audience",
+        "audiences": [
+            {"name": "\u5168\u90e8\u7528\u6237", "filters": {"logic": "and", "rules": []}},
+            {"name": "\u4ed8\u8d39\u7528\u6237", "filters": {"logic": "and", "rules": []}},
+        ],
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    one_branch = "SELECT dt AS property_date, '\u5168\u90e8\u7528\u6237' AS group_1, COUNT(DISTINCT account_id) AS property_metric_1 FROM event GROUP BY dt"
+    assert any("UNION ALL" in issue for issue in ai_sql_generator._property_sql_result_issues(one_branch, normalized))
+
+    two_branches = """\
+SELECT dt AS property_date, '\u5168\u90e8\u7528\u6237' AS group_1, COUNT(DISTINCT account_id) AS property_metric_1
+FROM event GROUP BY dt
+UNION ALL
+SELECT dt AS property_date, '\u4ed8\u8d39\u7528\u6237' AS group_1, COUNT(DISTINCT account_id) AS property_metric_1
+FROM event WHERE account_id = '1001' GROUP BY dt
+"""
+    assert ai_sql_generator._property_sql_result_issues(two_branches, normalized) == []
+
+
 def test_property_prompt_plan_and_result_contract_keep_property_semantics() -> None:
     request = _property_request()
     normalized = ai_sql_generator._normalize_manual_config(request)
