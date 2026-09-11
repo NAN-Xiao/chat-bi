@@ -1166,9 +1166,6 @@ const selectedAnalysisModel = computed(() =>
 const analysisModelContent = computed(() =>
   selectedAnalysisModel.value?.content || ''
 )
-const analysisModelLabel = computed(() =>
-  selectedAnalysisModel.value?.label || ''
-)
 const propertyGroupModeOptions = [
   { label: '人群', value: 'audience' as const },
   { label: '属性', value: 'property' as const },
@@ -8605,7 +8602,7 @@ function closeDrawer() {
 const analysisModelFormContext = {
   activeFormulaMetricId, addAttributionEvent, addCalculatedMetricItem, addFunnelStep, addHeatmapComparisonGroup,
   addMetricItem, addPropertyAudience, addRankingMetric, analysisFieldOptions, analysisFieldPickerMode,
-  analysisModelContent, analysisModelLabel, analysisModelOptions, appendFormulaAtomicMetric, appendFormulaNumber, appendFormulaOperator,
+  analysisModelContent, analysisModelOptions, appendFormulaAtomicMetric, appendFormulaNumber, appendFormulaOperator,
   appendFormulaParen, attributionEntityFieldOptions, attributionEventFilterExpanded, attributionEventOptions,
   attributionMethodOptions, attributionTargetFilterExpanded, attributionTargetMetricFieldOptions, beginFunnelStepRename,
   beginHeatmapComparisonGroupRename, beginIntervalEventRename, beginPropertyAudienceRename, beginPropertyMetricRename, beginRetentionEventRename,
