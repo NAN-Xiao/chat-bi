@@ -21,8 +21,13 @@ assert.ok(arrowStyleMatch, '字段选择器箭头需要有独立样式')
 assert.ok(triggerStyleMatch, '字段选择器需要有触发器样式')
 assert.match(
   triggerStyleMatch[1],
-  /width:\s*140px/,
-  '字段选择器的默认触发器宽度应统一为 140px',
+  /width:\s*auto/,
+  '字段选择器应保留按内容自动调整宽度',
+)
+assert.match(
+  triggerStyleMatch[1],
+  /min-width:\s*min\(140px,\s*100%\)/,
+  '字段选择器的初始最小宽度应为 140px，同时允许窄容器自适应',
 )
 assert.match(
   arrowStyleMatch[1],
