@@ -98,6 +98,7 @@ const {
                   <el-tooltip :content="analysisModelContent" placement="top">
                     <el-icon class="analysis-model-info-icon" aria-label="分析模型说明"><InfoFilled /></el-icon>
                   </el-tooltip>
+                  <span class="analysis-model-context-content">{{ analysisModelContent }}</span>
                 </div>
               </div>
             </div>
@@ -2171,6 +2172,13 @@ const {
   width: 220px;
 }
 
+.analysis-model-select :deep(.el-select__wrapper),
+.analysis-model-select :deep(.el-select__wrapper:hover),
+.analysis-model-select :deep(.el-select__wrapper.is-focused) {
+  box-shadow: none;
+  background-color: transparent;
+}
+
 .analysis-model-row {
   display: flex;
   align-items: center;
@@ -2188,6 +2196,12 @@ const {
 
 .analysis-model-context-name {
   margin-bottom: 0;
+}
+
+.analysis-model-context-content {
+  color: #646a73;
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .retention-heading-row {
