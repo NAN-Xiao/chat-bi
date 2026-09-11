@@ -2698,6 +2698,13 @@ const {
   font-size: 13px;
 }
 
+.revenue-event-flow > span,
+.revenue-metric-flow > span,
+.revenue-cost-field-row > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .attribution-target-row {
   display: flex;
   align-items: center;
