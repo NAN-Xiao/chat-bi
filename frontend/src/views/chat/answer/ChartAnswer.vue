@@ -370,7 +370,11 @@ async function handlePayload(
         _currentChat.value.datasource = data.id
       }
       break
+    case 'progress':
+      updateOwnedRecord(currentRecord, { progress: data.content || '' })
+      break
     case 'finish':
+      updateOwnedRecord(currentRecord, { progress: '' })
       break
   }
   await nextTick()

@@ -71,6 +71,7 @@ export class ChatRecord {
   duration?: number
   total_tokens?: number
   stopped?: boolean
+  progress?: string
 
   constructor()
   constructor(

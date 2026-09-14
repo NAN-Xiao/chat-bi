@@ -1370,6 +1370,7 @@ const sendMessage = async (
   currentRecord.sql = ''
   currentRecord.chart_answer = ''
   currentRecord.chart = ''
+  currentRecord.progress = '正在排队处理分析任务'
 
   requestChat.records.push(currentRecord)
   rememberCurrentChat(requestChatId)

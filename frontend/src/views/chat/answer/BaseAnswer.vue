@@ -115,6 +115,9 @@ onMounted(() => {
         <MdComponent :message="reason" />
       </div>
     </div>
+    <div v-if="thinkingActive && message.record?.progress" class="thinking-progress">
+      {{ message.record.progress }}
+    </div>
     <div class="answer-container">
       <slot></slot>
       <el-button v-if="thinkingActive" style="min-width: unset" type="primary" link loading />
@@ -191,6 +194,16 @@ onMounted(() => {
         border-bottom: unset;
       }
     }
+  }
+
+  .thinking-progress {
+    margin-top: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: rgba(22, 143, 112, 1);
+    background: rgba(241, 248, 246, 1);
+    font-size: 13px;
+    line-height: 20px;
   }
 
   .reasoning-placeholder {
