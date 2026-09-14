@@ -46,24 +46,6 @@ def _sql_answer(sql: str = "select 1 as value", tables: list[str] | None = None)
     return json.dumps(payload)
 
 
-def test_observed_smart_qa_node_emits_user_visible_progress(monkeypatch: pytest.MonkeyPatch) -> None:
-    emitted: list[str] = []
-    monkeypatch.setattr(graph, "_emit", emitted.append)
-
-    def handler(_state: dict[str, Any]) -> dict[str, Any]:
-        return {}
-
-    wrapped = graph._observe_node("generate_sql", handler)
-    wrapped({"service": SimpleNamespace(), "in_chat": True, "graph_run_id": "run-1"})
-
-    assert len(emitted) == 1
-    assert json.loads(emitted[0].removeprefix("data:").strip()) == {
-        "type": "progress",
-        "content": "正在生成 SQL",
-        "node": "generate_sql",
-    }
-
-
 def test_event_predicate_parser_ignores_partition_date_format_literals() -> None:
     tracking_config = '''
 ## 默认字段

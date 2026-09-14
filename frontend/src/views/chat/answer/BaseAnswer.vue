@@ -15,6 +15,7 @@ const props = withDefaults(
   defineProps<{
     message: ChatMessage
     loading?: boolean
+    progressText?: string
     reasoningName:
       | 'sql_answer'
       | 'chart_answer'
@@ -24,6 +25,7 @@ const props = withDefaults(
   }>(),
   {
     loading: false,
+    progressText: '',
   }
 )
 
@@ -115,8 +117,8 @@ onMounted(() => {
         <MdComponent :message="reason" />
       </div>
     </div>
-    <div v-if="thinkingActive && message.record?.progress" class="thinking-progress">
-      {{ message.record.progress }}
+    <div v-if="thinkingActive && progressText" class="thinking-progress" role="status">
+      {{ progressText }}
     </div>
     <div class="answer-container">
       <slot></slot>
