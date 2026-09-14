@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import json
+import logging
 import sqlite3
 from types import SimpleNamespace
 
@@ -11,6 +12,7 @@ import pytest
 from openai import BadRequestError
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, OpenAILLM
+from apps.ai_model.openai import llm as openai_llm
 from apps.analysis_assistant.api import analysis_assistant
 from apps.chat.api import chat as chat_api
 from apps.chat.models.chat_model import ChatQuestion
@@ -145,3 +147,55 @@ def test_explicit_invalid_parameter_is_reported_without_silent_retry(monkeypatch
 
     asyncio.run(run())
     assert len(requests) == 1
+
+
+def test_retryable_openai_failure_is_logged_without_request_body(monkeypatch):
+    messages = []
+    monkeypatch.setattr(
+        openai_llm.AppLogUtil,
+        "warning",
+        lambda message, *args, **_kwargs: messages.append(message % args),
+    )
+    error = httpx.ReadTimeout("upstream timed out")
+    record = logging.LogRecord(
+        name="openai._base_client",
+        level=logging.DEBUG,
+        pathname=__file__,
+        lineno=1,
+        msg="Encountered httpx.TimeoutException",
+        args=(),
+        exc_info=(type(error), error, None),
+    )
+
+    openai_llm.OpenAIRetryFailureLogHandler().emit(record)
+
+    assert len(messages) == 1
+    assert "ReadTimeout" in messages[0]
+    assert "upstream timed out" in messages[0]
+    assert "messages" not in messages[0]
+    assert "prompt" not in messages[0]
+
+
+def test_non_retryable_openai_failure_is_not_logged_as_retry(monkeypatch):
+    messages = []
+    monkeypatch.setattr(
+        openai_llm.AppLogUtil,
+        "warning",
+        lambda message, *args, **_kwargs: messages.append(message % args),
+    )
+    request = httpx.Request("POST", "https://model.test/v1/chat/completions")
+    response = httpx.Response(400, request=request, json={"error": {"message": "invalid request"}})
+    error = httpx.HTTPStatusError("bad request", request=request, response=response)
+    record = logging.LogRecord(
+        name="openai._base_client",
+        level=logging.DEBUG,
+        pathname=__file__,
+        lineno=1,
+        msg="Encountered httpx.HTTPStatusError",
+        args=(),
+        exc_info=(type(error), error, None),
+    )
+
+    openai_llm.OpenAIRetryFailureLogHandler().emit(record)
+
+    assert messages == []
