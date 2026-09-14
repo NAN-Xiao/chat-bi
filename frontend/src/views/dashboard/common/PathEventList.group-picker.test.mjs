@@ -6,6 +6,8 @@ const source = readFileSync(new URL('./PathEventList.vue', import.meta.url), 'ut
 assert.match(source, /width="440"/, '路径事件下拉需要为双栏浏览提供足够宽度')
 assert.match(source, /class="path-event-picker-search"/, '事件选择器需要保留搜索入口')
 assert.match(source, /placeholder="请输入搜索"/, '搜索占位文案需要与事件选择器样式一致')
+assert.match(source, /trigger="manual"/, '路径事件选择器需要使用显式显隐，避免首次点击被触发器状态吞掉')
+assert.match(source, /@click\.stop="eventPickerVisible = !eventPickerVisible"/, '路径事件入口需要直接切换弹层状态')
 assert.match(source, /class="path-event-picker-select-all"/, '事件选择器需要提供全选入口')
 assert.match(source, /someFilteredEventsSelected/, '全选入口需要展示部分选中的中间态')
 assert.match(source, /function toggleAllFilteredEvents()/, '全选入口需要更新当前搜索结果中的事件')
