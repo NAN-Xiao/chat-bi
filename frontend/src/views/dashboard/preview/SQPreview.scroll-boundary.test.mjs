@@ -25,7 +25,7 @@ const {
 } = await import(moduleUrl)
 
 const shortViewportCellHeight = getDashboardPreviewGridCellHeight(298, 36, 10, false)
-assert.equal(shortViewportCellHeight * 14 - 10, 214, '短视口下不能把标准卡片压缩到仅剩标题')
+assert.equal(shortViewportCellHeight * 14 - 10, 326, '短视口下不能把标准卡片压缩到仅剩标题')
 assert.equal(getDashboardPreviewGridCellHeight(150, 36, 10, false), shortViewportCellHeight)
 assert.equal(getDashboardPreviewGridCellHeight(900, 36, 10, false), (900 - 10) / 36)
 assert.equal(getDashboardPreviewGridCellHeight(298, 36, 6, true), (298 - 6) / 36)

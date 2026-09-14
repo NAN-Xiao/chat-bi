@@ -3,7 +3,7 @@ type DashboardGridComponent = {
   sizeY?: unknown
 }
 
-const MIN_PREVIEW_GRID_CELL_HEIGHT = 16
+const MIN_PREVIEW_GRID_CELL_HEIGHT = 24
 
 export function getDashboardPreviewGridCellHeight(
   containerHeight: number,
