@@ -3687,6 +3687,38 @@ def test_retention_count_rejects_average_or_rate_even_when_count_is_preaggregate
     assert any("simultaneous_value" in issue and "COUNT" in issue for issue in issues)
 
 
+def test_retention_count_accepts_coalesced_cohort_aggregate_joined_from_cte() -> None:
+    request = _retention_request(simultaneous={
+        "enabled": True,
+        "event": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "login", "field": "event_name",
+        },
+        "aggregation": "count",
+        "metricField": None,
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    sql = """
+    WITH simultaneous_agg AS (
+        SELECT cohort_date, COUNT(entity_id) AS simultaneous_value
+        FROM retained_events
+        GROUP BY cohort_date
+    ), date_spine AS (
+        SELECT cohort_date FROM calendar
+    )
+    SELECT d.cohort_date,
+           COALESCE(s.simultaneous_value, 0) AS simultaneous_value
+    FROM date_spine d
+    LEFT JOIN simultaneous_agg s ON s.cohort_date = d.cohort_date
+    """
+
+    assert ai_sql_generator._retention_simultaneous_aggregation_issues(
+        sql,
+        normalized["retention"],
+        sql_dialect="mysql",
+    ) == []
+
+
 def test_retention_sql_accepts_count_aggregated_in_cte_then_summed() -> None:
     request = _retention_request(simultaneous={
         "enabled": True,

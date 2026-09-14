@@ -3518,9 +3518,12 @@ def _retention_simultaneous_aggregation_issues(
             return False
         reachable: set[str] = set()
         pending: list[str] = []
-        from_clause = query.args.get("from_")
-        if from_clause is not None:
-            for table in from_clause.find_all(exp.Table):
+        source_clauses = [query.args.get("from_")]
+        source_clauses.extend(query.args.get("joins") or [])
+        for source_clause in source_clauses:
+            if source_clause is None:
+                continue
+            for table in source_clause.find_all(exp.Table):
                 name = str(table.name or "").strip().lower()
                 if name in ctes and name not in reachable:
                     pending.append(name)
@@ -3561,6 +3564,13 @@ def _retention_simultaneous_aggregation_issues(
             for expression in upstream_expressions
             for node in expression.walk()
         )
+        if aggregation == "count" and upstream_has_aggregate and not any(
+            isinstance(node, exp.AggFunc)
+            for node in output_expression.walk()
+        ) and aggregate_cte_reachable_from_query(statement):
+            # A cohort-level aggregate may be projected through COALESCE after
+            # a LEFT JOIN (for example, simultaneous_agg -> date_spine).
+            return []
         if matches(output_expression):
             if aggregation != "count" or (
                 not upstream_has_aggregate and not aggregate_cte_reachable_from_query(statement)
