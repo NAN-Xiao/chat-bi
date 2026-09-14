@@ -18,7 +18,21 @@ const build = await esbuild.build({
 
 const bundledSource = build.outputFiles[0].text
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(bundledSource).toString('base64')}`
-const { getDashboardGridCellWidth, getDashboardGridContentRows } = await import(moduleUrl)
+const {
+  getDashboardGridCellWidth,
+  getDashboardGridContentRows,
+  getDashboardPreviewGridCellHeight,
+} = await import(moduleUrl)
+
+const shortViewportCellHeight = getDashboardPreviewGridCellHeight(298, 36, 10, false)
+assert.equal(shortViewportCellHeight * 14 - 10, 214, '短视口下不能把标准卡片压缩到仅剩标题')
+assert.equal(getDashboardPreviewGridCellHeight(150, 36, 10, false), shortViewportCellHeight)
+assert.equal(getDashboardPreviewGridCellHeight(900, 36, 10, false), (900 - 10) / 36)
+assert.equal(getDashboardPreviewGridCellHeight(298, 36, 6, true), (298 - 6) / 36)
+assert.ok(
+  shortViewportCellHeight * getDashboardGridContentRows([{ y: 15, sizeY: 14 }]) > 298,
+  '内容应超出短视口并可滚动到最后一张卡片'
+)
 
 assert.equal(
   getDashboardGridContentRows([
