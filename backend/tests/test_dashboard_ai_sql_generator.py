@@ -3139,6 +3139,9 @@ def test_retention_system_prompt_uses_wide_result_without_changing_event_prompt(
     assert "sql-plan.result_contract.required_columns" in retention_prompt
     assert "AS day_0" in retention_prompt
     assert "day_1 到 day_7" in retention_prompt
+    assert "simultaneous_value 必须表示回访窗口内已匹配主体的事件明细总次数" in retention_prompt
+    assert "SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value" in retention_prompt
+    assert "不得只按 cohort_date 关联" in retention_prompt
     assert "base_count,\n    matched_count,\n    matched_rate" not in retention_prompt
     assert "推荐 SQL 结构范式" in event_prompt
     assert "matched_rate" in event_prompt
@@ -3647,6 +3650,41 @@ def test_retention_sql_validates_simultaneous_aggregation_function() -> None:
     assert ai_sql_generator._retention_sql_result_issues(valid_sql, normalized) == []
     invalid_issues = ai_sql_generator._retention_sql_result_issues(invalid_sql, normalized)
     assert any("simultaneous_value" in issue and "SUM" in issue for issue in invalid_issues)
+
+
+def test_retention_count_rejects_average_or_rate_even_when_count_is_preaggregated() -> None:
+    request = _retention_request(simultaneous={
+        "enabled": True,
+        "event": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "login", "field": "event_name",
+        },
+        "aggregation": "count",
+        "metricField": None,
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    fixed_columns = ", ".join(["cohort_date", "cohort_size"] + [f"day_{day}" for day in range(8)])
+    invalid_sql = f"""
+    WITH simultaneous_events AS (
+        SELECT user_id, event_date, COUNT(*) AS simultaneous_count
+        FROM event
+        GROUP BY user_id, event_date
+    ), matched AS (
+        SELECT * FROM simultaneous_events
+    )
+    SELECT {fixed_columns},
+           SUM(simultaneous_count) / NULLIF(COUNT(DISTINCT user_id), 0) AS simultaneous_value
+    FROM matched
+    GROUP BY cohort_date, cohort_size
+    """
+
+    issues = ai_sql_generator._retention_sql_result_issues(
+        invalid_sql,
+        normalized,
+        sql_dialect="mysql",
+    )
+
+    assert any("simultaneous_value" in issue and "COUNT" in issue for issue in issues)
 
 
 def test_retention_sql_accepts_count_aggregated_in_cte_then_summed() -> None:
