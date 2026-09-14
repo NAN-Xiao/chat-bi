@@ -55,6 +55,7 @@ from apps.chat.curd.custom_prompt import (
 )
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, ChatLog, OperationEnum, \
     ChatFinishStep, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
+from apps.chat.task.answer_content import AnswerContentStream
 from apps.chat.task.sql_repair import (
     DataSkillSqlValidationError,
     DataSkillSqlViolation,
@@ -2314,8 +2315,14 @@ class LLMService:
         做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         full_sql_text = ''
+        answer_content = AnswerContentStream("sql") if in_chat else None
         for chunk in self.generate_sql(_session, append_question=append_question):
-            full_sql_text += chunk.get('content') or ''
+            content = chunk.get('content') or ''
+            full_sql_text += content
+            if answer_content is not None:
+                body_event = answer_content.push(content)
+                if body_event is not None:
+                    yield 'data:' + orjson.dumps(body_event).decode() + '\n\n'
             if in_chat and chunk.get('reasoning_content'):
                 yield 'data:' + orjson.dumps({
                     'content': '',

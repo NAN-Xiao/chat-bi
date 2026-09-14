@@ -212,6 +212,7 @@ class ChatRecordResult(BaseModel):
     predict_reasoning_content: Optional[str] = None
     duration: Optional[float] = None  # 耗时字段（单位：秒）
     total_tokens: Optional[int] = None  # 令牌总消耗
+    answer_content: Optional[dict[str, str]] = None
 
 
 class CreateChat(BaseModel):
@@ -250,7 +251,7 @@ class ChatInfo(BaseModel):
     datasource_exists: bool = True
     recommended_question: Optional[str] = None
     recommended_generate: Optional[bool] = False
-    records: List[ChatRecord | dict] = []
+    records: List[ChatRecordResult | ChatRecord | dict] = []
 
 
 class ChatLogHistoryItem(BaseModel):

@@ -163,8 +163,9 @@ template:
         </rule>
         <rule priority="high">
           请使用JSON格式返回你的回答:
-          若能生成，则返回格式如：{{"success":true,"time_scope":"explicit/unspecified","time_range":{{"start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD"}},"sql":"你生成的SQL语句","tables":["该SQL用到的表名1","该SQL用到的表名2",...],"chart-type":"table","brief":"如何需要生成对话标题，在这里填写你生成的对话标题，否则不需要这个字段","message":"可选；当只能回答部分问题或需要提示缺失数据时填写","date_filter":{{"time_field":"时间字段","date_parameter_type":"date/yyyymmdd_number/yyyymmdd_text/timestamp","date_expression":{{"version":1,"mode":"range","start":{{"mode":"static","date":"YYYY-MM-DD"}},"end":{{"mode":"static","date":"YYYY-MM-DD"}}}}}}}}
-          若不能生成，则返回格式如：{{"success":false,"message":"说明无法生成SQL的原因"}}
+          若能生成，则返回格式如：{{"answer_content":"面向用户的简短处理结果或下一步说明；只描述当前已经确认或正在执行的内容，不泄漏内部推理","success":true,"time_scope":"explicit/unspecified","time_range":{{"start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD"}},"sql":"你生成的SQL语句","tables":["该SQL用到的表名1","该SQL用到的表名2",...],"chart-type":"table","brief":"如何需要生成对话标题，在这里填写你生成的对话标题，否则不需要这个字段","message":"可选；当只能回答部分问题或需要提示缺失数据时填写","date_filter":{{"time_field":"时间字段","date_parameter_type":"date/yyyymmdd_number/yyyymmdd_text/timestamp","date_expression":{{"version":1,"mode":"range","start":{{"mode":"static","date":"YYYY-MM-DD"}},"end":{{"mode":"static","date":"YYYY-MM-DD"}}}}}}}}
+          若不能生成，则返回格式如：{{"answer_content":"说明无法生成SQL的原因","success":false,"message":"说明无法生成SQL的原因"}}
+          answer_content 必须是本次回答中面向用户的正文，放在JSON最外层；不得填写SQL、图表配置、内部推理或当前响应之外的猜测。即使无法生成SQL，也必须填写 answer_content。除 answer_content 外的字段保持原有协议不变。
           返回内容必须是严格 JSON，不要包含 Markdown 或其他文本；由于 SQL 放在 JSON 字符串内，SQL 中的双引号必须转义为 \"，换行必须转义为 \n。
         </rule>
         <rule priority="high">
@@ -495,6 +496,8 @@ template:
         <step>6. <strong>强制检查：JSON格式是否正确</strong></step>
         <step>7. 返回JSON结果</step>
       </Chart-Generation-Process>
+
+      返回结果时，在JSON最外层增加 answer_content 字段，填写本次回答中面向用户的简短正文；只描述已经确认或正在处理的内容，不填写SQL、图表配置或内部推理。除该字段外，图表JSON协议保持不变。
 
     generate_rules: |
       以下是你必须遵守的规则和可以参考的基础示例：  
