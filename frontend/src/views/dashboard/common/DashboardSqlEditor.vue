@@ -740,6 +740,13 @@ const mergeState = reactive({
 const loading = ref(false)
 const builderLoading = ref(false)
 const loadingText = ref('')
+const BUILDER_PROGRESS_PHASES = [
+  '正在分析图表配置',
+  '正在读取数据源和业务口径',
+  '正在生成 SQL',
+  '正在校验 SQL',
+]
+let builderProgressTimer: number | null = null
 const mcpServersLoading = ref(false)
 const mcpServersError = ref('')
 const mcpServers = ref<ExternalMcpServerInfo[]>([])
@@ -776,9 +783,31 @@ async function setLoadingPhase(text: string) {
   await new Promise((resolve) => window.setTimeout(resolve, 0))
 }
 
+function startBuilderProgress() {
+  if (builderProgressTimer !== null) {
+    window.clearTimeout(builderProgressTimer)
+  }
+  let phaseIndex = 0
+  loadingText.value = BUILDER_PROGRESS_PHASES[phaseIndex]
+  const advance = () => {
+    phaseIndex = Math.min(phaseIndex + 1, BUILDER_PROGRESS_PHASES.length - 1)
+    loadingText.value = BUILDER_PROGRESS_PHASES[phaseIndex]
+    if (phaseIndex < BUILDER_PROGRESS_PHASES.length - 1) {
+      builderProgressTimer = window.setTimeout(advance, 2600)
+    } else {
+      builderProgressTimer = null
+    }
+  }
+  builderProgressTimer = window.setTimeout(advance, 2600)
+}
+
 function clearBuilderLoading() {
   builderLoading.value = false
   loadingText.value = ''
+  if (builderProgressTimer !== null) {
+    window.clearTimeout(builderProgressTimer)
+    builderProgressTimer = null
+  }
 }
 
 function isExternalSnapshotChart(viewInfo: any) {
@@ -6113,6 +6142,7 @@ async function generateBuilderAiSql() {
     await setLoadingPhase('正在分析')
     showLocalBuilderAgentAdvice()
     await setLoadingPhase('正在生成建议')
+    startBuilderProgress()
     result = await dashboardApi.generate_ai_sql({
       datasource: selectedExecutionDatasourceId.value,
       intent: '',
