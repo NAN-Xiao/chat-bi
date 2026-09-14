@@ -3144,6 +3144,8 @@ def _dashboard_config_prompt(
             f"基础结果使用固定 Cohort 宽表，范围为第 0 日到第 {RETENTION_COHORT_DAYS} 日的留存比例：第一列 cohort_date，第二列 cohort_size，后续列为 day_0 到 day_{RETENTION_COHORT_DAYS}。",
             "retention.simultaneous.enabled=true 时，额外按 simultaneous.event、simultaneous.aggregation 和 simultaneous.metricField 计算回访用户参与该事件的统计值，并以 simultaneous_value 输出。",
             "同时展示聚合规则与事件分析指标一致：count=事件明细总次数；count_distinct=COUNT(DISTINCT metricField)；sum/avg/max/min 分别对 metricField 使用 SUM/AVG/MAX/MIN。禁止改用其他字段或默认字段。",
+            "同时展示使用 count 时，simultaneous_value 是回访窗口内已匹配主体的事件明细总次数，不是参与用户平均次数、留存率或其他比例；如果先按 entity_id + behavior_date 在 CTE 中得到 simultaneous_count，最终 Cohort 层必须使用 SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value，禁止使用 AVG、COUNT(simultaneous_count)、COUNT(*)、除以 cohort_size 或 ROUND 包装成比例。",
+            "同时展示事件必须按 entity_id + behavior_date 聚合，并将 behavior_date 与 matched.behavior_date 关联；不得只按 cohort_date 关联，否则会漏掉第 1 日到第 7 日的回访事件。simultaneous_value 只汇总 matched 回访窗口内的记录，不得参与 cohort 分母或 period_offset 分桶。",
             "retention.relatedProperty.enabled=true 时，初始事件、回访事件以及已启用的同时展示事件必须按各自配置的关联属性值相等进行关联，不得改用同名字段猜测。",
             "retention.relatedProperty.asGroup=true 时，结果必须额外输出 related_property 分组列。",
             f"当前同时展示配置：{_safe_json(simultaneous)}。",
@@ -3547,6 +3549,12 @@ def _retention_simultaneous_aggregation_issues(
         if not lineage_nodes:
             continue
         output_expression = lineage_nodes[0].expression
+        if aggregation == "count" and any(
+            isinstance(node, (exp.Avg, exp.Div))
+            for node in output_expression.walk()
+        ):
+            # A count in the lineage does not make an average/rate a total count.
+            continue
         upstream_expressions = [node.expression for node in lineage_nodes[1:]]
         upstream_has_aggregate = any(
             isinstance(node, exp.AggFunc)
@@ -3575,6 +3583,11 @@ def _retention_simultaneous_aggregation_issues(
     return [
         "留存 SQL 的 simultaneous_value 未按同时展示配置使用 "
         f"{aggregation_labels[aggregation]} 聚合。"
+        + (
+            "次数口径应在按用户/回访日期预聚合后使用 SUM(simultaneous_count)，不得使用 AVG、COUNT(simultaneous_count)、COUNT(*) 或除以 cohort_size。"
+            if aggregation == "count"
+            else ""
+        )
     ]
 
 
@@ -4364,6 +4377,8 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。"
             "period_offset 只能作为中间计算字段，不能出现在基础 Cohort 最终结果中。\n"
             "day_0 到 day_7 都表示对应周期回访人数占 cohort_size 的比例；不得输出长表 matched_rate 代替这些固定列。\n"
+            "当 retention.simultaneous.enabled=true 且 aggregation=count 时，simultaneous_value 必须表示回访窗口内已匹配主体的事件明细总次数，不是平均次数、留存率或其他比例；若 simultaneous 先按 entity_id + behavior_date 聚合为 simultaneous_count，最终 Cohort 层必须使用 SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value，禁止使用 AVG、COUNT(simultaneous_count)、COUNT(*)、除以 cohort_size 或 ROUND 包装成比例。\n"
+            "同时展示事件必须按 entity_id + behavior_date 聚合，并将 behavior_date 与 matched.behavior_date 关联；不得只按 cohort_date 关联，否则会漏掉第 1 日到第 7 日的回访事件。simultaneous_value 只汇总 matched 回访窗口内的记录，不得参与 cohort 分母或 period_offset 分桶。\n"
         )
     elif str(analysis_model or "event") == "funnel":
         structure_prompt = (
