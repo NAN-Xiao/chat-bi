@@ -217,7 +217,7 @@ function removeSplitItem(event: string) {
     <el-popover
       v-model:visible="eventPickerVisible"
       width="440"
-      trigger="click"
+      trigger="manual"
       placement="bottom-start"
       popper-class="path-event-picker-popper"
       :popper-style="{ zIndex: 5001 }"
@@ -228,6 +228,7 @@ function removeSplitItem(event: string) {
           class="path-event-trigger"
           :aria-expanded="eventPickerVisible"
           aria-label="选择参与分析的事件"
+          @click.stop="eventPickerVisible = !eventPickerVisible"
         >
           <el-icon><FolderOpened /></el-icon>
           <span>事件({{ selectedEventCount }})</span>
