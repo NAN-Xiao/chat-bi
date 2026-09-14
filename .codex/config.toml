@@ -30,20 +30,5 @@ show_tooltips = true
 [analytics]
 enabled = true
 
-[feedback]
-enabled = true
-
-[features]
-
-[mcp_servers]
-
-[model_providers]
-
-[apps]
-
-[projects]
-
-[tools]
-
 [windows]
 sandbox = "unelevated"
