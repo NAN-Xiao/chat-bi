@@ -1384,28 +1384,7 @@ def _observe_node(node: str, handler):
     谁调用：_build_graph 注册每个 LangGraph 节点时调用。
     做了什么：调用 assistant_workflow.observe_node，传入工作流配置、节点名和实际处理器，使节点执行具备统一的日志、追踪与异常格式化能力。
     """
-    progress_labels = {
-        "prepare_context": "正在准备分析上下文",
-        "emit_record_metadata": "正在创建分析记录",
-        "ensure_datasource": "正在检查数据源连接",
-        "execute_saas_skill": "正在匹配可用的数据能力",
-        "generate_sql": "正在生成 SQL",
-        "prepare_sql": "正在校验 SQL 和查询范围",
-        "repair_sql": "正在修复查询并重新校验",
-        "execute_sql": "正在执行查询并整理结果",
-        "generate_chart": "正在生成图表",
-    }
-
-    def handler_with_progress(state: SmartQAGraphState) -> dict[str, Any]:
-        if state.get("in_chat"):
-            _emit(_sse({
-                "type": "progress",
-                "content": progress_labels.get(node, "正在处理分析任务"),
-                "node": node,
-            }))
-        return handler(state)
-
-    return observe_node(WORKFLOW_CONFIG, node, handler_with_progress)
+    return observe_node(WORKFLOW_CONFIG, node, handler)
 
 
 def _queue_sql_repair(
