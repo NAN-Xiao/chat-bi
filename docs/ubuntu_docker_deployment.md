@@ -284,9 +284,9 @@ sudo ufw status
 本项目当前内网可用的大模型配置参考：
 
 ```text
-base_url=https://aikey.elex-tech.com/v1
+base_url=https://key.elex-tech.com/v1
 default_model=qwen3.5-plus
-embedding_model=Alibaba/text-embedding-v4
+embedding_model=qwen3.7-text-embedding
 ```
 
 API Key 应在系统界面或生产环境变量中配置，不要写入 Git。

@@ -49,9 +49,9 @@ def _normalize_api_base_url(raw_url: Optional[str]) -> Optional[str]:
     return url
 
 
-def _load_default_ai_model_connection() -> tuple[Optional[str], Optional[str]]:
+def _load_embedding_model_connection(model_name: str) -> tuple[Optional[str], Optional[str]]:
     """
-    是什么：_load_default_ai_model_connection 是一个可以复用的小步骤，负责AI 模型相关的一件事。
+    是什么：_load_embedding_model_connection 是一个可以复用的小步骤，负责AI 模型相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把AI 模型需要的数据找出来，整理成后面好用的样子。
     """
@@ -60,7 +60,11 @@ def _load_default_ai_model_connection() -> tuple[Optional[str], Optional[str]]:
 
     with Session(engine) as session:
         db_model = session.exec(
-            select(AiModelDetail).where(AiModelDetail.default_model == True)
+            select(AiModelDetail).where(
+                AiModelDetail.status == 1,
+                (AiModelDetail.base_model == model_name)
+                | (AiModelDetail.name == model_name),
+            )
         ).first()
         if not db_model:
             return None, None
@@ -80,9 +84,11 @@ def _build_default_config() -> EmbeddingModelInfo:
     api_key = settings.EMBEDDING_API_KEY
 
     if not api_base_url or not api_key:
-        default_api_base_url, default_api_key = _load_default_ai_model_connection()
-        api_base_url = api_base_url or default_api_base_url
-        api_key = api_key or default_api_key
+        embedding_api_base_url, embedding_api_key = _load_embedding_model_connection(
+            settings.EMBEDDING_MODEL or settings.DEFAULT_EMBEDDING_MODEL
+        )
+        api_base_url = api_base_url or embedding_api_base_url
+        api_key = api_key or embedding_api_key
 
     return EmbeddingModelInfo(
         model=settings.EMBEDDING_MODEL or settings.DEFAULT_EMBEDDING_MODEL,
