@@ -71,6 +71,7 @@ export class ChatRecord {
   duration?: number
   total_tokens?: number
   stopped?: boolean
+  answer_content?: Record<string, string>
 
   constructor()
   constructor(
@@ -287,7 +288,7 @@ const toChatRecord = (data?: any): ChatRecord | undefined => {
   if (!data) {
     return undefined
   }
-  return new ChatRecord(
+  const record = new ChatRecord(
     data.id,
     data.chat_id,
     data.create_time,
@@ -320,6 +321,8 @@ const toChatRecord = (data?: any): ChatRecord | undefined => {
     data.duration,
     data.total_tokens
   )
+  record.answer_content = data.answer_content
+  return record
 }
 const toChatRecordList = (list: any = []): ChatRecord[] => {
   const records: Array<ChatRecord> = []

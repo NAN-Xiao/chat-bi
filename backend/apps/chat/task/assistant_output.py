@@ -9,6 +9,8 @@ from typing import Any
 import orjson
 from langgraph.config import get_stream_writer
 
+from apps.chat.task.answer_content import AnswerContentStream
+
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_DISPLAY_MESSAGE,
     PERMISSION_DENIED_ERROR_TYPE,
@@ -42,6 +44,7 @@ def emit_stream_text(
     stream: bool,
     event_type: str,
     emit_plain_text: bool = False,
+    answer_content_source: str | None = None,
 ) -> str:
     """
     是什么：emit_stream_text 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -49,9 +52,14 @@ def emit_stream_text(
     做了什么：把聊天问数据和 Agent处理过程中的消息或结果一段段传出去。
     """
     full_text = ""
+    answer_content = AnswerContentStream(answer_content_source) if in_chat and answer_content_source else None
     for chunk in chunks:
         content = chunk.get("content") or ""
         full_text += content
+        if answer_content is not None:
+            body_event = answer_content.push(content)
+            if body_event is not None:
+                emit(sse(body_event))
         if in_chat:
             emit(sse({
                 "content": content,

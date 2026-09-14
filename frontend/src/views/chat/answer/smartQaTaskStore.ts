@@ -10,6 +10,7 @@ export interface SmartQaRecordLike {
   stopped?: boolean
   local_answer?: unknown
   chart?: unknown
+  answer_content?: Record<string, string>
 }
 
 export interface SmartQaTaskKeyInput {

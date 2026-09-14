@@ -2392,6 +2392,7 @@ def _generate_chart(state: SmartQAGraphState) -> dict[str, Any]:
             in_chat=in_chat,
             stream=False,
             event_type="chart-result",
+            answer_content_source="chart",
         )
         if in_chat:
             _emit(_sse({"type": "info", "msg": "chart generated"}))

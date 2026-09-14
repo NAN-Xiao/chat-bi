@@ -16,6 +16,7 @@ from sqlalchemy.orm import aliased
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion, ChatLog, \
     TypeEnum, OperationEnum, ChatRecordResult, ChatLogHistory, ChatLogHistoryItem
 from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError, render_chat_date_filter_sql
+from apps.chat.task.answer_content import extract_answer_content
 from apps.dashboard.crud.dashboard_service import _execute_dashboard_chart_sql
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_DISPLAY_MESSAGE,
@@ -1482,6 +1483,23 @@ def format_record(record: ChatRecordResult):
     做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     _dict = record.model_dump()
+
+    answer_content: dict[str, str] = {}
+    for source, raw_answer in (("sql", record.sql_answer), ("chart", record.chart_answer)):
+        if not raw_answer:
+            continue
+        candidate = raw_answer
+        try:
+            outer = orjson.loads(raw_answer)
+            if isinstance(outer, dict) and isinstance(outer.get("content"), str):
+                candidate = outer["content"]
+        except Exception:
+            pass
+        content = extract_answer_content(candidate)
+        if content:
+            answer_content[source] = content
+    if answer_content:
+        _dict["answer_content"] = answer_content
 
     if record.sql_answer and record.sql_answer.strip() != '' and record.sql_answer.strip()[0] == '{' and \
             record.sql_answer.strip()[-1] == '}':

@@ -28,6 +28,7 @@ import {
   resolveTaskOwnerChatId,
 } from './chatTaskContext'
 import { resolveSmartQaErrorMessage } from './smartQaErrorMessage'
+import AnswerContentStream from './AnswerContentStream.vue'
 
 const { t } = useI18n()
 
@@ -289,7 +290,13 @@ async function resolveActiveTask(record: ChatRecord): Promise<ActiveTaskState | 
 async function handlePayload(
   payload: string,
   currentRecord: ChatRecord,
-  state: { sql_answer: string; chart_answer: string; analysis: string; analysis_thinking: string }
+  state: {
+    sql_answer: string
+    chart_answer: string
+    analysis: string
+    analysis_thinking: string
+    answer_content: Record<string, string>
+  }
 ) {
   let data
   try {
@@ -325,6 +332,17 @@ async function handlePayload(
     case 'info':
       console.info(data.msg)
       break
+    case 'answer-content': {
+      const source = typeof data.source === 'string' ? data.source.trim() : ''
+      const content = typeof data.content === 'string' ? data.content : ''
+      if (source) {
+        updateOwnedRecord(currentRecord, {
+          answer_content: { ...state.answer_content, [source]: content },
+        })
+        state.answer_content[source] = content
+      }
+      break
+    }
     case 'brief':
       applyBriefToTaskOwner({
         chatList: _chatList.value,
@@ -535,6 +553,7 @@ function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffs
     chart_answer: currentRecord.chart_answer || '',
     analysis: currentRecord.analysis || '',
     analysis_thinking: currentRecord.analysis_thinking || '',
+    answer_content: { ...(currentRecord.answer_content || {}) },
   }
   let pendingTerminalUpdate:
     | ReturnType<typeof partitionTerminalRecordUpdate<ChatRecord>>
@@ -702,6 +721,9 @@ defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask, l
 
 <template>
   <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading">
+    <template #progress>
+      <AnswerContentStream :content="message.record?.answer_content" />
+    </template>
     <template v-if="showFinalAnswer">
       <MdComponent v-if="message.record?.local_answer" :message="message.record.local_answer" />
       <BusinessNotice

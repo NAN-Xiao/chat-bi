@@ -115,6 +115,7 @@ onMounted(() => {
         <MdComponent :message="reason" />
       </div>
     </div>
+    <slot name="progress"></slot>
     <div class="answer-container">
       <slot></slot>
       <el-button v-if="thinkingActive" style="min-width: unset" type="primary" link loading />
