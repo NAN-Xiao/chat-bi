@@ -286,7 +286,7 @@ sudo ufw status
 ```text
 base_url=https://aikey.elex-tech.com/v1
 default_model=qwen3.5-plus
-embedding_model=text-embedding-v4
+embedding_model=qwen3.7-text-embedding
 ```
 
 API Key 应在系统界面或生产环境变量中配置，不要写入 Git。
