@@ -262,9 +262,9 @@ class Settings(BaseSettings):
     SENTRY_ENVIRONMENT: str | None = None
     SENTRY_TRACES_SAMPLE_RATE: float = 0.0
 
-    DEFAULT_EMBEDDING_MODEL: str = 'qwen3.7-text-embedding'
+    DEFAULT_EMBEDDING_MODEL: str = 'Alibaba/text-embedding-v4'
     EMBEDDING_PROVIDER: Literal["openai"] = "openai"
-    EMBEDDING_MODEL: str = 'qwen3.7-text-embedding'
+    EMBEDDING_MODEL: str = 'Alibaba/text-embedding-v4'
     EMBEDDING_API_BASE_URL: str | None = None
     EMBEDDING_API_KEY: str | None = None
     EMBEDDING_USE_DEFAULT_AI_MODEL_CONFIG: bool = True
