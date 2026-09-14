@@ -11,6 +11,7 @@ import { useEmitt } from '@/utils/useEmitt.ts'
 import {
   getDashboardGridCellWidth,
   getDashboardGridContentRows,
+  getDashboardPreviewGridCellHeight,
   normalizeDashboardGridCoordinate,
 } from '@/views/dashboard/utils/dashboardGridPosition.ts'
 import {
@@ -88,7 +89,6 @@ const state = reactive({
 const cellWidth = ref(0)
 const cellHeight = ref(0)
 const viewportHeight = ref(0)
-const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
 const basePaddingLeft = ref(0)
@@ -108,7 +108,10 @@ const canvasStyle = computed(() => {
   if (props.inTab) {
     return { background: '#ffffff' }
   }
-  return { background: 'var(--dashboard-preview-canvas-bg, var(--workspace-panel-bg, var(--theme-panel-bg)))' }
+  return {
+    background:
+      'var(--dashboard-preview-canvas-bg, var(--workspace-panel-bg, var(--theme-panel-bg)))',
+  }
 })
 const displayComponentData = computed(() =>
   Array.isArray(props.componentData) ? props.componentData : []
@@ -160,11 +163,7 @@ const sizeInit = (force = false, notifyCharts = true) => {
   const screenWidth = Math.round(previewCanvas.value.offsetWidth)
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   const screenHeight = Math.round(previewCanvas.value.offsetHeight)
-  if (
-    !force &&
-    screenWidth === lastPreviewSize.width &&
-    screenHeight === lastPreviewSize.height
-  ) {
+  if (!force && screenWidth === lastPreviewSize.width && screenHeight === lastPreviewSize.height) {
     return false
   }
   lastPreviewSize = { width: screenWidth, height: screenHeight }
@@ -181,9 +180,12 @@ const sizeInit = (force = false, notifyCharts = true) => {
     gridGap,
     edgeGap
   )
-  baseHeight.value =
-    (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
-  cellHeight.value = baseHeight.value + baseMarginTop.value
+  cellHeight.value = getDashboardPreviewGridCellHeight(
+    screenHeight,
+    props.baseMatrixCount.y,
+    gridGap,
+    props.inTab
+  )
   if (notifyCharts) {
     scheduleViewRenderAll()
   }
