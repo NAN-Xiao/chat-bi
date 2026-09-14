@@ -4,6 +4,12 @@ type DashboardGridComponent = {
 }
 
 const MIN_PREVIEW_GRID_CELL_HEIGHT = 24
+const MIN_PREVIEW_CANVAS_WIDTH = 1440
+
+export function getDashboardPreviewGridCanvasWidth(containerWidth: number, inTab: boolean): number {
+  const safeContainerWidth = Number.isFinite(containerWidth) ? Math.max(0, containerWidth) : 0
+  return inTab ? safeContainerWidth : Math.max(MIN_PREVIEW_CANVAS_WIDTH, safeContainerWidth)
+}
 
 export function getDashboardPreviewGridCellHeight(
   containerHeight: number,

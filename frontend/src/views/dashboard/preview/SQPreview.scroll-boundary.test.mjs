@@ -21,9 +21,13 @@ const moduleUrl = `data:text/javascript;base64,${Buffer.from(bundledSource).toSt
 const {
   getDashboardGridCellWidth,
   getDashboardGridContentRows,
+  getDashboardPreviewGridCanvasWidth,
   getDashboardPreviewGridCellHeight,
 } = await import(moduleUrl)
 
+assert.equal(getDashboardPreviewGridCanvasWidth(1000, false), 1440)
+assert.equal(getDashboardPreviewGridCanvasWidth(1600, false), 1600)
+assert.equal(getDashboardPreviewGridCanvasWidth(1000, true), 1000)
 const shortViewportCellHeight = getDashboardPreviewGridCellHeight(298, 36, 10, false)
 assert.equal(shortViewportCellHeight * 14 - 10, 326, '短视口下不能把标准卡片压缩到仅剩标题')
 assert.equal(getDashboardPreviewGridCellHeight(150, 36, 10, false), shortViewportCellHeight)
@@ -59,11 +63,12 @@ const previewSource = readFileSync(join(currentDir, 'SQPreview.vue'), 'utf8')
 assert.match(previewSource, /getDashboardGridContentRows\(displayComponentData\.value\)/)
 assert.match(previewSource, /class="canvas-scroll-spacer"/)
 assert.match(previewSource, /:style="canvasScrollSpacerStyle"/)
+assert.match(previewSource, /width: Math\.max\(canvasWidth\.value, 1\) \+ 'px'/)
 assert.match(previewSource, /const PREVIEW_EDGE_GAP = 16/)
 assert.match(previewSource, /const edgeGap = props\.inTab \? gridGap : PREVIEW_EDGE_GAP/)
 assert.match(
   previewSource,
-  /getDashboardGridCellWidth\(\s*screenWidth,\s*props\.baseMatrixCount\.x,\s*gridGap,\s*edgeGap\s*\)/
+  /getDashboardGridCellWidth\(\s*canvasWidth\.value,\s*props\.baseMatrixCount\.x,\s*gridGap,\s*edgeGap\s*\)/
 )
 assert.match(previewSource, /basePaddingLeft\.value = edgeGap/)
 assert.match(

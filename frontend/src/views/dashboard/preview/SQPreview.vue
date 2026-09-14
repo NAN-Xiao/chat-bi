@@ -11,6 +11,7 @@ import { useEmitt } from '@/utils/useEmitt.ts'
 import {
   getDashboardGridCellWidth,
   getDashboardGridContentRows,
+  getDashboardPreviewGridCanvasWidth,
   getDashboardPreviewGridCellHeight,
   normalizeDashboardGridCoordinate,
 } from '@/views/dashboard/utils/dashboardGridPosition.ts'
@@ -89,6 +90,7 @@ const state = reactive({
 const cellWidth = ref(0)
 const cellHeight = ref(0)
 const viewportHeight = ref(0)
+const canvasWidth = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
 const basePaddingLeft = ref(0)
@@ -119,7 +121,10 @@ const displayComponentData = computed(() =>
 const canvasScrollSpacerStyle = computed(() => {
   const contentRows = getDashboardGridContentRows(displayComponentData.value)
   const contentHeight = cellHeight.value * contentRows + basePaddingTop.value
-  return { height: Math.max(viewportHeight.value, contentHeight) + 'px' }
+  return {
+    width: Math.max(canvasWidth.value, 1) + 'px',
+    height: Math.max(viewportHeight.value, contentHeight) + 'px',
+  }
 })
 
 const restore = () => {}
@@ -170,12 +175,13 @@ const sizeInit = (force = false, notifyCharts = true) => {
   viewportHeight.value = screenHeight
   const gridGap = props.inTab ? TAB_PREVIEW_GRID_GAP : PREVIEW_GRID_GAP
   const edgeGap = props.inTab ? gridGap : PREVIEW_EDGE_GAP
+  canvasWidth.value = getDashboardPreviewGridCanvasWidth(screenWidth, props.inTab)
   baseMarginLeft.value = gridGap
   baseMarginTop.value = gridGap
   basePaddingLeft.value = edgeGap
   basePaddingTop.value = props.inTab ? gridGap : PREVIEW_TOP_GAP
   cellWidth.value = getDashboardGridCellWidth(
-    screenWidth,
+    canvasWidth.value,
     props.baseMatrixCount.x,
     gridGap,
     edgeGap
@@ -255,7 +261,7 @@ defineExpose({
   width: 100%;
   height: 100%;
   padding: 0;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
   position: relative;
 
