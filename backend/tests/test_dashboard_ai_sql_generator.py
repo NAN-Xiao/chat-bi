@@ -3148,6 +3148,42 @@ def test_retention_system_prompt_uses_wide_result_without_changing_event_prompt(
     assert "留存专用 Cohort 宽表结构" not in event_prompt
 
 
+def test_sql_validation_keeps_model_contract_issues_with_dialect_issues() -> None:
+    request = _retention_request(simultaneous={
+        "enabled": True,
+        "event": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "login", "field": "event_name",
+        },
+        "aggregation": "count",
+        "metricField": None,
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    fixed_columns = ", ".join(["cohort_date", "cohort_size"] + [f"day_{day}" for day in range(8)])
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql=(
+            f"WITH RECURSIVE date_spine AS ("
+            "SELECT 1 AS cohort_date UNION ALL "
+            "SELECT cohort_date FROM date_spine"
+            f") SELECT {fixed_columns} FROM date_spine"
+        ),
+        chart_type="table",
+    )
+
+    validated = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": normalized,
+        "datasource": SimpleNamespace(type="mysql"),
+        "sql_dialect": "mysql",
+        "graph_trace": [],
+    })["response"]
+
+    assert validated.success is False
+    assert any("WITH RECURSIVE" in issue for issue in validated.issues)
+    assert any("simultaneous_value" in issue for issue in validated.issues)
+
+
 @pytest.mark.parametrize(
     ("analysis_model", "config", "expected"),
     [
