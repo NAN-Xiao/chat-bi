@@ -5084,6 +5084,71 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     normalized = state.get("normalized_config") or {}
     time_config = normalized.get("time") or {}
     parameter_type = str(time_config.get("date_parameter_type") or "").strip()
+
+    def _model_sql_result_issues() -> list[str]:
+        """Run only the result-contract validator for the selected model."""
+        analysis_model = str(normalized.get("analysis_model") or "event")
+        if analysis_model == "event":
+            return _event_analysis_sql_result_issues(
+                sql,
+                normalized,
+                sql_dialect=state.get("sql_dialect"),
+            )
+        if analysis_model == "property":
+            return _property_sql_result_issues(sql, normalized)
+        if analysis_model == "retention":
+            return _retention_sql_result_issues(
+                sql,
+                normalized,
+                sql_dialect=state.get("sql_dialect"),
+                datasource=state.get("datasource"),
+            )
+        if analysis_model == "funnel":
+            return _funnel_sql_result_issues(sql, normalized)
+        if analysis_model == "distribution":
+            return _distribution_sql_result_issues(
+                sql,
+                normalized,
+                sql_dialect=state.get("sql_dialect"),
+                datasource=state.get("datasource"),
+            )
+        if analysis_model == "interval":
+            return _interval_sql_result_issues(
+                sql,
+                normalized,
+                sql_dialect=state.get("sql_dialect"),
+                datasource=state.get("datasource"),
+            )
+        if analysis_model == "path":
+            return _path_sql_result_issues(
+                sql,
+                normalized,
+                schema=str(state.get("schema") or ""),
+                sql_dialect=state.get("sql_dialect"),
+            )
+        if analysis_model == "revenue":
+            return _revenue_sql_result_issues(
+                sql,
+                normalized,
+                sql_dialect=state.get("sql_dialect"),
+                datasource=state.get("datasource"),
+            )
+        if analysis_model == "attribution":
+            return _attribution_sql_result_issues(
+                sql,
+                normalized,
+                sql_dialect=state.get("sql_dialect") or datasource_type,
+            )
+        if analysis_model == "ranking":
+            return _ranking_sql_result_issues(
+                sql,
+                normalized,
+                sql_dialect=state.get("sql_dialect"),
+            )
+        if analysis_model == "heatmap":
+            return _heatmap_sql_result_issues(sql, normalized)
+        return []
+
     if parameter_type in {"yyyymmdd_number", "yyyymmdd_text"}:
         # LLMs occasionally wrap dashboard tokens in quotes. For encoded date
         # parameters this changes the token into a string literal, so the
@@ -5127,7 +5192,9 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.success = False
         response.message = "生成 SQL 未满足当前数据源方言要求。"
         response.advice = "请按当前数据源支持的查询结构重新生成 SQL。"
-        response.issues = _unique_text_items(list(response.issues or []) + [dialect_issue])
+        response.issues = _unique_text_items(
+            list(response.issues or []) + [dialect_issue] + _model_sql_result_issues()
+        )
     elif isinstance(state.get("normalized_config"), dict) and _uses_dashboard_date_parameters(
         response.chart_type
         or ((state["normalized_config"].get("chart") or {}).get("type")),
@@ -5145,33 +5212,7 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.success = False
         response.message = "生成 SQL 未满足看板日期参数要求。"
         response.advice = "请使用当前图表配置的起止日期参数重新生成。"
-        model_issues: list[str] = []
-        normalized_config = state.get("normalized_config") or {}
-        if str(normalized_config.get("analysis_model") or "event") == "event":
-            model_issues = _event_analysis_sql_result_issues(
-                sql,
-                normalized_config,
-                sql_dialect=state.get("sql_dialect"),
-            )
-        elif str(normalized_config.get("analysis_model") or "event") == "property":
-            model_issues = _property_sql_result_issues(
-                sql,
-                normalized_config,
-            )
-        elif str(normalized_config.get("analysis_model") or "event") == "retention":
-            model_issues = _retention_sql_result_issues(
-                sql,
-                normalized_config,
-                sql_dialect=state.get("sql_dialect"),
-                datasource=state.get("datasource"),
-            )
-        elif str(normalized_config.get("analysis_model") or "event") == "distribution":
-            model_issues = _distribution_sql_result_issues(
-                sql,
-                normalized_config,
-                sql_dialect=state.get("sql_dialect"),
-                datasource=state.get("datasource"),
-            )
+        model_issues = _model_sql_result_issues()
         response.issues = _unique_text_items(list(response.issues or []) + date_issues + model_issues)
     elif event_analysis_issues := _event_analysis_sql_result_issues(
         sql,
