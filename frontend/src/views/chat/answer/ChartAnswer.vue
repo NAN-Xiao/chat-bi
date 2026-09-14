@@ -111,7 +111,6 @@ const _loading = computed({
 })
 
 const stopFlag = ref(false)
-const progressText = ref('正在处理分析任务')
 const restoringTask = ref(false)
 const finalAnswerReady = ref(
   !!(props.message?.record?.finish || props.message?.record?.finish_time)
@@ -339,20 +338,16 @@ async function handlePayload(
       failCurrentRecord(currentRecord, data.content)
       break
     case 'sql-result':
-      progressText.value = '正在生成 SQL'
       state.sql_answer += data.reasoning_content || ''
       updateOwnedRecord(currentRecord, { sql_answer: state.sql_answer })
       break
     case 'sql':
-      progressText.value = '正在处理查询'
       updateOwnedRecord(currentRecord, { sql: data.content })
       break
     case 'sql-data':
-      progressText.value = '正在整理查询结果'
       getChatData(currentRecord.id, currentRecord)
       break
     case 'chart-result':
-      progressText.value = '正在生成图表'
       state.chart_answer += data.reasoning_content || ''
       updateOwnedRecord(currentRecord, { chart_answer: state.chart_answer })
       break
@@ -368,7 +363,6 @@ async function handlePayload(
       }
       break
     case 'chart':
-      progressText.value = '正在准备展示结果'
       updateOwnedRecord(currentRecord, { chart: data.content })
       break
     case 'datasource':
@@ -406,7 +400,6 @@ async function fetchCurrentRecord(
 
 const sendMessage = async () => {
   stopFlag.value = false
-  progressText.value = '正在处理分析任务'
   finalAnswerReady.value = false
   _loading.value = true
 
@@ -694,7 +687,6 @@ onMounted(() => {
 watch(
   () => props.message?.record,
   (record, previousRecord) => {
-    if (previousRecord !== record) progressText.value = '正在处理分析任务'
     if (previousRecord && previousRecord !== record) {
       smartQaTaskStore.detachTaskCallbacks(taskKey(previousRecord))
     }
@@ -709,7 +701,7 @@ defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask, l
 </script>
 
 <template>
-  <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading" :progress-text="progressText">
+  <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading">
     <template v-if="showFinalAnswer">
       <MdComponent v-if="message.record?.local_answer" :message="message.record.local_answer" />
       <BusinessNotice
