@@ -1,6 +1,7 @@
 """
 脚本说明：这个脚本放AI 模型相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
 """
+import logging
 from collections.abc import Iterator, Mapping
 from typing import Any, Optional, cast
 
@@ -21,6 +22,69 @@ from langchain_core.outputs.chat_generation import ChatGeneration
 from langchain_core.runnables import RunnableConfig, ensure_config
 from langchain_openai import ChatOpenAI
 from langchain_openai.chat_models.base import _create_usage_metadata
+
+from common.utils.utils import AppLogUtil
+
+_OPENAI_RETRYABLE_STATUS_CODES = {408, 409, 429}
+_OPENAI_RETRYABLE_EXCEPTION_NAMES = {
+    "APIConnectionError",
+    "ConnectError",
+    "ConnectTimeout",
+    "PoolTimeout",
+    "ReadError",
+    "ReadTimeout",
+    "WriteError",
+    "WriteTimeout",
+}
+
+
+def _retry_failure_summary(error: BaseException) -> str | None:
+    """Return a safe summary for an upstream failure that the SDK will retry."""
+    response = getattr(error, "response", None)
+    status_code = getattr(response, "status_code", None)
+    error_names = {item.__name__ for item in type(error).__mro__}
+    is_retryable_exception = bool(error_names & _OPENAI_RETRYABLE_EXCEPTION_NAMES)
+    is_retryable_status = (
+        isinstance(status_code, int)
+        and (status_code in _OPENAI_RETRYABLE_STATUS_CODES or status_code >= 500)
+    )
+    if not is_retryable_exception and not is_retryable_status:
+        return None
+
+    headers = getattr(response, "headers", {}) or {}
+    request_id = headers.get("x-oneapi-request-id") or headers.get("x-request-id")
+    reason = str(error).strip() or type(error).__name__
+    details = [f"exception={type(error).__name__}", f"reason={reason}"]
+    if status_code is not None:
+        details.insert(1, f"status_code={status_code}")
+    if request_id:
+        details.insert(2, f"upstream_request_id={request_id}")
+    return "LLM request attempt failed before retry: " + ", ".join(details)
+
+
+class OpenAIRetryFailureLogHandler(logging.Handler):
+    """Promote retryable OpenAI SDK failures into the application log."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if not record.getMessage().startswith("Encountered ") or not record.exc_info:
+            return
+        error = record.exc_info[1]
+        if not isinstance(error, BaseException):
+            return
+        summary = _retry_failure_summary(error)
+        if summary:
+            AppLogUtil.warning(summary)
+
+
+def _install_openai_retry_failure_log_handler() -> None:
+    logger = logging.getLogger("openai._base_client")
+    if not any(isinstance(handler, OpenAIRetryFailureLogHandler) for handler in logger.handlers):
+        handler = OpenAIRetryFailureLogHandler()
+        handler.setLevel(logging.DEBUG)
+        logger.addHandler(handler)
+
+
+_install_openai_retry_failure_log_handler()
 
 
 def _convert_delta_to_message_chunk(
