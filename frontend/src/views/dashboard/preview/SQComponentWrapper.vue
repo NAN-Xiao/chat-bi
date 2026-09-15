@@ -68,7 +68,7 @@ const componentWrapperInnerRef = ref(null)
 const { t } = useI18n()
 const { emitter } = useEmitt()
 const userStore = useUserStore()
-const CHART_REFRESH_CONCURRENCY = 2
+const CHART_REFRESH_CONCURRENCY = 4
 
 const props = defineProps({
   active: {
