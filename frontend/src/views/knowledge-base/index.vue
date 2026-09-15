@@ -439,7 +439,7 @@ onBeforeUnmount(() => {
           <el-table-column :label="t('knowledge_base.updated_at')" width="220">
             <template #default="{ row }">{{ formatCardTime(row.update_time) }}</template>
           </el-table-column>
-          <el-table-column fixed="right" :label="t('ds.actions')" width="280">
+          <el-table-column fixed="right" :label="t('ds.actions')" width="320">
             <template #default="{ row }">
               <div class="table-actions">
                 <el-button link type="primary" @click="openDetail(row)">{{
@@ -453,15 +453,12 @@ onBeforeUnmount(() => {
                   <el-icon><Upload /></el-icon>
                   {{ t('knowledge_base.replace_document') }}
                 </el-button>
-                <el-button v-if="row.can_manage" link type="danger" @click="deleteCard(row)">
-                  <el-icon><IconOpeDelete /></el-icon>
-                  {{ t('dashboard.delete') }}
-                </el-button>
                 <el-popover
                   v-if="row.can_manage"
                   trigger="click"
                   :teleported="true"
                   placement="bottom-end"
+                  popper-class="popover-card_knowledge"
                 >
                   <template #reference>
                     <el-button link type="primary">{{ t('knowledge_base.more') }}</el-button>
@@ -471,6 +468,10 @@ onBeforeUnmount(() => {
                       <el-icon size="16"><IconOpeEdit /></el-icon>
                       {{ t('datasource.edit') }}
                     </div>
+                    <button type="button" class="item is-danger" @click="deleteCard(row)">
+                      <el-icon size="16"><IconOpeDelete /></el-icon>
+                      {{ t('dashboard.delete') }}
+                    </button>
                   </div>
                 </el-popover>
               </div>
@@ -569,7 +570,7 @@ onBeforeUnmount(() => {
       v-model="detailVisible"
       :title="t('menu.Details')"
       destroy-on-close
-      size="calc(100% - 48px)"
+      size="64%"
       modal-class="knowledge-base-drawer knowledge-document-drawer"
     >
       <div class="knowledge-detail-reader">
@@ -766,10 +767,15 @@ onBeforeUnmount(() => {
 
   .table-actions {
     display: inline-flex;
+    flex-wrap: nowrap;
     align-items: center;
-    gap: 2px;
+    gap: 8px;
+    white-space: nowrap;
 
-    .el-button {
+    :deep(.ed-button) {
+      flex: 0 0 auto;
+      min-width: auto;
+      margin: 0;
       padding: 0 4px;
       font-size: 13px;
     }
@@ -1121,7 +1127,7 @@ onBeforeUnmount(() => {
 
 .knowledge-document-drawer {
   .ed-drawer {
-    max-width: calc(100vw - 24px);
+    max-width: 1280px;
   }
 
   .ed-drawer__body {
@@ -1239,6 +1245,18 @@ onBeforeUnmount(() => {
       .ed-icon {
         margin-right: 8px;
         color: #646a73;
+      }
+
+      &.is-danger {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: var(--ed-color-danger);
+        font: inherit;
+
+        .ed-icon {
+          color: inherit;
+        }
       }
 
       &:hover {
