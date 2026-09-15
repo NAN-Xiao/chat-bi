@@ -61,6 +61,7 @@ from apps.system.crud.user import (
     is_system_admin,
 )
 from apps.system.schemas.access_context import require_current_tenant_id
+from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
 from common.sql_json_paths import extract_sql_json_field_pairs, normalize_json_path
 from common.utils.utils import AppLogUtil, extract_nested_json
@@ -5360,7 +5361,7 @@ def _route_after_sql_validate(state: DashboardManualChartGraphState) -> str:
         and response.success is False
         and bool(str(response.sql or "").strip())
         and bool(response.issues)
-        and int(state.get("sql_repair_attempts") or 0) < 1
+        and int(state.get("sql_repair_attempts") or 0) < settings.DASHBOARD_SQL_MAX_REPAIR_ATTEMPTS
     ):
         if analysis_model in ANALYSIS_MODEL_LABELS:
             return "repair_sql"
