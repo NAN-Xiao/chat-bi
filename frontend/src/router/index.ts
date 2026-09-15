@@ -506,15 +506,40 @@ export const routes = [
       {
         path: 'knowledge-base',
         name: 'system-knowledge-base',
-        component: KnowledgeBase,
+        redirect: '/system/knowledge-base/platform',
         meta: {
           title: t('knowledge_base.admin_title'),
           iconActive: 'knowledge',
           iconDeActive: 'noKnowledge',
+          hidePopupTitle: true,
           tenantBusiness: true,
           tenantAdminOnly: true,
           platformOperation: true,
         },
+        children: [
+          {
+            path: 'platform',
+            name: 'system-platform-knowledge-base',
+            component: KnowledgeBase,
+            meta: {
+              title: t('knowledge_base.platform_knowledge_base'),
+              knowledgeScope: 'PLATFORM_PUBLIC',
+              tenantBusiness: true,
+              platformOperation: true,
+            },
+          },
+          {
+            path: 'workspace',
+            name: 'system-workspace-knowledge-base',
+            component: KnowledgeBase,
+            meta: {
+              title: t('knowledge_base.workspace_knowledge_base'),
+              knowledgeScope: 'ADMIN_PUBLIC',
+              tenantBusiness: true,
+              platformOperation: true,
+            },
+          },
+        ],
       },
       {
         path: 'prompt',

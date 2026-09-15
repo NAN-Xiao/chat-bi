@@ -46,6 +46,7 @@ def build_agent_context_snapshot(
     ai_model_name: str | None = None,
     target_scope: str | None = None,
     business_context: dict[str, Any] | None = None,
+    knowledge_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     是什么：build_agent_context_snapshot 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -81,4 +82,6 @@ def build_agent_context_snapshot(
     }
     if business_context:
         snapshot["business_context"] = business_context
+    if knowledge_context:
+        snapshot["knowledge_context"] = knowledge_context
     return snapshot
