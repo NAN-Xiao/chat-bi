@@ -1791,6 +1791,7 @@
       "treemap": "矩形樹圖"
     },
     "chart_validation": {
+      "invalid_trend_dimension": "橫軸資料缺失，無法展示完整趨勢，請檢查查詢結果或日期設定",
       "missing_category_field": "缺少分類欄位，請重新選擇分類欄位",
       "multiple_category_fields": "只能選擇一個分類欄位",
       "missing_value_field": "缺少數值欄位，請重新選擇數值欄位",

@@ -7,6 +7,7 @@ import { computed, ref, watch } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { concat } from 'lodash-es'
 import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import { trendDimensionError } from '@/views/chat/component/chartValidation.ts'
 import {
   DataAnalysis,
   DataBoard,
@@ -419,6 +420,15 @@ function resolveChartPivot(chartBaseInfo: any, viewInfo: any) {
 
 function addToDashboard() {
   if (!canAddToDashboard.value) return
+  const dimensionError = trendDimensionError(
+    chartObject.value.type,
+    chartObject.value.axis?.x ? [{ ...chartObject.value.axis.x, type: 'x' }] : [],
+    data.value,
+  )
+  if (dimensionError) {
+    ElMessage.error(t(`chat.chart_validation.${dimensionError}`))
+    return
+  }
   const recordeInfo: Record<string, any> = {
     id: '1-1',
     data: {

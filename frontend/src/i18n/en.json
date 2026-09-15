@@ -1791,6 +1791,7 @@
       "treemap": "Treemap"
     },
     "chart_validation": {
+      "invalid_trend_dimension": "Trend dimension values are missing. Check the query results or date configuration.",
       "missing_category_field": "Select a category field for this chart",
       "multiple_category_fields": "Select only one category field for this chart",
       "missing_value_field": "Select a value field for this chart",

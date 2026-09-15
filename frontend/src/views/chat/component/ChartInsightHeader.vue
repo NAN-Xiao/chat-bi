@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ChartAxis, ChartData, ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import { trendDimensionError } from '@/views/chat/component/chartValidation.ts'
 import {
   formatNumber,
   isAverageAxis,
@@ -1104,6 +1105,9 @@ function buildRankedStats(includeTotal = true): Array<StatItem> {
 }
 
 const stats = computed<Array<StatItem>>(() => {
+  if (trendDimensionError(props.chartType, props.x.map((axis) => ({ ...axis, type: 'x' })), rows.value)) {
+    return []
+  }
   if (usesConversionFunnelStats.value) {
     return buildFunnelStats()
   }

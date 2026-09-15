@@ -43,6 +43,8 @@ from apps.datasource.crud.sql_permission import (
     validate_sql_table_scope,
 )
 from apps.datasource.models.datasource import CoreDatasource
+from apps.datasource.crud.sql_date_metadata import load_date_field_encodings
+from apps.system.schemas.access_context import require_current_tenant_id
 from apps.db.db import (
     _unsafe_exec_sql_after_validation,
     check_sql_read,
@@ -61,6 +63,7 @@ from common.user_facing_errors import (
     looks_like_data_unavailable_error as common_looks_like_data_unavailable_error,
 )
 from common.utils.data_format import DataFormat
+from common.utils.sql_date_validation import validate_sql_date_conversions
 from common.utils.utils import AppLogUtil
 
 USER_QUERY_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
@@ -558,6 +561,7 @@ def prepare_query_sql(
     if not is_safe:
         raise ValueError(f"SQL can only contain read operations: {error_reason}")
 
+    permission_scope = {}
     if validate_columns:
         statements, actual_tables, _permission_scope = validate_sql_scope(
             session,
@@ -566,6 +570,7 @@ def prepare_query_sql(
             sql,
             apply_user_permission_scope=apply_user_permission_scope,
         )
+        permission_scope = _permission_scope
     else:
         statements = parse_sql_statements(sql, datasource.type, fallback_to_generic=True)
         actual_tables = validate_sql_table_scope(
@@ -587,6 +592,16 @@ def prepare_query_sql(
         raise ValueError(" ".join(alias_scope_issues))
 
     _validate_allowed_tables(actual_tables, allowed_tables)
+    validate_sql_date_conversions(sql, datasource.type)
+    if (
+        str(datasource.type).lower() in {'mysql', 'mariadb', 'analyticdb', 'doris', 'starrocks'}
+        and permission_scope
+        and any(statement.find(exp.StrToDate, exp.StrToTime) is not None for statement in statements)
+    ):
+        field_encodings = load_date_field_encodings(
+            session, require_current_tenant_id(current_user), datasource.id, permission_scope,
+        )
+        validate_sql_date_conversions(sql, datasource.type, field_encodings)
 
     executed_sql = sql
     if apply_row_permissions and is_normal_user(current_user):
@@ -797,6 +812,7 @@ def execute_external_user_query_or_raise(
         _ensure_external_row_filters_enforced(datasource, executed_sql, row_filters)
 
     parse_sql_statements(executed_sql, datasource.type)
+    validate_sql_date_conversions(executed_sql, datasource.type)
 
     started_at = time.perf_counter()
     result = _execute_after_validation(ds=datasource, sql=executed_sql, origin_column=origin_column)

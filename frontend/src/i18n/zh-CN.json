@@ -1792,6 +1792,7 @@
       "treemap": "矩形树图"
     },
     "chart_validation": {
+      "invalid_trend_dimension": "横轴数据缺失，无法展示完整趋势，请检查查询结果或日期配置",
       "missing_category_field": "缺少分类字段，请重新选择分类字段",
       "multiple_category_fields": "只能选择一个分类字段",
       "missing_value_field": "缺少数值字段，请重新选择数值字段",

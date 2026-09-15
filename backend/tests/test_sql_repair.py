@@ -7,6 +7,8 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from pymysql.err import OperationalError as MysqlOperationalError
+from sqlalchemy.exc import OperationalError as SqlAlchemyOperationalError
 from langchain_core.messages import HumanMessage
 from sqlglot.errors import ParseError, TokenError
 
@@ -280,6 +282,48 @@ def test_execute_error_rejects_unrelated_cannot_be_resolved_text() -> None:
     error = _MysqlError("storage backend cannot be resolved", 1815)
 
     assert classify_execute_sql_error(error) is None
+
+
+@pytest.mark.parametrize("message", [
+    "[20021, request-id] DISTINCT in window function parameters not yet supported: count(DISTINCT uid) OVER (PARTITION BY dt)\x00",
+    "DISTINCT is not implemented for window functions",
+    "This version of MySQL doesn't yet support '<window function>(DISTINCT ..)'",
+    "DISTINCT in window functions is not supported",
+])
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_execute_distinct_window_error_is_repairable(message: str, wrapped: bool) -> None:
+    error = MysqlOperationalError(1815, message)
+    if wrapped:
+        driver_error = SqlAlchemyOperationalError("SELECT 1", {}, error)
+        error = AppDBError("query failed")
+        error.__cause__ = driver_error
+
+    assert classify_execute_sql_error(error) is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+
+
+@pytest.mark.parametrize("message", [
+    "internal storage error",
+    "storage engine feature not yet supported",
+    "connection timeout: DISTINCT in window functions is not supported",
+    "permission denied: DISTINCT in window functions is not supported",
+])
+def test_execute_internal_error_is_not_always_repairable(message: str) -> None:
+    assert classify_execute_sql_error(MysqlOperationalError(1815, message)) is None
+
+
+def test_distinct_window_repair_preserves_aggregation_semantics() -> None:
+    message = build_sql_repair_message(SqlRepairContext(
+        reason=SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
+        dialect="mysql",
+        failed_sql="SELECT COUNT(DISTINCT uid) OVER (PARTITION BY dt) FROM events",
+        error_message="DISTINCT in window function parameters not yet supported",
+        violation=None,
+        attempt=1,
+    ))
+
+    assert "不得直接删除 DISTINCT" in message
+    assert "GROUP BY" in message
+    assert "窗口范围" in message
 
 
 @pytest.mark.parametrize(

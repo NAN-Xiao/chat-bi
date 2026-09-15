@@ -126,6 +126,7 @@ from common.core.deps import CurrentAssistant, CurrentUser
 from common.error import SingleMessageError, AppDBError, DataUnavailableError, ParseSQLResultError
 from common.user_facing_errors import agent_guidance_for_error_type
 from common.utils.locale import I18n, I18nHelper
+from common.utils.chart_result_validation import validate_trend_dimensions
 from common.utils.utils import AppLogUtil, extract_nested_json, prepare_for_orjson
 
 warnings.filterwarnings("ignore")
@@ -2746,6 +2747,7 @@ class LLMService:
             raise SingleMessageError(message)
 
         if result:
+            validate_trend_dimensions(chart, result)
             chart = _filter_chart_bindings_to_result_fields(chart, result.get("fields"))
             chart = _ensure_chart_covers_metric_fields(
                 chart,
@@ -3113,6 +3115,7 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    validate_trend_dimensions(chart, data)
     file_name = f'c_{chat_id}_r_{record_id}'
 
     columns = chart.get('columns') if chart.get('columns') else []

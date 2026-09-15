@@ -9,6 +9,8 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from pymysql.err import OperationalError as MysqlOperationalError
+from sqlalchemy.exc import OperationalError as SqlAlchemyOperationalError
 
 from apps.chat.models.chat_model import ChatFinishStep, OperationEnum
 from apps.chat.task import llm
@@ -19,6 +21,35 @@ from apps.datasource.crud.permission_errors import (
     SqlSchemaScopeError,
 )
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
+
+
+@pytest.mark.parametrize('finish_step', [ChatFinishStep.QUERY_DATA, ChatFinishStep.GENERATE_CHART])
+def test_null_time_projection_never_emits_success(monkeypatch, finish_step):
+    service = FakeSmartQAService(sql_answer=_sql_answer("SELECT STR_TO_DATE(raw_day, '%Y%m%d') AS day, value FROM orders"))
+    service.ds.type = 'mysql'
+    service.get_chart_type_from_sql_answer = lambda *args, **kwargs: 'line'
+    service.execute_sql = lambda **kwargs: {'fields': ['day', 'value'], 'data': [{'day': None, 'value': 56}]}
+    monkeypatch.setattr(graph, 'validate_user_query_sql_or_raise', lambda **kwargs: (kwargs['sql'], {'orders'}))
+    chunks = list(graph.run_smart_qa_graph(service, in_chat=True, stream=True, finish_step=finish_step))
+    assert service.saved_data == []
+    assert not service.chart_generated
+    assert not service.repair_contexts
+    assert any(event['type'] == 'error' for event in _events(chunks))
+    assert not any(event.get('content') == 'execute-success' for event in _events(chunks))
+
+
+def test_date_format_conflict_repairs_before_execution(monkeypatch):
+    invalid = "WITH dates AS (SELECT CAST(DATE_FORMAT(created_at, '%Y%m%d') AS SIGNED) AS encoded, value FROM orders) SELECT STR_TO_DATE(CAST(encoded AS CHAR), '%Y-%m-%d') AS day, value FROM dates"
+    repaired = invalid.replace("CAST(encoded AS CHAR), '%Y-%m-%d'", "CAST(encoded AS CHAR), '%Y%m%d'")
+    service = FakeSmartQAService(sql_answer=_sql_answer(invalid))
+    service.ds.type = 'mysql'
+    service.repair_answers = [_sql_answer(repaired)]
+    monkeypatch.setattr(graph, 'validate_user_query_sql_or_raise', lambda **kwargs: (kwargs['sql'], {'orders'}))
+    chunks = list(graph.run_smart_qa_graph(service, in_chat=True, stream=True, finish_step=ChatFinishStep.GENERATE_CHART))
+    assert [attempt['sql'] for attempt in service.executed] == [repaired]
+    assert '%Y%m%d' in service.repair_contexts[0].error_message
+    assert '%Y-%m-%d' in service.repair_contexts[0].error_message
+    assert not any(event['type'] == 'error' for event in _events(chunks))
 
 
 @contextmanager
@@ -850,23 +881,39 @@ def test_validate_sql_structure_error_repairs_then_revalidates(
     assert not any(event["type"] == "error" for event in _events(chunks))
 
 
-def test_execute_sql_dialect_error_repairs_then_executes_again(monkeypatch: pytest.MonkeyPatch) -> None:
-    invalid_sql = "WITH RECURSIVE days AS (SELECT 1 UNION ALL SELECT 2) SELECT * FROM days"
-    repaired_sql = "WITH RECURSIVE days(day_value) AS (SELECT 1 UNION ALL SELECT 2) SELECT * FROM days"
+@pytest.mark.parametrize(("invalid_sql", "repaired_sql", "error_message"), [
+    (
+        "WITH RECURSIVE days AS (SELECT 1 UNION ALL SELECT 2) SELECT * FROM days",
+        "WITH RECURSIVE days(day_value) AS (SELECT 1 UNION ALL SELECT 2) SELECT * FROM days",
+        "missing column aliases in recursive WITH query",
+    ),
+    (
+        "SELECT DISTINCT order_date, COUNT(DISTINCT customer_id) OVER (PARTITION BY order_date) FROM orders",
+        "SELECT order_date, COUNT(DISTINCT customer_id) FROM orders GROUP BY order_date",
+        "[20021, request-id] DISTINCT in window function parameters not yet supported\x00",
+    ),
+])
+def test_execute_sql_dialect_error_repairs_then_executes_again(
+    monkeypatch: pytest.MonkeyPatch, invalid_sql: str, repaired_sql: str, error_message: str,
+) -> None:
     service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql))
     service.repair_answers = [_sql_answer(repaired_sql)]
-    monkeypatch.setattr(
-        graph,
-        "validate_user_query_sql_or_raise",
-        lambda **kwargs: (kwargs["sql"], {"orders"}),
-    )
+    validated_sql: list[str] = []
+
+    def validate(**kwargs):
+        validated_sql.append(kwargs["sql"])
+        return kwargs["sql"], {"orders"}
+
+    monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", validate)
     attempts: list[str] = []
 
     def execute(**kwargs):
         attempts.append(kwargs["sql"])
         if kwargs["sql"] == invalid_sql:
             error = llm.AppDBError("query failed")
-            raise error from RuntimeError("missing column aliases in recursive WITH query")
+            raise error from SqlAlchemyOperationalError(
+                invalid_sql, {}, MysqlOperationalError(1815, error_message),
+            )
         return {"fields": ["day_value"], "data": [{"day_value": 1}]}
 
     service.execute_sql = execute
@@ -882,6 +929,9 @@ def test_execute_sql_dialect_error_repairs_then_executes_again(monkeypatch: pyte
     )
 
     assert attempts == [invalid_sql, repaired_sql]
+    assert validated_sql == [invalid_sql, repaired_sql]
+    assert service.saved_sql[-1] == repaired_sql
+    assert error_message.rstrip("\x00") in service.repair_contexts[0].error_message
     assert service.repair_contexts[0].reason.value == "database_syntax_or_dialect"
     assert not any(event["type"] == "error" for event in _events(chunks))
 

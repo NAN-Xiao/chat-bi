@@ -1,4 +1,5 @@
 import type { ChartLayoutContext } from '@/views/chat/component/chartLayout.ts'
+import { ChartValidationError, trendDimensionError } from '@/views/chat/component/chartValidation.ts'
 
 export interface ChartAxis {
   name?: string
@@ -78,6 +79,8 @@ export abstract class BaseChart {
   }
 
   init(axis: Array<ChartAxis>, data: Array<ChartData>): void {
+    const error = trendDimensionError(this._name, axis, data)
+    if (error) throw new ChartValidationError(error)
     this.axis = axis
     this.data = data
   }

@@ -21,6 +21,7 @@ from apps.dashboard.crud.sql_generation_validation import (
 )
 from apps.datasource.crud.permission_errors import SqlSchemaScopeError
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
+from common.utils.sql_date_validation import SqlDateConversionError, validate_sql_date_conversions
 from common.user_facing_errors import (
     DATA_UNAVAILABLE_ERROR_TYPE,
     PERMISSION_DENIED_ERROR_TYPE,
@@ -63,7 +64,22 @@ _NON_REPAIRABLE_EXECUTE_TEXT_PATTERNS = (
 )
 _GENERIC_PARSE_ERROR_PATTERN = re.compile(r"\bparse\s+error\b", re.IGNORECASE)
 _EXPLICIT_SQL_PARSE_ERROR_PATTERN = re.compile(r"\bsql\s+parse\s+error\b", re.IGNORECASE)
+_UNSUPPORTED_DISTINCT_WINDOW_PATTERNS = (
+    re.compile(
+        r"\bdistinct\b.{0,80}\bwindow\s+functions?\b.{0,80}\bnot\s+(?:yet\s+)?(?:supported|implemented)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bdistinct\b.{0,40}\bnot\s+(?:yet\s+)?(?:supported|implemented)\b.{0,40}\bwindow\s+functions?\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bdoes(?:n't| not)\s+(?:yet\s+)?support\b.{0,40}\bwindow\s+functions?\b.{0,40}\bdistinct\b",
+        re.IGNORECASE,
+    ),
+)
 _EXECUTE_SYNTAX_OR_DIALECT_PATTERNS = (
+    *_UNSUPPORTED_DISTINCT_WINDOW_PATTERNS,
     re.compile(r"missing column aliases in recursive\s+with\s+query", re.IGNORECASE),
     re.compile(r"\bcorrelated\s+subquery\b.{0,200}\b(?:unsupported|not supported|does not support)\b", re.IGNORECASE),
     re.compile(r"\bnot\s+support\b.{0,100}\binterval\b", re.IGNORECASE),
@@ -225,7 +241,7 @@ def classify_prepare_sql_error(error: Exception) -> SqlRepairReason | None:
         return SqlRepairReason.DATA_SKILL_VALIDATION
     if any(isinstance(item, (ParseError, TokenError)) for item in _walk_error_chain(error)):
         return SqlRepairReason.SQL_PARSE
-    if any(isinstance(item, SqlStructureValidationError) for item in _walk_error_chain(error)):
+    if any(isinstance(item, (SqlStructureValidationError, SqlDateConversionError)) for item in _walk_error_chain(error)):
         return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
     if any(isinstance(item, SqlSchemaScopeError) for item in _walk_error_chain(error)):
         return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
@@ -586,6 +602,10 @@ def validate_sql_for_datasource(sql: str, datasource_type: Any) -> None:
         return
     validate_mysql_compatible_sql(sql)
     validate_mysql_date_format_grouping(sql)
+    try:
+        validate_sql_date_conversions(sql, datasource_type)
+    except SqlDateConversionError as error:
+        raise SqlStructureValidationError(str(error)) from error
 
 
 def validate_sql_for_generation(sql: str, datasource_type: Any) -> None:
@@ -628,7 +648,7 @@ def _candidate_errnos(error: Any) -> set[int]:
 
 
 def classify_execute_sql_error(error: Exception) -> SqlRepairReason | None:
-    if any(isinstance(item, SqlStructureValidationError) for item in _walk_error_chain(error)):
+    if any(isinstance(item, (SqlStructureValidationError, SqlDateConversionError)) for item in _walk_error_chain(error)):
         return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
     excluded_types = (DataUnavailableError, AppDBConnectionError, TimeoutError, PermissionError)
     if any(isinstance(item, excluded_types) for item in _walk_error_chain(error)):
@@ -737,6 +757,11 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
             "JOIN 后的同名字段在 SELECT、GROUP BY、ORDER BY、HAVING 和连接条件中必须限定来源别名。",
             "周格式不要依赖 %v 或 %x；使用已验证的周起止日期表达式。",
         ]
+        if any(pattern.search(context.error_message) for pattern in _UNSUPPORTED_DISTINCT_WINDOW_PATTERNS):
+            payload["repair_requirements"].extend([
+                "目标数据源已明确拒绝窗口函数中的 DISTINCT；请重新生成完整 SQL，不得直接删除 DISTINCT 或用近似去重替代原有精确去重。",
+                "按原分区键在独立 CTE 或派生表中使用 GROUP BY 和去重聚合，再按结果粒度关联；保留 NULL 语义、筛选条件并避免连接放大。若原 SQL 包含排序或窗口范围，必须保持每行对应的窗口范围，不能用整个分区的聚合值替代。",
+            ])
         if any(name in dialect_text for name in ("mysql", "mariadb", "doris", "starrocks", "analyticdb")):
             payload["repair_requirements"].insert(
                 1,

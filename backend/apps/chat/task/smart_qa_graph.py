@@ -85,6 +85,7 @@ from apps.db.db import check_connection, get_session, get_sqlglot_dialect
 from common.core.config import settings
 from common.error import AppDBConnectionError, DataUnavailableError
 from common.utils.data_format import DataFormat
+from common.utils.chart_result_validation import ChartResultValidationError, validate_temporal_query_result
 from common.utils.utils import AppLogUtil, extract_nested_json
 
 WORKFLOW_KEY = "smart_qa"
@@ -2257,6 +2258,14 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
             result = _prune_result_fields(result, notice_removed_fields)
         cleanup = _cleanup_missing_event_result(service, real_execute_sql, result, event_availability)
         result = cleanup.result
+        try:
+            validate_temporal_query_result(real_execute_sql, getattr(service.ds, 'type', None), result, state.get('chart_type', ''))
+        except ChartResultValidationError as error:
+            trigger_log_error(
+                session, service.current_logs[OperationEnum.EXECUTE_SQL],
+                full_message={'error_type': 'invalid_chart_dimension', 'message': str(error)},
+            )
+            raise
         execute_log_message: dict[str, Any] = {"sql": real_execute_sql, "count": len(result.get("data"))}
         if business_notice:
             execute_log_message["business_notice"] = business_notice
