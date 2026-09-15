@@ -224,6 +224,24 @@ def test_denied_physical_json_container_still_blocks_subfield_access():
         )
 
 
+def test_unregistered_json_path_is_allowed_on_authorized_base_column():
+    statement = parse_one("SELECT JSON_EXTRACT(e.payload, '$.new_key') FROM events e", read="mysql")
+    validate_sql_columns(
+        [statement], {"events": {"fields": {"payload"}, "denied_fields": set(), "denied_json_paths": {}}},
+        current_user=None, enforce=True, dialect="mysql",
+    )
+
+
+def test_unregistered_json_path_cannot_bypass_explicit_path_denial():
+    statement = parse_one("SELECT JSON_EXTRACT(e.payload, '$.private.email') FROM events e", read="mysql")
+    with pytest.raises(ValueError):
+        validate_sql_columns(
+            [statement],
+            {"events": {"fields": {"payload"}, "denied_fields": set(), "denied_json_paths": {"payload": {"$.private"}}}},
+            current_user=None, enforce=True, dialect="mysql",
+        )
+
+
 def test_current_select_extraction_does_not_claim_nested_query_accesses():
     statement = parse_one(
         "SELECT e.uid, (SELECT JSON_EXTRACT(x.payload, '$.money') FROM audit x) "

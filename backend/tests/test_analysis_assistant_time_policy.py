@@ -67,6 +67,57 @@ def test_sql_example_does_not_override_default_window() -> None:
     assert resolution.policy.source is AnalysisTimeSource.DEFAULT_14_DAYS
 
 
+def _knowledge_time_layer(layer, days):
+    from xml.sax.saxutils import escape
+
+    documents = "".join(
+        f'<document id="{index}"><knowledge-content>'
+        + escape(f'<!-- data-skill-analysis-time:{{"window_days":{value},"anchor":"latest_available"}} -->')
+        + '</knowledge-content></document>'
+        for index, value in enumerate(days)
+    )
+    return f'<{layer}>{documents}</{layer}>'
+
+
+def test_workspace_time_rule_overrides_platform_and_reports_knowledge_source():
+    from apps.analysis_assistant.service.analysis_time_policy import parse_knowledge_time_directive
+
+    knowledge = '<knowledge-context>' + _knowledge_time_layer("platform-knowledge", [14, 30]) + _knowledge_time_layer("workspace-knowledge", [7]) + '</knowledge-context>'
+    days = parse_knowledge_time_directive(knowledge)
+    resolution = resolve_analysis_time_policy(
+        parse_analysis_time_intent("分析收入", []), skill_window_days=30,
+        knowledge_window_days=days, anchor=ANCHOR, anchor_date=date(2026, 7, 26),
+    )
+    assert resolution.policy.window_days == 7
+    assert resolution.policy.source is AnalysisTimeSource.KNOWLEDGE
+
+
+def test_conflicting_knowledge_time_rules_require_clarification():
+    from apps.analysis_assistant.service.analysis_time_policy import parse_knowledge_time_directive
+    from apps.knowledge_base.context import KnowledgeContextError
+
+    knowledge = '<knowledge-context>' + _knowledge_time_layer("workspace-knowledge", [7, 30]) + '</knowledge-context>'
+    with pytest.raises(KnowledgeContextError, match="冲突"):
+        parse_knowledge_time_directive(knowledge)
+
+
+@pytest.mark.anyio
+async def test_knowledge_window_with_failed_anchor_is_explicitly_unresolved(monkeypatch):
+    def unavailable(*args):
+        raise ValueError("no anchor")
+
+    monkeypatch.setattr(analysis_api, "_select_analysis_time_anchor", unavailable)
+    knowledge = '<knowledge-context>' + _knowledge_time_layer("workspace-knowledge", [7]) + '</knowledge-context>'
+    resolution = await analysis_api._resolve_chat_time_policy(
+        session=None, current_user=None, datasource=None, llm=None,
+        request=SimpleNamespace(messages=[SimpleNamespace(role="user", content="分析收入")]),
+        business_context=SimpleNamespace(data_skill="", schema="", allowed_tables=[]),
+        semantic_context="", knowledge_context=knowledge,
+    )
+    assert resolution.status == "unresolved"
+    assert resolution.warnings
+
+
 @pytest.mark.parametrize(
     ("question", "expected_kind", "expected_start", "expected_end", "expected_window_days"),
     [

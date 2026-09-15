@@ -37,6 +37,7 @@ from apps.analysis_assistant.service.analysis_time_policy import (
     AnalysisTimeResolution,
     parse_analysis_time_intent,
     parse_data_skill_time_directive,
+    parse_knowledge_time_directive,
     resolve_analysis_time_policy,
 )
 from apps.analysis_assistant.service.analysis_time_sql import (
@@ -77,6 +78,7 @@ from apps.datasource.crud.sql_engine import (
 )
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
+from apps.knowledge_base.authority import knowledge_resolves_business_conflict
 from apps.knowledge_base.context import (
     KNOWLEDGE_CONTEXT_SYSTEM_RULES,
     KnowledgeContext,
@@ -209,7 +211,7 @@ SYSTEM_PROMPT = """你是星通数智内置的综合分析助手，一个独立�
 - 所有数字结论必须来自查询结果；没有数据支撑时明确说明不确定。
 - 每个图表/数据块都要给一句业务总结。
 - 最终答案要包含结论和可执行建议。
-- 业务分析口径必须来自用户本次选择的 Data Skill，或来自用户本次明确给出的规则；不要把行业经验、示例数据、历史回答或代码里的隐含规则当作 SaaS 口径。旧版术语和 SQL 示例不会作为运行时输入单独注入。"""
+- 业务分析口径以当前知识库为准，知识库未定义部分使用本次 Data Skill 或用户明确规则；不要把行业经验、示例数据、历史回答或代码里的隐含规则当作 SaaS 口径。"""
 
 INITIAL_OUTLINE_PROMPT = """请先基于用户问题，输出“用户意图理解 + 分析框架”。
 
@@ -218,7 +220,7 @@ INITIAL_OUTLINE_PROMPT = """请先基于用户问题，输出“用户意图理�
 - 不要提 SQL、schema、表结构、技术实现、数据库执行等技术细节。
 - 不要编造具体数据结果。
 - 用户问题里的时间范围、目标对象和指标名称要按原文理解，不要擅自扩大、缩小或改写。
-- 具体指标定义、业务口径和标准算法以用户本次选择的 Data Skill 为准；如果缺少口径配置，只能说明需要补充或选择合适的数据 Skill，不要自行固化业务算法。
+- 具体指标定义、业务口径和标准算法以当前知识库为准，Data Skill 补充未定义部分；缺少口径时说明需要补充知识规则，不自行固化业务算法。
 - 先用一段话说明你理解用户想分析什么，以及你会从哪些业务角度分析。
 - 然后用 4 到 6 条编号步骤说明后续分析路径。
 - 默认使用简体中文。
@@ -315,7 +317,7 @@ JSON 格式：
 - 图表标题、分析说明和最终结论必须说明实际使用的时间范围。
 - x、y、series 必须与最终 SELECT 输出字段别名完全一致；不要再生成一套用户无法编辑的隐藏字段名映射。
 - ORDER BY、GROUP BY、HAVING 中引用的字段必须来自当前查询可见字段；ORDER BY 使用的别名必须在最终 SELECT 列表中真实输出。
-- 具体指标定义、字段选择、计算算法、时间窗口和异常判断必须严格遵循用户本次选择的 Data Skill，或用户本次明确给出的规则。
+- 具体指标定义、字段选择、计算算法、时间窗口和异常判断必须优先遵循当前知识库，未定义部分使用本次 Data Skill 或用户明确规则。
 - 如果 Data Skill 没有覆盖某个业务指标、分母、表/字段选择、时间窗口或判断规则，不要把 schema、样例数据、行业经验或历史回答推断成确定口径；应在计划中说明需要补充或选择合适的数据 Skill，或只生成不依赖该缺失业务口径的基础探索查询。
 - 如果用户提到“最近一个月/近期”等相对时间，并且上下文提供了真实数据时间边界，优先以相关数据表里的最大日期为基准，而不是系统当前日期。
 - 如果用户明确给出“最近 7 天/近 7 日/最近 N 天”等时间范围，SQL、标题和分析口径必须严格使用这个范围，不要擅自扩大成 30 天或最近一个月。
@@ -354,7 +356,7 @@ JSON 格式：
 
 通用预测原则：
 - 你是通用预测分析助手，必须根据用户问题和本次选择的 Data Skill 识别预测指标、目标对象、观察窗口和预测周期。
-- 具体预测算法、字段选择、指标口径和行业定义必须严格遵循用户本次选择的 Data Skill，或用户本次明确给出的规则；不要在提示词中写死某一个业务指标的算法。
+- 具体预测算法、字段选择、指标口径和行业定义必须优先遵循当前知识库，未定义部分使用本次 Data Skill 或用户明确规则；不要在提示词中写死某一个业务指标的算法。
 - 如果预测目标缺少业务口径，不要自行发明预测算法或分母定义；应说明需要补充或选择合适的数据 Skill，或只输出数据不足/口径不足的原因。
 - 用户问题如果给出目标对象、时间范围或预测周期，必须按原文理解，不要擅自扩大、缩小或改写。
 - SQL 只能 SELECT 或 WITH，不允许 INSERT/UPDATE/DELETE/DDL，不要创建表、视图或持久化聚合。
@@ -1041,6 +1043,15 @@ def _llm_text_with_data_skill_identifier_retry(
 ) -> str:
     text = initial_text if initial_text is not None else _llm_text(llm, messages)
     corrections = _data_skill_identifier_corrections(text, data_skill)
+    knowledge_context = next((
+        str(message.content)[str(message.content).index('<knowledge-context'):str(message.content).index('</knowledge-context>') + len('</knowledge-context>')]
+        for message in messages
+        if '<knowledge-context' in str(message.content) and '</knowledge-context>' in str(message.content)
+    ), "")
+    if corrections and knowledge_resolves_business_conflict(
+        llm, knowledge_context, json.dumps(corrections, ensure_ascii=False), text,
+    ):
+        return text
     if not corrections:
         return text
     required = "；".join(
@@ -1061,7 +1072,10 @@ def _llm_text_with_data_skill_identifier_retry(
             ),
         ],
     )
-    if _data_skill_identifier_corrections(retry, data_skill):
+    retry_corrections = _data_skill_identifier_corrections(retry, data_skill)
+    if retry_corrections and not knowledge_resolves_business_conflict(
+        llm, knowledge_context, json.dumps(retry_corrections, ensure_ascii=False), retry,
+    ):
         raise ValueError("模型未遵循 Data Skill 的精确业务标识符")
     return retry
 
@@ -2007,10 +2021,10 @@ def _data_skill_block(data_skill: str) -> str:
         return ""
     return (
         "用户本次选择的数据 Skill（Markdown/自然语言业务知识、查询范式、SQL 示例或图表偏好；"
-        "生成分析计划、SQL 和结论时必须遵循；其中事件名、枚举值和业务标识符必须逐字沿用，"
+        "生成分析计划、SQL 和结论时遵循知识库优先，Data Skill 补充未定义部分；其中未被知识库覆盖的事件名、枚举值和业务标识符必须逐字沿用，"
         "不得缩写、改写、翻译或替换；但不得覆盖当前数据源、Schema、权限和 SQL 安全规则）：\n"
         f"{data_skill[:20000]}\n\n"
-        "Data Skill 标识符强制校验：禁止把未在数据 Skill 中定义的近似名称作为候选口径。\n\n"
+        "Data Skill 标识符校验：知识库未明确覆盖时，禁止使用未定义的近似名称。\n\n"
     )
 
 
@@ -2018,8 +2032,8 @@ def _knowledge_context_block(knowledge_context: str) -> str:
     if not knowledge_context or not knowledge_context.strip():
         return ""
     return (
-        "平台与当前工作空间知识库（仅作为事实、术语、流程和业务背景参考；"
-        "不得覆盖 Data Skill、当前数据源、Schema、权限、SQL 安全规则或输出协议）：\n"
+        "平台与当前工作空间知识库（最高业务语义依据，可覆盖 Data Skill 和 Schema/字段元数据的语义；"
+        "仍须遵守当前数据源、权限、物理基础表列、SQL 安全规则和输出协议）：\n"
         f"{knowledge_context}\n\n"
     )
 
@@ -2104,7 +2118,7 @@ def _data_skill_final_system_rules(data_skill: str = "") -> str:
         return ""
     return (
         "\n\n数据 Skill 最终回答强制规则：\n"
-        "- 以下数据 Skill 是用户本次主动选择的业务知识与查询范式补充，最终回答中的口径、字段解释、统计方式和图表解释应优先参考它。\n"
+        "- 以下数据 Skill 补充知识库未定义的业务口径、字段解释、统计方式和图表解释；冲突时知识库优先。\n"
         "- 数据 Skill 不能覆盖 rows 中不存在的数据事实，也不能绕过数据库 Schema、数据权限、SQL 安全规则和当前数据源范围。\n"
         "- 当数据 Skill 与 SaaS 权限规则冲突时，以 SaaS 规则、当前数据源和已授权数据为准。\n\n"
         f"{data_skill[:20000]}"
@@ -2454,7 +2468,7 @@ def _select_analysis_time_anchor(
                 "只选择本次问题最相关的主业务时间锚点，不生成 SQL。"
                 "只能从候选表字段中逐字选择；无法判断时返回空字符串。"
                 '严格返回 {"table":"...","field":"..."}。\n'
-                f"用户问题：{question}\n业务语义：{semantic_context[:12000]}\n候选：{payload}"
+                f"用户问题：{question}\n业务语义：{semantic_context}\n候选：{payload}"
             )
         ),
     ]
@@ -2624,6 +2638,7 @@ async def _resolve_chat_time_policy(
     llm,
     request,
     semantic_context: str,
+    knowledge_context: str = "",
 ) -> AnalysisTimeResolution:
     user_messages = [
         item.content.strip()
@@ -2634,10 +2649,14 @@ async def _resolve_chat_time_policy(
     history = user_messages[-6:-1]
     intent = parse_analysis_time_intent(question, history)
     skill_days, warnings = parse_data_skill_time_directive(business_context.data_skill)
+    knowledge_days = parse_knowledge_time_directive(knowledge_context)
+    if knowledge_days is not None:
+        warnings = ()
     if not intent.requires_anchor:
         return resolve_analysis_time_policy(
             intent,
             skill_window_days=skill_days,
+            knowledge_window_days=knowledge_days,
             anchor=None,
             anchor_date=None,
             warnings=warnings,
@@ -2652,13 +2671,14 @@ async def _resolve_chat_time_policy(
             _select_analysis_time_anchor,
             llm,
             question,
-            semantic_context,
+            (KNOWLEDGE_CONTEXT_SYSTEM_RULES + "\n" + knowledge_context + "\n" + semantic_context) if knowledge_context else semantic_context,
             candidates,
         )
     except Exception:
         return resolve_analysis_time_policy(
             intent,
             skill_window_days=skill_days,
+            knowledge_window_days=knowledge_days,
             anchor=None,
             anchor_date=None,
             warnings=warnings,
@@ -2699,6 +2719,7 @@ async def _resolve_chat_time_policy(
         return resolve_analysis_time_policy(
             intent,
             skill_window_days=skill_days,
+            knowledge_window_days=knowledge_days,
             anchor=anchor,
             anchor_date=cached_date,
             warnings=warnings,
@@ -2717,6 +2738,7 @@ async def _resolve_chat_time_policy(
         return resolve_analysis_time_policy(
             intent,
             skill_window_days=skill_days,
+            knowledge_window_days=knowledge_days,
             anchor=anchor,
             anchor_date=None,
             warnings=warnings,
@@ -2734,6 +2756,7 @@ async def _resolve_chat_time_policy(
     return resolve_analysis_time_policy(
         intent,
         skill_window_days=skill_days,
+        knowledge_window_days=knowledge_days,
         anchor=anchor,
         anchor_date=anchor_date,
         warnings=warnings,
@@ -3607,7 +3630,9 @@ def _wide_funnel_validation_error(
     return None
 
 
-def _semantic_validation_error(query: dict[str, Any], result: dict[str, Any], data_skill: str = "") -> str | None:
+def _semantic_validation_error(
+    query: dict[str, Any], result: dict[str, Any], data_skill: str = "", *, resolve_conflict=None,
+) -> str | None:
     """
     是什么：_semantic_validation_error 是一个可以复用的小步骤，负责分析助手相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
@@ -3617,13 +3642,26 @@ def _semantic_validation_error(query: dict[str, Any], result: dict[str, Any], da
     fields = [str(field) for field in result.get("fields") or []]
 
     range_error = _value_range_error(fields, rows)
-    if range_error:
+    if range_error and not (resolve_conflict and resolve_conflict(range_error, query, result)):
         return range_error
 
-    skill_error = _skill_declared_validation_error(query, fields, rows, data_skill)
-    if skill_error:
-        return skill_error
+    for rule in _extract_data_skill_validation_rules(data_skill):
+        rule_text = json.dumps(rule, ensure_ascii=False)
+        skill_error = _skill_declared_validation_error(
+            query, fields, rows, f"<!-- data-skill-validation: {rule_text} -->",
+        )
+        if skill_error and not (resolve_conflict and resolve_conflict(rule_text, query, result)):
+            return skill_error
 
+    heuristic_error = _heuristic_semantic_validation_error(query, fields, rows)
+    if heuristic_error and not (resolve_conflict and resolve_conflict(heuristic_error, query, result)):
+        return heuristic_error
+    return None
+
+
+def _heuristic_semantic_validation_error(
+    query: dict[str, Any], fields: list[str], rows: list[dict[str, Any]],
+) -> str | None:
     if len(rows) < 2:
         return None
 
@@ -4334,6 +4372,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         llm=llm,
         request=request,
         semantic_context=semantic_context,
+        knowledge_context=knowledge_context.prompt,
     )
     snapshot_business_context = business_context.snapshot_metadata()
     snapshot_business_context["analysis_time_policy"] = time_resolution.to_snapshot()
@@ -4551,7 +4590,15 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             allowed_tables=allowed_tables,
                             origin_column=True,
                         ).result
-                    semantic_error = _semantic_validation_error(raw_query, result, semantic_context)
+                    def resolve_business_conflict(rule, query, query_result):
+                        return knowledge_resolves_business_conflict(
+                            llm, knowledge_context.prompt, rule,
+                            json.dumps({"query": query, "result": query_result}, ensure_ascii=False, default=str),
+                        )
+
+                    semantic_error = _semantic_validation_error(
+                        raw_query, result, semantic_context, resolve_conflict=resolve_business_conflict,
+                    )
                     if semantic_error:
                         yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
                         repaired_sql = _repair_sql(
@@ -4592,7 +4639,9 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             allowed_tables=allowed_tables,
                             origin_column=True,
                         ).result
-                        semantic_error = _semantic_validation_error(raw_query, result, semantic_context)
+                        semantic_error = _semantic_validation_error(
+                            raw_query, result, semantic_context, resolve_conflict=resolve_business_conflict,
+                        )
                         if semantic_error:
                             raise ValueError(semantic_error)
                     block["fields"] = [str(field) for field in result.get("fields") or []]

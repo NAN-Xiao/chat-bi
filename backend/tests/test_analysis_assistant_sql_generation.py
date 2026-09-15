@@ -1192,7 +1192,7 @@ def test_data_skill_block_requires_exact_business_identifiers() -> None:
     assert "事件名、枚举值和业务标识符必须逐字沿用" in block
     assert "不得缩写、改写、翻译或替换" in block
     assert block.rstrip().endswith(
-        "禁止把未在数据 Skill 中定义的近似名称作为候选口径。"
+        "知识库未明确覆盖时，禁止使用未定义的近似名称。"
     )
 
 

@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import StrEnum
 from typing import Literal
+from xml.etree import ElementTree
 
 from apps.chat.service.chat_date_filter import question_date_scope
+from apps.knowledge_base.context import KnowledgeContextError
 
 DEFAULT_WINDOW_DAYS = 14
 MAX_ANALYSIS_WINDOW_DAYS = 366
@@ -44,6 +46,7 @@ _MISSING_ANCHOR_DATE_WARNING = "无法确认当前数据源的最大业务日期
 class AnalysisTimeSource(StrEnum):
     USER = "USER"
     DATA_SKILL = "DATA_SKILL"
+    KNOWLEDGE = "KNOWLEDGE"
     DEFAULT_14_DAYS = "DEFAULT_14_DAYS"
 
 
@@ -145,6 +148,35 @@ def parse_data_skill_time_directive(data_skill: str) -> tuple[int | None, tuple[
         return window_days, ()
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None, ("Data Skill 时间声明无效，已使用平台默认时间策略。",)
+
+
+def parse_knowledge_time_directive(knowledge_context: str) -> int | None:
+    if not knowledge_context:
+        return None
+    try:
+        root = ElementTree.fromstring(knowledge_context)
+    except ElementTree.ParseError as error:
+        raise KnowledgeContextError("knowledge_time_invalid", "知识库上下文格式无效，无法确定时间口径。") from error
+    for layer_name in ("workspace-knowledge", "platform-knowledge"):
+        layer = root.find(layer_name)
+        if layer is None:
+            continue
+        declarations = []
+        for document in layer.findall("document"):
+            for match in _SKILL_DIRECTIVE_RE.finditer("\n".join(document.itertext())):
+                days, warnings = parse_data_skill_time_directive(match.group(0))
+                if warnings:
+                    raise KnowledgeContextError(
+                        "knowledge_time_invalid", f"知识库文档 {document.get('id')} 的时间声明无效，请修正文档。",
+                    )
+                declarations.append((document.get("id"), days))
+        if len({days for _, days in declarations}) > 1:
+            raise KnowledgeContextError(
+                "knowledge_time_conflict", f"知识库同层时间口径存在冲突，请明确分析窗口：{declarations}。",
+            )
+        if declarations:
+            return declarations[0][1]
+    return None
 
 
 def _last_year_month(history: list[str]) -> tuple[int | None, int | None]:
@@ -330,6 +362,7 @@ def resolve_analysis_time_policy(
     anchor: AnalysisTimeAnchor | None,
     anchor_date: date | None,
     warnings: tuple[str, ...] = (),
+    knowledge_window_days: int | None = None,
 ) -> AnalysisTimeResolution:
     if intent.kind == "invalid":
         return _unresolved(warnings, intent.warning or _INVALID_DATE_WARNING)
@@ -441,9 +474,11 @@ def resolve_analysis_time_policy(
             "用户指定本月",
         )
     else:
-        days = skill_window_days or DEFAULT_WINDOW_DAYS
+        days = knowledge_window_days or skill_window_days or DEFAULT_WINDOW_DAYS
         source = (
-            AnalysisTimeSource.DATA_SKILL
+            AnalysisTimeSource.KNOWLEDGE
+            if knowledge_window_days
+            else AnalysisTimeSource.DATA_SKILL
             if skill_window_days
             else AnalysisTimeSource.DEFAULT_14_DAYS
         )

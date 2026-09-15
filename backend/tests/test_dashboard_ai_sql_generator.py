@@ -4138,6 +4138,7 @@ def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.M
         ),
     )
     monkeypatch.setattr(ai_sql_generator.BusinessSqlContextService, "build", staticmethod(_build))
+    monkeypatch.setattr(ai_sql_generator, "build_knowledge_context", lambda *args, **kwargs: SimpleNamespace(prompt="工作空间知识"))
 
     result = ai_sql_generator._node_collect_context({
         "session": _Session(),
@@ -4147,6 +4148,7 @@ def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.M
     })
 
     assert result["business_sql_context"] is business_context
+    assert result["knowledge_context"] == "工作空间知识"
     assert result["schema"] == business_context.schema
     assert result["sql_dialect"] == "postgres"
     assert result["allowed_tables"] == ["event"]
@@ -4206,6 +4208,7 @@ def test_collect_context_limits_business_schema_to_workspace_default_event_table
 
     monkeypatch.setattr(ai_sql_generator, "get_tracking_config", _tracking_config)
     monkeypatch.setattr(ai_sql_generator.BusinessSqlContextService, "build", staticmethod(_build))
+    monkeypatch.setattr(ai_sql_generator, "build_knowledge_context", lambda *args, **kwargs: SimpleNamespace(prompt=""))
 
     result = ai_sql_generator._node_collect_context({
         "session": _Session(),

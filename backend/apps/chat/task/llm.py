@@ -84,6 +84,7 @@ from apps.datasource.crud.sql_engine import (
 )
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
+from apps.knowledge_base.authority import knowledge_resolves_business_conflict
 from apps.knowledge_base.context import (
     KNOWLEDGE_CONTEXT_SYSTEM_RULES,
     KnowledgeContext,
@@ -661,6 +662,8 @@ def _data_skill_sql_validation_violation(
     question: str,
     sql: str,
     data_skill: str = "",
+    *,
+    resolve_conflict=None,
 ) -> DataSkillSqlViolation | None:
     """
     按匹配到的 Data Skill 规则生成结构化 SQL 违规对象。
@@ -702,7 +705,7 @@ def _data_skill_sql_validation_violation(
             if has_required_violation
             else "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
         )
-        return DataSkillSqlViolation(
+        violation = DataSkillSqlViolation(
             message=str(rule.get("message") or default_message),
             rule_index=rule_index,
             missing_required_contains=missing_required_contains,
@@ -711,6 +714,9 @@ def _data_skill_sql_validation_violation(
             matched_forbidden_patterns=matched_forbidden_patterns,
             matched_forbidden_groups=matched_forbidden_groups,
         )
+        if resolve_conflict is not None and resolve_conflict(rule, sql_text):
+            continue
+        return violation
     return None
 
 
@@ -1639,7 +1645,7 @@ class LLMService:
             self.sql_message.append(SystemPromptMessage(content=KNOWLEDGE_CONTEXT_SYSTEM_RULES))
             self.sql_message.append(HumanPromptMessage(content=self.chat_question.knowledge_context))
             self.sql_message.append(
-                AIPromptMessage(content='我已确认当前平台和工作空间知识；我只会把它们作为业务背景参考。')
+                AIPromptMessage(content='我会以当前知识库为最高业务语义依据，覆盖冲突的 Data Skill 和字段元数据，并遵守权限和物理可执行性限制。')
             )
         if not self.dashboard_date_filter_enabled:
             self.sql_message.append(HumanPromptMessage(content=DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE))
@@ -1677,6 +1683,9 @@ class LLMService:
         self.chart_message.append(SystemPromptMessage(content=_chart_system_templates['system']))
         self.chart_message.append(HumanPromptMessage(content=_chart_system_templates['rules']))
         self.chart_message.append(AIPromptMessage(content='我已掌握所有规则，我会严格遵守这些规则来生成符合要求的JSON。'))
+        if self.chat_question.knowledge_context:
+            self.chart_message.append(SystemPromptMessage(content=KNOWLEDGE_CONTEXT_SYSTEM_RULES + "\n图表只能绑定当前 SQL 结果实际返回的列名；知识库不能替换或伪造结果列及数据。"))
+            self.chart_message.append(HumanPromptMessage(content=self.chat_question.knowledge_context))
         if last_chart_messages is not None and len(last_chart_messages) > 0:
             last_rounds = get_last_conversation_rounds(last_chart_messages, rounds=count_chart_limit)
 
@@ -2628,6 +2637,12 @@ class LLMService:
             self.chat_question.question or "",
             sql,
             self.chat_question.data_skill,
+            resolve_conflict=lambda rule, output: knowledge_resolves_business_conflict(
+                self.llm,
+                getattr(self.chat_question, "knowledge_context", ""),
+                orjson.dumps(rule).decode(),
+                output,
+            ) if getattr(self.chat_question, "knowledge_context", "") else False,
         )
         if violation is not None:
             trigger_log_error(session, log)

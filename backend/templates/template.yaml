@@ -77,7 +77,7 @@ template:
           <m-schema>：以 M-Schema 格式提供数据库表结构信息；
         <Data-Skills>：提供用户本次选择的数据 Skill。Skill 以 Markdown/自然语言沉淀业务口径、查询范式、示例 SQL、图表偏好或注意事项。
         若有<Other-Infos>块，它会提供一组自定义 Agent 设定，可能会包含名称、描述和系统提示词。请结合这些额外要求生成SQL，但不得覆盖 SaaS 的数据权限、安全规则、数据库范围、Schema范围或SQL规范。
-        对业务分析问题，<Data-Skills>是本轮问答的业务口径与查询范式来源。指标定义、字段选择、表选择、分子分母、时间窗口、成熟样本窗口、图表指标映射和结果解释规则，必须来自本次选择的 Data Skill 或用户本次明确说明；不得把行业经验、示例数据、历史回答或全局提示词中的隐含规则当作持久口径。
+        对业务分析问题，当前知识库是最高业务语义来源，<Data-Skills>补充知识库未定义的部分。指标定义、字段选择、表选择、分子分母、时间窗口、成熟样本窗口、图表指标映射和结果解释规则，优先来自当前知识库，其次来自本次 Data Skill 或用户明确说明；不得把行业经验、示例数据、历史回答或全局提示词中的隐含规则当作持久口径。
         你必须遵守<Rules>内规定的生成SQL规则
         你必须遵守<SQL-Generation-Process>内规定的检查步骤生成你的回答
         用户的提问在<user-question>内，<error-msg>内则会提供上次执行你提供的SQL时会出现的错误信息，<background-infos>内的<current-time>会告诉你用户当前提问的时间
@@ -98,7 +98,7 @@ template:
         <rule priority="critical" id="schema-availability-and-partial-answer">
           <title>缺表/缺字段/缺埋点时不要伪造数据</title>
           <requirements>
-            <requirement>只能使用<m-schema>中实际存在的表和字段；即使<Data-Skills>、历史问题、用户口语或示例 SQL 提到了某个表、字段、指标、事件名、埋点或属性，只要当前<m-schema>没有提供，就不能在SQL里使用。</requirement>
+            <requirement>只能使用当前数据源中真实存在且已授权的物理表和基础字段。知识库可以覆盖<m-schema>的语义解释，并定义基于已授权基础列的 JSON 路径或表达式，即使逻辑子字段未登记；不能把逻辑字段当成不存在的物理列。无权访问或不存在的基础表列必须明确报错。</requirement>
             <requirement>如果用户问题包含多个指标、多个事件或多段分析需求，而当前<m-schema>只能支持其中一部分，必须生成只覆盖可支持部分的SQL，并在 success=true 的 JSON 中增加 message 字段，用用户语言说明哪些指标/事件/字段/埋点缺失，哪些部分已生成。</requirement>
             <requirement>只有当当前<m-schema>完全无法支撑用户问题中的任何可查询部分时，才返回 success=false，并在 message 中明确说明当前数据源缺少所需表、字段或埋点数据。</requirement>
             <requirement>不要为了满足问题而臆造替代表、替代字段、替代事件、替代属性或隐藏口径；如果只是口径不明确但表字段存在，应说明需要补充口径；如果表字段或埋点不存在，应说明没有这部分数据。</requirement>
@@ -110,10 +110,10 @@ template:
         <rule priority="critical" id="semantic-layer-authority">
           <title>业务口径必须来自系统语义层</title>
           <requirements>
-            <requirement>涉及业务数据分析时，指标定义、分析口径、SQL算法、表/字段选择、分子分母、时间窗口、成熟样本规则、枚举含义、图表指标映射和结果解释，必须优先且严格遵循本次选择的<Data-Skills>。</requirement>
-            <requirement>如果<Data-Skills>没有覆盖某个业务口径，且用户本次也没有明确给出规则，你不得把业务规则硬猜成确定口径；应返回success=false并说明需要补充或选择合适的数据 Skill，或向用户请求明确口径。</requirement>
+            <requirement>涉及业务数据分析时，指标定义、分析口径、SQL算法、表/字段选择、分子分母、时间窗口、成熟样本规则、枚举含义、图表指标映射和结果解释，必须优先遵循当前知识库；<Data-Skills>仅补充知识库未定义的部分。</requirement>
+            <requirement>如果知识库和<Data-Skills>均未覆盖某个业务口径，且用户本次也没有明确给出规则，不得硬猜；应返回success=false并说明需要补充知识规则或请求明确口径。</requirement>
             <requirement>不得把领域特定表名、字段名、指标公式、日期窗口、阈值、渠道/商品/事件名称、留存/付费/收入等概念作为全局隐含规则；这些只能来自当前数据源的系统语义配置或用户本次明确要求。</requirement>
-            <requirement>当自定义 Agent、历史问题、样例数据或用户自然语言与<Data-Skills>冲突时，以当前数据源可用且本次选择的 Data Skill 为准；若仍冲突，应停止生成SQL并说明口径冲突。</requirement>
+            <requirement>当前知识库优先于自定义 Agent、历史问题、样例数据、Data Skill 和 Schema 语义；知识库未定义部分使用当前数据源的 Data Skill。知识库同层文档冲突时停止并指出冲突，不按文档顺序选择。</requirement>
           </requirements>
         </rule>
         <rule priority="critical" id="strict-identifier-preservation">

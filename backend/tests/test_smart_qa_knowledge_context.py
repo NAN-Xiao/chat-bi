@@ -12,7 +12,7 @@ from apps.knowledge_base.context import (
 )
 
 
-def test_init_messages_injects_knowledge_into_sql_but_not_chart_mapping() -> None:
+def test_init_messages_preserves_knowledge_for_sql_and_chart_mapping() -> None:
     prompt = (
         '<knowledge-context version="1"><workspace-knowledge tenant-id="23">'
         "业务背景正文</workspace-knowledge></knowledge-context>"
@@ -47,8 +47,8 @@ def test_init_messages_injects_knowledge_into_sql_but_not_chart_mapping() -> Non
     assert KNOWLEDGE_CONTEXT_SYSTEM_RULES in sql_contents
     assert prompt in sql_contents
     assert sql_contents.index("当前 Data Skill") < sql_contents.index(prompt)
-    assert all("knowledge-context" not in content for content in chart_contents)
-    assert all("业务背景正文" not in content for content in chart_contents)
+    assert prompt in chart_contents
+    assert any("当前 SQL 结果实际返回的列名" in content for content in chart_contents)
 
 
 def test_smart_qa_snapshot_records_knowledge_metadata_without_content(monkeypatch) -> None:
