@@ -4,6 +4,7 @@ import pytest
 
 from apps.chat.task import llm
 from common.error import SingleMessageError
+from common.utils.chart_result_validation import validate_temporal_query_result
 
 
 @pytest.mark.parametrize('rows', [
@@ -51,3 +52,21 @@ def test_invalid_trend_cannot_be_exported_as_image(monkeypatch):
             {'fields': ['day', 'value'], 'data': [{'day': None, 'value': 10}]},
         )
     assert requests == []
+
+
+def test_auxiliary_nullable_date_is_not_assumed_to_be_axis():
+    sql = 'SELECT CAST(order_day AS DATE) AS day, total, CAST(shipped_at AS DATE) AS shipped_day FROM orders'
+    result = {'fields': ['day', 'total', 'shipped_day'], 'data': [{'day': '2026-09-08', 'total': 56, 'shipped_day': None}]}
+    validate_temporal_query_result(sql, 'mysql', result, 'line')
+    validate_temporal_query_result(sql, 'mysql', result, 'line', dimension='day')
+    with pytest.raises(SingleMessageError):
+        validate_temporal_query_result(sql, 'mysql', result, 'line', dimension='shipped_day')
+
+
+def test_date_function_null_result_is_rejected():
+    with pytest.raises(SingleMessageError):
+        validate_temporal_query_result('SELECT DATE(raw_day) AS day FROM orders', 'mysql', {'data': [{'day': None}]}, 'line')
+
+
+def test_time_only_trend_is_valid():
+    validate_temporal_query_result("SELECT STR_TO_DATE(raw_time, '%H:%i:%s') AS clock FROM orders", 'mysql', {'data': [{'clock': '12:30:00'}]}, 'line')

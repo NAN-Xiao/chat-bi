@@ -46,6 +46,7 @@ from apps.analysis_assistant.service.analysis_time_sql import (
     sql_references_time_bearing_table,
 )
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
+from common.utils.sql_date_validation import SqlDateConversionError
 from apps.chat.curd.custom_prompt import (
     CustomPromptTargetScopeEnum,
     find_custom_prompts,
@@ -3891,7 +3892,7 @@ def _prepare_time_safe_query_sql(
             dialect=dialect,
             allow_time_rewrite=False,
         )
-    except AnalysisTimeSqlError as error:
+    except (AnalysisTimeSqlError, SqlDateConversionError) as error:
         repaired = _repair_sql(
             llm,
             question,

@@ -28,10 +28,15 @@ def validate_trend_dimensions(chart: dict, result: dict) -> None:
         )
 
 
-def validate_temporal_query_result(sql: str, datasource_type: str | None, result: dict, chart_type: str) -> None:
+def validate_temporal_query_result(sql: str, datasource_type: str | None, result: dict, chart_type: str, *, dimension: str | None = None) -> None:
     if chart_type not in {'line', 'area', 'column', 'grouped_column', 'bar'} or not result.get('data'):
         return
-    for field in mysql_temporal_result_fields(sql, datasource_type):
+    temporal_fields = mysql_temporal_result_fields(sql, datasource_type)
+    if dimension is not None:
+        temporal_fields &= {dimension}
+    elif len(temporal_fields) != 1:
+        return
+    for field in temporal_fields:
         invalid_count = 0
         for row in result['data']:
             value = row.get(field)

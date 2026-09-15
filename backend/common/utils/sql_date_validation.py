@@ -56,10 +56,15 @@ def _date_outputs(sql: str, field_encodings: dict[tuple[str, str], str]):
                 if isinstance(expression, exp.TimeToStr):
                     format_node = expression.args.get('format')
                     return format_node.this if isinstance(format_node, exp.Literal) else None
-                if isinstance(expression, exp.StrToDate):
+                if isinstance(expression, (exp.Date, exp.TsOrDsToDate)):
                     return 'native_date'
-                if isinstance(expression, exp.StrToTime):
-                    return 'native_timestamp'
+                if isinstance(expression, (exp.StrToDate, exp.StrToTime)):
+                    format_node = expression.args.get('format')
+                    if not isinstance(format_node, exp.Literal):
+                        return None
+                    if not any(token in format_node.this for token in ('%Y', '%y', '%m', '%d', '%j')):
+                        return None
+                    return 'native_date' if isinstance(expression, exp.StrToDate) else 'native_timestamp'
                 if isinstance(expression, exp.Literal):
                     return _literal_format(expression.this)
                 if isinstance(expression, exp.Column):
@@ -92,10 +97,33 @@ def _date_outputs(sql: str, field_encodings: dict[tuple[str, str], str]):
                         "请区分输入解析格式与输出展示格式，修正转换表达式；保持数据源、权限、日期范围、分组粒度和指标口径。"
                     )
             if isinstance(scope.expression, exp.Select):
-                names = scope.outer_columns or [item.alias_or_name for item in scope.expression.expressions]
+                projections = []
+                for projection in scope.expression.expressions:
+                    if projection.is_star:
+                        merged_columns = any(
+                            join.args.get('using') or join.method == 'NATURAL'
+                            for join in scope.expression.args.get('joins') or []
+                        )
+                        if isinstance(projection, exp.Star) and merged_columns:
+                            projections = []
+                            break
+                        sources = scope.selected_sources
+                        selected = [sources.get(projection.table)] if isinstance(projection, exp.Column) else list(sources.values())
+                        if not selected or any(not source or not isinstance(source[1], Scope) or not outputs.get(id(source[1])) for source in selected):
+                            projections = []
+                            break
+                        for source in selected:
+                            projections.extend(outputs[id(source[1])].items())
+                    else:
+                        projections.append((projection.alias_or_name, resolve(projection)))
+                if scope.outer_columns:
+                    projections = (
+                        list(zip(scope.outer_columns, [value_format for _, value_format in projections]))
+                        if len(scope.outer_columns) == len(projections) else []
+                    )
                 scope_outputs = {}
-                for name, projection in zip(names, scope.expression.expressions):
-                    scope_outputs[name] = None if name in scope_outputs else resolve(projection)
+                for name, value_format in projections:
+                    scope_outputs[name] = None if name in scope_outputs else value_format
                 outputs[id(scope)] = scope_outputs
             elif isinstance(scope.expression, exp.SetOperation):
                 branches = [outputs.get(id(branch), {}) for branch in scope.union_scopes]

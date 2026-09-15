@@ -126,7 +126,7 @@ from common.core.deps import CurrentAssistant, CurrentUser
 from common.error import SingleMessageError, AppDBError, DataUnavailableError, ParseSQLResultError
 from common.user_facing_errors import agent_guidance_for_error_type
 from common.utils.locale import I18n, I18nHelper
-from common.utils.chart_result_validation import validate_trend_dimensions
+from common.utils.chart_result_validation import validate_temporal_query_result, validate_trend_dimensions
 from common.utils.utils import AppLogUtil, extract_nested_json, prepare_for_orjson
 
 warnings.filterwarnings("ignore")
@@ -2748,6 +2748,13 @@ class LLMService:
 
         if result:
             validate_trend_dimensions(chart, result)
+            dimension = (chart.get('axis') or {}).get('x') or {}
+            validate_temporal_query_result(
+                getattr(self.record, 'sql', '') or '',
+                getattr(getattr(self, 'ds', None), 'type', None),
+                result, chart.get('type', ''),
+                dimension=dimension.get('value') or dimension.get('name'),
+            )
             chart = _filter_chart_bindings_to_result_fields(chart, result.get("fields"))
             chart = _ensure_chart_covers_metric_fields(
                 chart,
