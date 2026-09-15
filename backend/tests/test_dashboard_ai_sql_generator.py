@@ -1918,6 +1918,53 @@ def test_node_validate_routes_same_select_window_alias_to_repair() -> None:
     }) == "repair_sql"
 
 
+@pytest.mark.parametrize(
+    ("attempts", "expected_route"),
+    [
+        (0, "repair_sql"),
+        (1, "repair_sql"),
+        (2, "repair_sql"),
+        (3, "explain_advice"),
+    ],
+)
+def test_sql_validation_uses_configured_repair_attempt_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    attempts: int,
+    expected_route: str,
+) -> None:
+    monkeypatch.setattr(ai_sql_generator.settings, "DASHBOARD_SQL_MAX_REPAIR_ATTEMPTS", 3)
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=False,
+        sql="SELECT broken_sql",
+        issues=["SQL 结构错误"],
+    )
+
+    route = ai_sql_generator._route_after_sql_validate({
+        "response": response,
+        "normalized_config": {"analysis_model": "event"},
+        "sql_repair_attempts": attempts,
+    })
+
+    assert route == expected_route
+
+
+def test_sql_validation_can_disable_automatic_repair(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ai_sql_generator.settings, "DASHBOARD_SQL_MAX_REPAIR_ATTEMPTS", 0)
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=False,
+        sql="SELECT broken_sql",
+        issues=["SQL 结构错误"],
+    )
+
+    route = ai_sql_generator._route_after_sql_validate({
+        "response": response,
+        "normalized_config": {"analysis_model": "event"},
+        "sql_repair_attempts": 0,
+    })
+
+    assert route == "explain_advice"
+
+
 def test_path_validation_rejects_raw_epoch_milliseconds_in_timestampdiff() -> None:
     normalized = ai_sql_generator._normalize_manual_config(_path_request())
     schema = "(time:bigint, event time; role=event_time; encoding=epoch_milliseconds)"
@@ -3255,7 +3302,11 @@ def test_finalize_response_attaches_display_names_only_to_analysis_generation_re
 
 
 @pytest.mark.parametrize("analysis_model", ai_sql_generator.ANALYSIS_MODEL_LABELS)
-def test_sql_validation_routes_every_analysis_model_failure_to_one_repair(analysis_model: str) -> None:
+def test_sql_validation_routes_every_analysis_model_failure_to_one_repair(
+    monkeypatch: pytest.MonkeyPatch,
+    analysis_model: str,
+) -> None:
+    monkeypatch.setattr(ai_sql_generator.settings, "DASHBOARD_SQL_MAX_REPAIR_ATTEMPTS", 1)
     failed_response = ai_sql_generator.DashboardAiSqlGenerateResponse(
         success=False,
         sql="SELECT cohort_date FROM matched",
