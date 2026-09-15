@@ -4344,6 +4344,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "当前 SQL plan 的 analysis_model=property，必须使用属性分析专用的属性筛选和聚合结构；禁止改写为事件次数趋势或其他分析模型。\n"
             "属性分析 SQL 结构范式：\n"
             "人群模式结果必须按人群展开为长表：每个人群单独计算并通过 UNION ALL（或等价的独立分支）保留，group_1 输出人群名称。\n"
+            "MySQL/AnalyticDB 日期补齐必须使用非递归数字序列或已存在的日期维表；禁止使用 WITH RECURSIVE。无分组的简单按日统计优先采用以下骨架：date_spine 生成日期，scoped_properties 按配置范围取数，aggregated 按 property_date 聚合，最终由 date_spine LEFT JOIN aggregated 并 COALESCE 指标为 0。不得让日期骨架改变 metrics、groups 或 filters 的语义。\n"
             "WITH scoped_properties AS (...仅保留配置时间范围、filters、metrics 属性和 groups 属性...),\n"
             "aggregated AS (\n"
             "    SELECT <configured_time_grain> AS property_date,\n"
