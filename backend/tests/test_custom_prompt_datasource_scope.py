@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from apps.chat.curd import custom_prompt as custom_prompt_crud
 from apps.chat.curd.custom_prompt import find_data_skills
 
@@ -93,6 +95,41 @@ def _external_mcp_skill_prompt(name: str) -> str:
   "sources": [{{"name": "alerts", "type": "external_mcp", "tool": "alerts.count"}}]
 }} -->
 {name} prompt'''
+
+
+@pytest.mark.parametrize("skill_id", [None, 1, 2, 3])
+def test_platform_only_skills_exclude_workspace_and_private_before_selection(skill_id):
+    rows = [
+        _skill_row(skill_id=1, name="通用查询", prompt="平台查询规则"),
+        _skill_row(skill_id=2, name="通用查询", visibility_scope="ADMIN_PUBLIC", prompt="空间查询规则"),
+        _skill_row(skill_id=3, name="通用查询", visibility_scope="USER_PRIVATE", prompt="个人查询规则"),
+    ]
+    rows[0]["ai_model_id"] = 11
+    rows[1]["ai_model_id"] = 22
+    rows[2]["ai_model_id"] = 33
+    content, summaries, model_id = find_data_skills(
+        _FakeSession(rows), datasource=7, tenant_id=10, current_user_id=1,
+        skill_id=skill_id, platform_only=True,
+    )
+    assert "空间查询规则" not in content
+    assert "个人查询规则" not in content
+    if skill_id in (None, 1):
+        assert "平台查询规则" in content
+        assert len(summaries) == 1
+        assert model_id == 11
+    else:
+        assert (content, summaries, model_id) == ("", [], None)
+
+
+def test_platform_only_skills_keep_datasource_and_workspace_exclusions():
+    other_datasource = _skill_row(skill_id=1, name="其他数据源规则", specific_ds=True, datasource_ids=[8])
+    excluded = _skill_row(skill_id=2, name="已排除空间规则")
+    excluded["excluded_tenant_ids"] = [10]
+    content, summaries, model_id = find_data_skills(
+        _FakeSession([other_datasource, excluded]), datasource=7, tenant_id=10,
+        current_user_id=1, platform_only=True,
+    )
+    assert (content, summaries, model_id) == ("", [], None)
 
 
 def _required_tables_skill_prompt() -> str:

@@ -26,7 +26,8 @@ class _Session:
         return None
 
 
-def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monkeypatch):
+@pytest.mark.parametrize("platform_only", [False, True])
+def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monkeypatch, platform_only):
     """
     是什么：统一上下文一次性提供 Agent 生成 SQL 所需的业务库信息。
     """
@@ -45,6 +46,7 @@ def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monk
         return "【Schema】\n# Table: event\n[(event_name:text)]\n", ["event"]
 
     def _skills(*args, **kwargs):
+        assert kwargs.get("platform_only", False) is platform_only
         calls.append(("skills", args[1], args[2], kwargs.get("question")))
         return "<Data-Skills>口径</Data-Skills>", ["口径"], 99
 
@@ -72,6 +74,7 @@ def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monk
         target_scope=CustomPromptTargetScopeEnum.SMART_QA,
         data_skill_id=None,
         embedding=False,
+        platform_data_skills_only=platform_only,
     )
 
     assert context.datasource_id == 1

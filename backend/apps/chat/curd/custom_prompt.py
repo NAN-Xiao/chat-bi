@@ -937,6 +937,7 @@ def find_data_skills(
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
         current_user: Any | None = None,
+        platform_only: bool = False,
 ) -> tuple[str, list[str], Optional[int]]:
     """
     是什么：find_data_skills 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -1014,6 +1015,8 @@ def find_data_skills(
     bound_external_mcp_id: int | None | object = object()
     authorized_datasource_tables: set[str] | None = None
     for row in rows:
+        if platform_only and row.get("visibility_scope") != CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
+            continue
         if _is_split_legacy_data_skill(row):
             continue
 

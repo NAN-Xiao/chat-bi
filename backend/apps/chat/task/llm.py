@@ -145,6 +145,21 @@ APP_SYSTEM_MESSAGE_KEY = "app_system"
 APP_TEMP_SQL_TEXT_KEY = "app_temp_sql_text"
 
 
+def _recommendation_llm_config(config: LLMConfig) -> LLMConfig:
+    additional_params = dict(config.additional_params or {})
+    extra_body = additional_params.get("extra_body")
+    supports_thinking_toggle = str(config.model_name or "").lower().startswith("qwen3")
+    if isinstance(extra_body, dict) and "enable_thinking" in extra_body:
+        supports_thinking_toggle = True
+    if not supports_thinking_toggle:
+        return config
+
+    recommendation_extra_body = dict(extra_body) if isinstance(extra_body, dict) else {}
+    recommendation_extra_body["enable_thinking"] = False
+    additional_params["extra_body"] = recommendation_extra_body
+    return config.model_copy(update={"additional_params": additional_params})
+
+
 def looks_like_data_skill_schema_unavailable_error(message: str) -> bool:
     """
     是什么：判断 Data Skill 校验失败是否源于当前 schema 缺表或缺字段。
@@ -1530,6 +1545,7 @@ class LLMService:
         谁调用：需要通过类本身做这件事时，代码会调用它。
         做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
+        recommendation_mode = bool(kwargs.pop("recommendation_mode", False))
         specialized_model_id = None
         _ai_model_list = []
         if args[3]:
@@ -1562,6 +1578,8 @@ class LLMService:
             if prompt_model_id and any(str(model.id) == str(prompt_model_id) for model in _ai_model_list):
                 specialized_model_id = prompt_model_id
         config: LLMConfig = await get_default_config(specialized_model_id)
+        if recommendation_mode:
+            config = _recommendation_llm_config(config)
         instance = cls(*args, **kwargs, config=config)
 
         chat_params: list[SysArgModel] = await get_groups(args[0], "chat")

@@ -52,8 +52,6 @@ from apps.datasource.crud.sql_engine import (
 )
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import check_sql_read, get_sqlglot_dialect
-from apps.knowledge_base.context import KNOWLEDGE_CONTEXT_SYSTEM_RULES, build_knowledge_context
-from apps.knowledge_base.authority import knowledge_resolves_business_conflict
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.tracking_config import get_tracking_config
 from apps.system.crud.tracking_expression import compile_tracking_json_expression
@@ -366,7 +364,6 @@ class DashboardManualChartGraphState(TypedDict, total=False):
     allowed_tables: list[str]
     allowed_fields_by_table: dict[str, set[str]]
     data_skill: str
-    knowledge_context: str
     tracking_config: str
     event_scope: dict[str, Any]
     skill_model_id: int | None
@@ -4723,7 +4720,6 @@ def _dashboard_sql_user_prompt(state: DashboardManualChartGraphState) -> str:
     validation = state.get("validation_result")
     return "\n".join([
         "确定性校验已通过，请生成 SQL。",
-        state.get("knowledge_context", ""),
         "",
         "<deterministic-validation>",
         _safe_json(validation.model_dump() if validation else {}),
@@ -4917,17 +4913,12 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         question=question_text,
         target_scope=CustomPromptTargetScopeEnum.SMART_QA,
         data_skill_id=request.data_skill_id,
+        platform_data_skills_only=True,
         embedding=False,
         table_list=event_scope["table_list"],
         can_manage_all=is_system_admin(current_user),
         can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
         can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
-    )
-    knowledge_context = build_knowledge_context(
-        session,
-        tenant_id=tenant_id,
-        datasource_id=int(request.datasource),
-        surface="dashboard_sql",
     )
     if event_scope["status"] == "active":
         event_scope = _dashboard_event_scope(
@@ -4944,7 +4935,6 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         "allowed_tables": business_context.allowed_tables,
         "allowed_fields_by_table": _allowed_fields_by_table_from_schema(business_context.schema),
         "data_skill": business_context.data_skill,
-        "knowledge_context": knowledge_context.prompt,
         "tracking_config": business_context.tracking_config,
         "event_scope": event_scope,
         "skill_model_id": business_context.skill_model_id,
@@ -5017,9 +5007,7 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
     llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
     analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
     response = await _async_invoke_llm_json(llm, [
-        SystemMessage(content=_dashboard_sql_system_prompt(analysis_model) + (
-            "\n" + KNOWLEDGE_CONTEXT_SYSTEM_RULES if state.get("knowledge_context") else ""
-        )),
+        SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ], node="generate_sql")
     response.analysis_model = analysis_model if analysis_model in ANALYSIS_MODEL_LABELS else "event"
@@ -5063,7 +5051,6 @@ async def _async_node_repair_sql(state: DashboardManualChartGraphState) -> dict[
     response = await _async_invoke_llm_json(llm, [
         SystemMessage(content=(
             _dashboard_sql_system_prompt(analysis_model)
-            + ("\n" + KNOWLEDGE_CONTEXT_SYSTEM_RULES if state.get("knowledge_context") else "")
             + f"\n你正在修复一条未通过{analysis_label} SQL 协议、结果契约或方言校验的查询。"
               "必须完整重写 SQL，并逐项消除校验错误；不能放宽或绕过校验。"
         )),
@@ -5079,19 +5066,10 @@ async def _async_node_repair_sql(state: DashboardManualChartGraphState) -> dict[
 
 
 async def _async_node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    knowledge_context = state.get("knowledge_context") or ""
-    if not knowledge_context:
-        return _node_validate_sql(state)
-    llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
-    return await to_thread(
-        _node_validate_sql, state,
-        resolve_conflict=lambda rule, output: knowledge_resolves_business_conflict(
-            llm, knowledge_context, rule, output,
-        ),
-    )
+    return _node_validate_sql(state)
 
 
-def _node_validate_sql(state: DashboardManualChartGraphState, *, resolve_conflict=None) -> dict[str, Any]:
+def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
     sql = (response.sql or "").strip()
     datasource = state.get("datasource")
@@ -5344,11 +5322,11 @@ def _node_validate_sql(state: DashboardManualChartGraphState, *, resolve_conflic
         response.message = "生成 SQL 未满足热力地图生成要求。"
         response.advice = "请按 X/Y 坐标聚合、热力指标和固定结果列重新生成热力地图查询。"
         response.issues = _unique_text_items(list(response.issues or []) + heatmap_issues)
-    elif (json_issues := _json_subfield_sql_issues(
+    elif json_issues := _json_subfield_sql_issues(
         sql,
         state.get("json_subfield_requirements") or [],
         dialect=state.get("sql_dialect") or "",
-    )) and not (resolve_conflict and resolve_conflict(_safe_json(json_issues), sql)):
+    ):
         response.success = False
         response.message = "生成 SQL 的 JSON 字段映射与当前配置不一致。"
         response.advice = "请重新选择事件参数后生成 SQL。"

@@ -120,14 +120,12 @@ def test_analysis_knowledge_can_override_ratio_guess_without_skipping_skill_rule
     assert "sample_count" in error
 
 
-def test_dashboard_async_validation_uses_document_evidence(monkeypatch):
+def test_dashboard_validation_does_not_consult_knowledge_or_override_config(monkeypatch):
     import asyncio
     from apps.dashboard.crud import ai_sql_generator as dashboard
 
-    model = ReviewModel({"status": "resolved", "document_id": "6", "quote": "渠道使用 adinfo.mediaSource。"})
-
     async def create_model(model_id):
-        return model
+        pytest.fail("图表配置校验不应调用知识库裁决模型")
 
     monkeypatch.setattr(dashboard, "_create_dashboard_ai_sql_llm", create_model)
     response = dashboard.DashboardAiSqlGenerateResponse(
@@ -137,12 +135,12 @@ def test_dashboard_async_validation_uses_document_evidence(monkeypatch):
         "response": response, "knowledge_context": KNOWLEDGE, "sql_dialect": "mysql",
         "json_subfield_requirements": [{"source_field": "adinfo", "json_path": "$.channel"}],
     }))
-    assert result["response"].success
-    assert model.messages
+    assert not result["response"].success
+    assert "JSON 字段映射" in result["response"].message
 
 
 @pytest.mark.parametrize("readonly", [True, False])
-def test_dashboard_json_override_preserves_readonly_validation(monkeypatch, readonly):
+def test_dashboard_preserves_readonly_validation(monkeypatch, readonly):
     from apps.dashboard.crud import ai_sql_generator as dashboard
 
     monkeypatch.setattr(dashboard, "check_sql_read", lambda *args: (readonly, "只读限制"))
@@ -152,29 +150,34 @@ def test_dashboard_json_override_preserves_readonly_validation(monkeypatch, read
     result = dashboard._node_validate_sql({
         "response": response,
         "datasource": SimpleNamespace(type="mysql"),
-        "json_subfield_requirements": [{"source_table": "events", "source_field": "payload", "json_path": "$.old_key"}],
+        "json_subfield_requirements": [{"source_table": "events", "source_field": "payload", "json_path": "$.new_key"}],
         "sql_dialect": "mysql",
-    }, resolve_conflict=lambda rule, output: True)
+    })
     assert result["response"].success is readonly
 
 
 @pytest.mark.parametrize("node_name", ["_async_node_generate_sql", "_async_node_repair_sql"])
-def test_dashboard_generation_and_repair_receive_full_knowledge(node_name, monkeypatch):
+def test_dashboard_generation_and_repair_receive_skills_without_knowledge(node_name, monkeypatch):
     import asyncio
     from apps.dashboard.crud import ai_sql_generator as dashboard
 
     class CaptureModel:
         async def ainvoke(self, messages):
-            assert "知识库优先于 Data Skill" in messages[0].content
-            assert KNOWLEDGE in messages[1].content
+            assert "知识库" not in messages[0].content
+            assert KNOWLEDGE not in messages[1].content
+            assert "平台查询规则" in messages[1].content
             return SimpleNamespace(content='{"success":true,"sql":"SELECT 1"}')
 
     async def create_model(model_id):
         return CaptureModel()
 
     monkeypatch.setattr(dashboard, "_create_dashboard_ai_sql_llm", create_model)
-    monkeypatch.setattr(dashboard, "_dashboard_config_prompt", lambda *args, **kwargs: "元数据使用旧字段")
     monkeypatch.setattr(dashboard, "_write_llm_output_debug_file", lambda **kwargs: None)
-    state = {"request": object(), "datasource": object(), "knowledge_context": KNOWLEDGE}
+    state = {
+        "request": dashboard.DashboardAiSqlGenerateRequest(datasource=1),
+        "datasource": SimpleNamespace(name="业务库", type="mysql", type_name="MySQL"),
+        "knowledge_context": KNOWLEDGE,
+        "data_skill": "<Data-Skills>平台查询规则</Data-Skills>",
+    }
     result = asyncio.run(getattr(dashboard, node_name)(state))
     assert result["response"].sql == "SELECT 1"
