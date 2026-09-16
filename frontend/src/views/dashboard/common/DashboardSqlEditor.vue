@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { WarningFilled } from '@element-plus/icons-vue'
 import { datasourceApi } from '@/api/datasource'
@@ -8,6 +8,7 @@ import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } 
 import { trackingConfigApi } from '@/api/system.ts'
 import { request } from '@/utils/request.ts'
 import { chineseErrorMessage } from '@/utils/chineseErrorMessage'
+import { showDismissibleSuccess } from '@/utils/dismissibleMessage'
 import DashboardAnalysisModelForm from './DashboardAnalysisModelForm.vue'
 import {
   ATTRIBUTION_EVENT_LIMIT,
@@ -435,6 +436,7 @@ const visible = computed({
     return props.modelValue
   },
   set(value: boolean) {
+    if (!value) cancelBuilderSqlGeneration()
     emits('update:modelValue', value)
   },
 })
@@ -739,6 +741,9 @@ const mergeState = reactive({
 
 const loading = ref(false)
 const builderLoading = ref(false)
+const builderGenerationActive = ref(false)
+let builderGenerationController: AbortController | null = null
+type EditorExecution = { controller: AbortController; isCurrent: () => boolean }
 const loadingText = ref('')
 const mcpServersLoading = ref(false)
 const mcpServersError = ref('')
@@ -780,6 +785,42 @@ function clearBuilderLoading() {
   builderLoading.value = false
   loadingText.value = ''
 }
+
+function cancelBuilderSqlGeneration() {
+  if (!builderGenerationController) return
+  builderGenerationController.abort()
+  builderGenerationController = null
+  builderGenerationActive.value = false
+  clearBuilderLoading()
+  loading.value = false
+}
+
+function beginEditorExecution(): EditorExecution {
+  cancelBuilderSqlGeneration()
+  const controller = new AbortController()
+  builderGenerationController = controller
+  builderGenerationActive.value = true
+  const startViewInfo = props.viewInfo
+  const startDatasourceId = selectedExecutionDatasourceId.value
+  return {
+    controller,
+    isCurrent: () => (
+      builderGenerationController === controller && !controller.signal.aborted && visible.value &&
+      (!hasSqlSource.value || canUseSqlEditor.value) && props.viewInfo === startViewInfo &&
+      selectedExecutionDatasourceId.value === startDatasourceId
+    ),
+  }
+}
+
+function finishEditorExecution(execution: EditorExecution) {
+  if (builderGenerationController !== execution.controller) return
+  builderGenerationController = null
+  builderGenerationActive.value = false
+  clearBuilderLoading()
+  loading.value = false
+}
+
+onBeforeUnmount(cancelBuilderSqlGeneration)
 
 function isExternalSnapshotChart(viewInfo: any) {
   return viewInfo?.externalSnapshot === true || viewInfo?.dataSourceType === 'external_mcp'
@@ -5793,31 +5834,6 @@ function collectBuilderAiContext() {
   }
 }
 
-function generatedSqlMatchesBuilderMetrics(sql: string) {
-  const normalized = String(sql || '').toLowerCase()
-  return sqlBuilder.metricItems.every((item) => {
-    if (item.aggregation === 'count_distinct') {
-      return /count\s*\(\s*distinct/i.test(sql)
-    }
-    if (item.aggregation === 'sum') {
-      return /\bsum\s*\(/i.test(sql)
-    }
-    if (item.aggregation === 'avg') {
-      return /\bavg\s*\(/i.test(sql)
-    }
-    if (item.aggregation === 'max') {
-      return /\bmax\s*\(/i.test(sql)
-    }
-    if (item.aggregation === 'min') {
-      return /\bmin\s*\(/i.test(sql)
-    }
-    if (item.aggregation === 'count') {
-      return /\bcount\s*\(/i.test(sql)
-    }
-    return Boolean(normalized)
-  })
-}
-
 function collectLocalBuilderConfigIssues() {
   const eventScopeIssues = builderBlockingScopeIssues()
   const propertyIssues = propertyBlockingIssues()
@@ -6108,11 +6124,22 @@ async function generateBuilderAiSql() {
     ElMessage.warning(invalidFormulaItems[0].validation.message || '公式指标公式语法错误')
     return false
   }
+  const execution = beginEditorExecution()
+  try {
+    return await generateAndPreviewBuilderSql(execution)
+  } finally {
+    finishEditorExecution(execution)
+  }
+}
+
+async function generateAndPreviewBuilderSql(execution: EditorExecution) {
   let result: any = null
   try {
     await setLoadingPhase('正在分析')
+    if (!execution.isCurrent()) return false
     showLocalBuilderAgentAdvice()
     await setLoadingPhase('正在生成建议')
+    if (!execution.isCurrent()) return false
     result = await dashboardApi.generate_ai_sql({
       datasource: selectedExecutionDatasourceId.value,
       intent: '',
@@ -6120,10 +6147,12 @@ async function generateBuilderAiSql() {
       title: form.title,
       context: collectBuilderAiContext(),
     }, {
-      timeout: 180000,
+      signal: execution.controller.signal,
       requestOptions: { silent: true, retryCount: 0 },
     })
+    if (!execution.isCurrent()) return false
   } catch (error: any) {
+    if (!execution.isCurrent()) return false
     const message = chineseErrorMessage(error, 'SQL 生成请求失败，请稍后重试。')
     const localAdvice = collectLocalBuilderConfigIssues()
     setBuilderAgentAdvice({
@@ -6138,13 +6167,11 @@ async function generateBuilderAiSql() {
     })
     ElMessage.warning(builderSqlGenerationFailureMessage)
     return false
-  } finally {
-    clearBuilderLoading()
   }
   updateBuilderAgentAdviceFromResult(result)
   const generatedSql = String(result?.sql || '').trim()
   const blockingIssues = builderAgentBlockingIssues(result)
-  if (blockingIssues.length > 0) {
+  if (result?.success === false || blockingIssues.length > 0) {
     stopBuilderExecutionWithAdvice(result, generatedSql)
     return false
   }
@@ -6155,17 +6182,6 @@ async function generateBuilderAiSql() {
       advice: result?.advice || '按下面配置项补全后再生成。',
       issues: unique(['配置 Agent 未返回可执行 SQL。', ...resultAdviceItems(result, 'issues')]),
     })
-    return false
-  }
-  if (!generatedSqlMatchesBuilderMetrics(generatedSql)) {
-    stopBuilderExecutionWithAdvice({
-      ...result,
-      severity: 'warning',
-      message: 'AI SQL 与当前指标配置不一致',
-      advice: result?.advice || '按当前指标配置重新生成，不执行这条 SQL。',
-      issues: unique(['生成 SQL 的聚合方式与当前分析指标不一致。', ...resultAdviceItems(result, 'issues')]),
-      raw: result?.raw || '',
-    }, generatedSql)
     return false
   }
   form.sql = generatedSql
@@ -6309,8 +6325,8 @@ async function generateBuilderAiSql() {
   } else {
     ElMessage.warning(builderSqlGenerationFailureMessage)
   }
-  await previewAndPersistBuilderDraft()
-  return result.success !== false
+  await previewAndPersistBuilderDraft(execution)
+  return execution.isCurrent() && result.success !== false
 }
 
 async function calculateBuilderSql() {
@@ -7854,6 +7870,7 @@ function resetExecutionDatasourceDependentState() {
 }
 
 function handleExecutionDatasourceChange() {
+  cancelBuilderSqlGeneration()
   executionDatasourceError.value = ''
   resetExecutionDatasourceDependentState()
   ensureBuilderSchemaLoaded()
@@ -7907,8 +7924,15 @@ watch(
         ElMessage.error('图表配置已过期，请重新配置')
         visible.value = false
       }
+    } else {
+      cancelBuilderSqlGeneration()
     }
   }
+)
+
+watch(
+  () => [props.viewInfo, selectedExecutionDatasourceId.value, canUseSqlEditor.value],
+  () => cancelBuilderSqlGeneration()
 )
 
 watch(
@@ -7967,7 +7991,8 @@ watch(
   }
 )
 
-async function previewSqlSource() {
+async function previewSqlSource(execution: EditorExecution) {
+  if (!execution.isCurrent()) return null
   if (!selectedExecutionDatasourceId.value) {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return null
@@ -7993,7 +8018,8 @@ async function previewSqlSource() {
       sql: form.sql.trim(),
       pivot: sourcePreviewPivotPayload(),
       date_filter: dashboardDateFilterRequestPayload(),
-    })
+    }, { signal: execution.controller.signal, requestOptions: { silent: true, retryCount: 0 } })
+    if (!execution.isCurrent()) return null
     const sourceSnapshot = previewResultSnapshot(shapeDistributionTableResult(sourceResult, sqlBuilder))
     setSourceResult('sql', sourceSnapshot)
     updateSourcePreviewResult(sourceSnapshot)
@@ -8013,13 +8039,15 @@ async function previewSqlSource() {
     sql: form.sql.trim(),
     pivot: previewPivotPayload(),
     date_filter: dashboardDateFilterRequestPayload(),
-  })
+  }, { signal: execution.controller.signal, requestOptions: { silent: true, retryCount: 0 } })
+  if (!execution.isCurrent()) return null
   const snapshot = previewResultSnapshot(shapeDistributionTableResult(result, sqlBuilder))
   setSourceResult('sql', snapshot)
   return snapshot
 }
 
-async function previewMcpSource() {
+async function previewMcpSource(execution: EditorExecution) {
+  if (!execution.isCurrent()) return null
   if (!currentExternalMcpServerId.value) {
     ElMessage.warning(mt('mcp_editor_no_server'))
     return null
@@ -8044,7 +8072,8 @@ async function previewMcpSource() {
     result_path: form.mcpResultPath || null,
     key_field: form.mcpKeyField || null,
     value_field: form.mcpValueField || null,
-  })
+  }, { signal: execution.controller.signal, requestOptions: { silent: true, retryCount: 0 } })
+  if (!execution.isCurrent()) return null
   if (result?.mcp) {
     props.viewInfo.mcp = {
       ...(props.viewInfo.mcp || {}),
@@ -8058,7 +8087,7 @@ async function previewMcpSource() {
   return snapshot
 }
 
-async function runPreview(options: { useGlobalLoading?: boolean } = {}) {
+async function runPreview(options: { useGlobalLoading?: boolean; execution?: EditorExecution } = {}) {
   if (!hasSqlSource.value && !hasMcpSource.value) {
     ElMessage.warning(mt('chart_source_required'))
     return false
@@ -8070,6 +8099,9 @@ async function runPreview(options: { useGlobalLoading?: boolean } = {}) {
   if (blockMissingFixedTimeField()) {
     return false
   }
+  const execution = options.execution || beginEditorExecution()
+  const ownsExecution = !options.execution
+  if (!execution.isCurrent()) return false
   const useGlobalLoading = options.useGlobalLoading !== false
   if (useGlobalLoading) {
     loadingText.value = loadingText.value || '正在执行'
@@ -8079,23 +8111,23 @@ async function runPreview(options: { useGlobalLoading?: boolean } = {}) {
     clearMergeState()
     let nextPreview: PreviewResultSnapshot | null = null
     if (isMixedSource.value) {
-      const sqlResult = await previewSqlSource()
-      if (!sqlResult) {
+      const sqlResult = await previewSqlSource(execution)
+      if (!sqlResult || !execution.isCurrent()) {
         return false
       }
-      const mcpResult = await previewMcpSource()
-      if (!mcpResult) {
+      const mcpResult = await previewMcpSource(execution)
+      if (!mcpResult || !execution.isCurrent()) {
         return false
       }
       const merged = mergePreviewResults(sqlResult, mcpResult)
       setMergeState(merged.joinFields, merged.fieldMap)
       nextPreview = merged
     } else if (hasSqlSource.value) {
-      nextPreview = await previewSqlSource()
+      nextPreview = await previewSqlSource(execution)
     } else if (hasMcpSource.value) {
-      nextPreview = await previewMcpSource()
+      nextPreview = await previewMcpSource(execution)
     }
-    if (!nextPreview) {
+    if (!nextPreview || !execution.isCurrent()) {
       return false
     }
     if (hasSqlSource.value && !hasMcpSource.value && supportsPivotConfig.value && form.pivotEnabled) {
@@ -8124,12 +8156,16 @@ async function runPreview(options: { useGlobalLoading?: boolean } = {}) {
       ElMessage.success(t('dashboard.sql_editor_preview_success'))
       await nextTick()
     }
-    return true
+    return execution.isCurrent()
+  } catch (error) {
+    if (!execution.isCurrent()) return false
+    throw error
   } finally {
-    if (useGlobalLoading) {
+    if (useGlobalLoading && builderGenerationController === execution.controller) {
       loading.value = false
       loadingText.value = ''
     }
+    if (ownsExecution) finishEditorExecution(execution)
   }
 }
 
@@ -8521,7 +8557,7 @@ function writeEditorStateToViewInfo(options: {
     visible.value = false
   }
   if (options.notify) {
-    ElMessage.success(options.message || t('dashboard.sql_editor_applied'))
+    showDismissibleSuccess(options.message || t('dashboard.sql_editor_applied'))
   }
   return true
 }
@@ -8533,12 +8569,16 @@ function persistEditorDraftToViewInfo() {
   })
 }
 
-async function previewAndPersistBuilderDraft() {
+async function previewAndPersistBuilderDraft(execution?: EditorExecution) {
+  const activeExecution = execution || beginEditorExecution()
   let previewCompleted = false
   try {
+    if (!activeExecution.isCurrent()) return false
     await setLoadingPhase('正在执行')
-    previewCompleted = await runPreview({ useGlobalLoading: false })
+    if (!activeExecution.isCurrent()) return false
+    previewCompleted = await runPreview({ useGlobalLoading: false, execution: activeExecution })
   } catch (error: any) {
+    if (!activeExecution.isCurrent()) return false
     const message = error?.message || t('dashboard.sql_editor_preview_failed')
     const failedSnapshot = {
       fields: [] as string[],
@@ -8553,11 +8593,12 @@ async function previewAndPersistBuilderDraft() {
     ElMessage.error(message)
     previewCompleted = true
   } finally {
-    clearBuilderLoading()
-    if (previewCompleted) {
+    if (previewCompleted && activeExecution.isCurrent()) {
       persistEditorDraftToViewInfo()
     }
+    if (!execution) finishEditorExecution(activeExecution)
   }
+  return previewCompleted
 }
 
 function applyChange() {
@@ -8570,7 +8611,7 @@ function applyChange() {
     }
     emits('applied', props.viewInfo)
     visible.value = false
-    ElMessage.success(t('dashboard.sql_editor_applied'))
+    showDismissibleSuccess(t('dashboard.sql_editor_applied'))
     return
   }
   if (!validateBeforeApply()) return
@@ -8733,6 +8774,9 @@ const analysisModelFormContext = {
                 近似计算
               </el-checkbox>
             </div>
+            <el-button v-if="builderGenerationActive" @click="cancelBuilderSqlGeneration">
+              取消
+            </el-button>
             <el-button
               type="primary"
               :disabled="!canRunEditorPreview"

@@ -12,7 +12,25 @@ export const dashboardApi = {
     request.post('/dashboard/sql_preview', params, { timeout: 180000, ...config }),
   execution_datasources: () => request.get('/dashboard/execution-datasources'),
   execution_datasource_metadata: (id: number) => request.get(`/dashboard/execution-datasource-metadata/${id}`),
-  generate_ai_sql: (params: any, config?: any) => request.post('/dashboard/ai_sql_generate', params, config),
+  generate_ai_sql: async (params: any, config?: any) => {
+    const requestOptions = { ...config?.requestOptions, retryCount: 0 }
+    const limits = await request.get('/dashboard/ai_sql_generation_limits', {
+      signal: config?.signal,
+      requestOptions,
+    })
+    if (config?.signal?.aborted) {
+      throw new DOMException('SQL 生成已取消', 'AbortError')
+    }
+    const seconds = limits?.total_timeout_seconds
+    if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) {
+      throw new Error('SQL 生成超时配置无效，请联系管理员。')
+    }
+    return request.post('/dashboard/ai_sql_generate', params, {
+      ...config,
+      timeout: seconds * 1000 + 5000,
+      requestOptions,
+    })
+  },
   default_list: (config?: any) => request.get('/dashboard/default/list', config),
   default_load: (params: any, config?: any) => request.post('/dashboard/default/load', params, config),
   default_copy: (params: any, config?: any) => request.post('/dashboard/default/copy', params, config),

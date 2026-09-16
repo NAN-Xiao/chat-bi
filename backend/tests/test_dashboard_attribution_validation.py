@@ -144,6 +144,31 @@ def test_encoded_date_arithmetic(expression, invalid):
     assert bool(encoded_date_issues(sqlglot.parse_one(sql, read="mysql"), {"table": "events", "field": "dt"}, "yyyymmdd_number")) is invalid
 
 
+@pytest.mark.parametrize("projection", [
+    "ROW_NUMBER() OVER (PARTITION BY uid ORDER BY dt)",
+    "COUNT(DISTINCT dt)",
+    "SUM(CASE WHEN dt >= 20260901 THEN amount ELSE 0 END)",
+    "IF(dt >= 20260901, amount, 0)",
+    "SUM(dt >= 20260901)",
+    "SUM(amount) OVER (PARTITION BY dt ORDER BY dt)",
+])
+def test_encoded_date_does_not_taint_numeric_values_via_order_or_predicate(projection):
+    sql = f"WITH a AS (SELECT {projection} AS metric FROM events) SELECT COALESCE(metric, 0) + 1 FROM a"
+    assert encoded_date_issues(sqlglot.parse_one(sql, read="mysql"), {"table": "events", "field": "dt"}, "yyyymmdd_number") == []
+
+
+@pytest.mark.parametrize("projection", [
+    "MAX(dt)",
+    "CASE WHEN amount > 0 THEN dt ELSE NULL END",
+    "IF(amount > 0, dt, NULL)",
+    "LAG(dt) OVER (PARTITION BY uid ORDER BY dt)",
+    "SUM(dt) OVER (PARTITION BY uid)",
+])
+def test_encoded_date_still_traces_value_branches_and_date_window_outputs(projection):
+    sql = f"WITH a AS (SELECT {projection} AS date_key FROM events) SELECT date_key - 1 FROM a"
+    assert encoded_date_issues(sqlglot.parse_one(sql, read="mysql"), {"table": "events", "field": "dt"}, "yyyymmdd_number")
+
+
 def test_missing_cte_field_routes_to_repair_with_accurate_issue():
     sql = attribution_sql().replace("SELECT target_id, target_value, group_1,", "SELECT target_id, group_1,")
     state = {"normalized_config": config(), "sql_dialect": "mysql",
@@ -152,7 +177,10 @@ def test_missing_cte_field_routes_to_repair_with_accurate_issue():
     assert result["response"].success is False
     assert any("target_value" in issue for issue in result["response"].issues)
     assert generator._route_after_sql_validate({**state, **result}) == "repair_sql"
-    assert generator._route_after_sql_validate({**state, **result, "sql_repair_attempts": 1}) == "explain_advice"
+    assert generator._route_after_sql_validate({
+        **state, **result,
+        "sql_repair_attempts": generator.settings.DASHBOARD_SQL_MAX_REPAIR_ATTEMPTS,
+    }) == "explain_advice"
 
 
 @pytest.mark.parametrize("method, expected", [

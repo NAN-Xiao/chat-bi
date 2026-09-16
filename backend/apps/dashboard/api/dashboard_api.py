@@ -4,7 +4,7 @@
 import asyncio
 import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from apps.dashboard.crud.dashboard_service import list_resource, load_resource, \
     create_resource, create_canvas, validate_name, delete_resource, update_resource, update_canvas, preview_sql, \
@@ -15,6 +15,9 @@ from apps.dashboard.crud.dashboard_service import list_resource, load_resource, 
     update_platform_dashboard_template, delete_platform_dashboard_template, copy_platform_template_to_workspace_dashboard, \
     refresh_platform_dashboard_template, list_chart_execution_datasources, get_chart_execution_datasource_metadata
 from apps.dashboard.crud.ai_sql_generator import generate_dashboard_ai_sql
+from apps.dashboard.crud.sql_generation_lifecycle import (
+    SqlGenerationDisconnected, SqlGenerationTimeout, run_sql_generation,
+)
 from apps.dashboard.models.dashboard_model import (
     CreateDashboard,
     BaseDashboard,
@@ -40,6 +43,7 @@ from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import SessionDep, CurrentUser
+from common.core.config import settings
 from common.observability.api_timing import log_api_timing
 from common.utils.utils import AppLogUtil
 
@@ -461,15 +465,38 @@ async def execution_datasource_metadata_api(
     return get_chart_execution_datasource_metadata(session, current_user, datasource_id)
 
 
+@router.get("/ai_sql_generation_limits")
+async def ai_sql_generation_limits_api(current_user: CurrentUser):
+    """向已认证的业务用户提供 SQL 生成总时限，供客户端对齐请求超时。"""
+    return {"total_timeout_seconds": settings.LLM_TASK_MAX_WAIT_SECONDS}
+
+
 @router.post("/ai_sql_generate", response_model=DashboardAiSqlGenerateResponse, summary=f"{PLACEHOLDER_PREFIX}dashboard_ai_sql_generate")
 @require_permissions(permission=AppPermission(type='ds', keyExpression="request.datasource"))
-async def ai_sql_generate_api(session: SessionDep, current_user: CurrentUser, request: DashboardAiSqlGenerateRequest):
+async def ai_sql_generate_api(
+        session: SessionDep, current_user: CurrentUser,
+        request: DashboardAiSqlGenerateRequest, http_request: Request,
+):
     """
     是什么：ai_sql_generate_api 是手动看板 AI 生成 SQL 的接口入口。
     谁调用：前端手动看板配置器点击计算/生成时调用。
     做了什么：把用户在配置器中选择的字段、指标、筛选和意图交给 AI 生成 SQL，不直接执行 SQL。
     """
-    return await generate_dashboard_ai_sql(session=session, current_user=current_user, request=request)
+    async def wait_for_disconnect():
+        # FastAPI has consumed the body. Awaiting receive survives BaseHTTPMiddleware's
+        # cancellation checkpoints, unlike Request.is_disconnected's cancelled polling scope.
+        while (await http_request.receive())["type"] != "http.disconnect":
+            pass
+
+    try:
+        return await run_sql_generation(
+            generate_dashboard_ai_sql(session=session, current_user=current_user, request=request),
+            wait_for_disconnect=wait_for_disconnect,
+        )
+    except SqlGenerationTimeout as exc:
+        raise HTTPException(status_code=504, detail="SQL 生成超过总时限，已停止生成，请重试。") from exc
+    except SqlGenerationDisconnected as exc:
+        raise HTTPException(status_code=499, detail="请求已取消，SQL 生成已停止。") from exc
 
 
 @router.post("/share", summary=f"{PLACEHOLDER_PREFIX}dashboard_share")

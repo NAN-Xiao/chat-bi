@@ -239,6 +239,21 @@ def encoded_date_issues(statement: exp.Expression, field: dict, parameter_type: 
         return []
 
     def contains_key(node: exp.Expression, scope: Scope, seen: frozenset = frozenset()) -> bool:
+        # Track the output value, not columns that only control row selection
+        # or ordering. A count/rank is numeric even when its input is a date.
+        if isinstance(node, (exp.Count, exp.RowNumber, exp.Rank, exp.DenseRank,
+                             exp.PercentRank, exp.CumeDist, exp.Ntile,
+                             exp.Predicate, exp.And, exp.Or, exp.Not)):
+            return False
+        if isinstance(node, exp.Window):
+            return contains_key(node.this, scope, seen)
+        if isinstance(node, exp.Case):
+            values = [branch.args.get("true") for branch in node.args.get("ifs", [])]
+            values.append(node.args.get("default"))
+            return any(value is not None and contains_key(value, scope, seen) for value in values)
+        if isinstance(node, exp.If):
+            return any(value is not None and contains_key(value, scope, seen)
+                       for value in (node.args.get("true"), node.args.get("false")))
         # Parsing the encoded value terminates its numeric-date lineage.
         if isinstance(node, (exp.StrToDate, exp.TsOrDsToDate)):
             return False

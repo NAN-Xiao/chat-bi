@@ -10,6 +10,9 @@ from typing import Any
 
 import pytest
 from attribution_sql_fixture import attribution_sql
+from funnel_sql_fixture import funnel_sql
+from interval_sql_fixture import interval_sql
+from path_sql_fixture import PATH_SCHEMA, path_sql
 from langchain_core.messages import HumanMessage
 
 from apps.ai_model.model_factory import LLMConfig
@@ -1579,14 +1582,7 @@ def test_path_prompt_sql_plan_and_result_contract_keep_sankey_semantics() -> Non
         "",
     ) + "\n" + ai_sql_generator._dashboard_sql_system_prompt("path")
     plan = ai_sql_generator._build_sql_plan(normalized, formula_ir)
-    valid_sql = (
-        "WITH session_steps AS (SELECT ROW_NUMBER() OVER (PARTITION BY uid, session_id ORDER BY dt) AS step_in_session, "
-        "LAG(event_name) OVER (PARTITION BY uid, session_id ORDER BY dt) AS previous_event, "
-        "event_name, session_id, dt FROM event), edges AS (SELECT previous_event AS path_source, event_name AS path_target, "
-        "COUNT(*) AS path_value, step_in_session - 1 AS path_step FROM session_steps "
-        "WHERE session_gap_seconds <= 1800 GROUP BY step_in_session, previous_event, event_name) "
-        "SELECT path_source, path_target, path_value, path_step FROM edges"
-    )
+    valid_sql = path_sql(lag=True, initial_event="login").replace("FROM events\n", "FROM event\n")
 
     assert "只能使用 path 配置" in prompt
     assert "初始事件" in prompt
@@ -1606,7 +1602,7 @@ def test_path_prompt_sql_plan_and_result_contract_keep_sankey_semantics() -> Non
     assert plan["analysis_model"] == "path"
     assert plan["result_contract"]["type"] == "path_sankey"
     assert plan["result_contract"]["required_columns"] == ["path_source", "path_target", "path_value", "path_step"]
-    assert ai_sql_generator._path_sql_result_issues(valid_sql, normalized) == []
+    assert ai_sql_generator._path_sql_result_issues(valid_sql, normalized, schema=PATH_SCHEMA.replace("Table: events", "Table: event")) == []
     invalid = ai_sql_generator._path_sql_result_issues("SELECT path_source, path_target FROM event", normalized)
     assert invalid
     assert any("path_value" in issue for issue in invalid)
@@ -2224,6 +2220,7 @@ def test_interval_prompt_and_result_contract_enforce_pairing_semantics() -> None
         "MIN(interval_seconds) AS min_interval_seconds, AVG(interval_seconds) AS avg_interval_seconds "
         "FROM valid_intervals GROUP BY interval_date"
     )
+    valid_sql = interval_sql().split("SELECT interval_date,COUNT", 1)[0] + valid_sql
 
     assert "只能使用 interval 配置" in prompt
     assert "连续出现多个起点时只保留最后一个起点" in prompt
@@ -2256,6 +2253,7 @@ def test_interval_percentile_functions_follow_mysql_compatible_dialect() -> None
         "MIN(interval_seconds) AS min_interval_seconds, AVG(interval_seconds) AS avg_interval_seconds "
         "FROM valid_intervals GROUP BY interval_date"
     )
+    invalid_sql = interval_sql().split("SELECT interval_date,COUNT", 1)[0] + invalid_sql
     issues = ai_sql_generator._interval_sql_result_issues(
         invalid_sql, normalized, sql_dialect="mysql", datasource=datasource
     )
@@ -3025,8 +3023,9 @@ def test_funnel_prompt_and_result_validation_require_fixed_columns() -> None:
         normalized,
     )
     valid = ai_sql_generator._funnel_sql_result_issues(
-        "SELECT step_order, step_name, step_count, step_rate, step_conversion_rate, step_dropoff_rate FROM funnel_result",
+        funnel_sql().replace("e.uid", "e.user_id").replace("FROM events e", "FROM event e"),
         normalized,
+        schema="# Table: event\n[\n(occurred_at:bigint, role=event_time; encoding=epoch_seconds)\n]",
     )
     plan = ai_sql_generator._build_sql_plan(normalized, ai_sql_generator._build_formula_ir(normalized))
     system_prompt = ai_sql_generator._dashboard_sql_system_prompt("funnel")
@@ -3165,7 +3164,7 @@ def test_retention_prompt_and_sql_validation_require_fixed_cohort_columns() -> N
 
     assert validation.analysis_model == "retention"
     assert sql_plan["analysis_model"] == "retention"
-    assert sql_plan["result_contract"] == {
+    assert {key: value for key, value in sql_plan["result_contract"].items() if key not in {"maturity", "cohort_input"}} == {
         "type": "cohort_table",
         "window_days": 7,
         "required_columns": ["cohort_date", "cohort_size", *[f"day_{day}" for day in range(8)]],
@@ -3595,14 +3594,14 @@ WITH event_dates AS (
      AND b.event_date <= DATE_ADD(c.event_date, INTERVAL 7 DAY)
 )
 SELECT cohort_date, COUNT(DISTINCT entity_id) AS cohort_size,
-       COUNT(DISTINCT CASE WHEN days_diff = 0 THEN entity_id END) AS day_0,
-       COUNT(DISTINCT CASE WHEN days_diff = 1 THEN entity_id END) AS day_1,
-       COUNT(DISTINCT CASE WHEN days_diff = 2 THEN entity_id END) AS day_2,
-       COUNT(DISTINCT CASE WHEN days_diff = 3 THEN entity_id END) AS day_3,
-       COUNT(DISTINCT CASE WHEN days_diff = 4 THEN entity_id END) AS day_4,
-       COUNT(DISTINCT CASE WHEN days_diff = 5 THEN entity_id END) AS day_5,
-       COUNT(DISTINCT CASE WHEN days_diff = 6 THEN entity_id END) AS day_6,
-       COUNT(DISTINCT CASE WHEN days_diff = 7 THEN entity_id END) AS day_7
+       CASE WHEN DATE_ADD(cohort_date, INTERVAL 0 DAY) <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d') THEN COUNT(DISTINCT CASE WHEN days_diff = 0 THEN entity_id END) END AS day_0,
+       CASE WHEN DATE_ADD(cohort_date, INTERVAL 1 DAY) <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d') THEN COUNT(DISTINCT CASE WHEN days_diff = 1 THEN entity_id END) END AS day_1,
+       CASE WHEN DATE_ADD(cohort_date, INTERVAL 2 DAY) <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d') THEN COUNT(DISTINCT CASE WHEN days_diff = 2 THEN entity_id END) END AS day_2,
+       CASE WHEN DATE_ADD(cohort_date, INTERVAL 3 DAY) <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d') THEN COUNT(DISTINCT CASE WHEN days_diff = 3 THEN entity_id END) END AS day_3,
+       CASE WHEN DATE_ADD(cohort_date, INTERVAL 4 DAY) <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d') THEN COUNT(DISTINCT CASE WHEN days_diff = 4 THEN entity_id END) END AS day_4,
+       CASE WHEN DATE_ADD(cohort_date, INTERVAL 5 DAY) <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d') THEN COUNT(DISTINCT CASE WHEN days_diff = 5 THEN entity_id END) END AS day_5,
+       CASE WHEN DATE_ADD(cohort_date, INTERVAL 6 DAY) <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d') THEN COUNT(DISTINCT CASE WHEN days_diff = 6 THEN entity_id END) END AS day_6,
+       CASE WHEN DATE_ADD(cohort_date, INTERVAL 7 DAY) <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d') THEN COUNT(DISTINCT CASE WHEN days_diff = 7 THEN entity_id END) END AS day_7
 FROM matched
 GROUP BY cohort_date
 """
@@ -3656,8 +3655,9 @@ def test_retention_simultaneous_and_related_property_are_validated() -> None:
         allowed_fields_by_table={"event": {"user_id", "event_name", "account_id", "dt"}},
     )
     required_sql = "SELECT cohort_date, cohort_size, " + ", ".join(
-        [f"day_{day}" for day in range(8)] + ["simultaneous_value", "related_property"]
-    )
+        [f"CASE WHEN DATE_ADD(cohort_date, INTERVAL {day} DAY) <= STR_TO_DATE(CAST({{{{dashboard_end_yyyymmdd}}}} AS CHAR), '%Y%m%d') THEN day_{day} END AS day_{day}" for day in range(8)]
+        + ["simultaneous_value", "related_property"]
+    ) + " FROM retention_result"
 
     assert result.success is True
     assert ai_sql_generator._retention_sql_result_issues(required_sql, normalized) == []
@@ -3730,7 +3730,9 @@ def test_retention_sql_validates_simultaneous_aggregation_function() -> None:
         "metricField": {"table": "event", "field": "amount", "category": "number"},
     })
     normalized = ai_sql_generator._normalize_manual_config(request)
-    fixed_columns = ", ".join(["cohort_date", "cohort_size"] + [f"day_{day}" for day in range(8)])
+    fixed_columns = ", ".join(["cohort_date", "cohort_size"] + [
+        f"CASE WHEN DATE_ADD(cohort_date, INTERVAL {day} DAY) <= STR_TO_DATE(CAST({{{{dashboard_end_yyyymmdd}}}} AS CHAR), '%Y%m%d') THEN day_{day} END AS day_{day}" for day in range(8)
+    ])
     valid_sql = f"SELECT {fixed_columns}, SUM(amount) AS simultaneous_value FROM retention_result"
     invalid_sql = f"SELECT {fixed_columns}, AVG(amount) AS simultaneous_value FROM retention_result"
 
@@ -3976,9 +3978,9 @@ def test_dashboard_prompt_requires_safe_cte_time_boundaries() -> None:
     """
     prompt = ai_sql_generator._dashboard_sql_system_prompt()
 
-    assert "bounds CTE 必须只返回一行时间边界" in prompt
+    assert "sql-plan.sql_rules 和 date_scaffold" in prompt
     assert "聚合函数和窗口函数不得出现在同一查询层的 WHERE 条件中" in prompt
-    assert "必须先在独立 CTE 中计算最大日期" in prompt
+    assert "不得自行增加 MAX(date_field) 扫描" in prompt
     assert "禁止生成 WHERE date_field >= <包含 MAX(date_field) 的表达式>" in prompt
     assert "仅当当前图表配置要求可变时间范围时，日期边界必须使用当前配置提供的看板日期参数占位符" in prompt
     assert "MySQL/MariaDB 最近 30 个完整自然日边界示例" not in prompt

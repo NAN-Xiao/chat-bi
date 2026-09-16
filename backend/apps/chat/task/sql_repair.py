@@ -78,6 +78,7 @@ _UNSUPPORTED_DISTINCT_WINDOW_PATTERNS = (
         re.IGNORECASE,
     ),
 )
+from apps.dashboard.crud.sql_generation_rules import MYSQL_FAMILY
 _EXECUTE_SYNTAX_OR_DIALECT_PATTERNS = (
     *_UNSUPPORTED_DISTINCT_WINDOW_PATTERNS,
     re.compile(r"missing column aliases in recursive\s+with\s+query", re.IGNORECASE),
@@ -366,11 +367,25 @@ def _ambiguous_unqualified_columns(statement: exp.Expression) -> set[str]:
         duplicate_names = {name for name, count in counts.items() if count > 1}
         if not duplicate_names:
             continue
+        output_counts: dict[str, int] = {}
+        for projection in select.selects:
+            output_name = str(projection.alias_or_name or "").strip('"\x60[]').lower()
+            output_counts[output_name] = output_counts.get(output_name, 0) + 1
         for column in select.find_all(exp.Column):
             if _nearest_select(column) is not select or column.table:
                 continue
             name = str(column.name or "").strip('"\x60[]').lower()
             if name in duplicate_names:
+                # A bare ORDER BY item resolves a unique output name before
+                # input columns. Do not grant this to WHERE/GROUP BY, nested
+                # aggregate arguments, or duplicate output names.
+                ordered_value = column
+                while isinstance(ordered_value.parent, exp.Paren):
+                    ordered_value = ordered_value.parent
+                ordered = ordered_value.parent
+                if (output_counts.get(name) == 1 and isinstance(ordered, exp.Ordered)
+                        and ordered.parent is select.args.get("order")):
+                    continue
                 ambiguous.add(str(column.name or ""))
     return ambiguous
 
@@ -592,13 +607,7 @@ def validate_mysql_compatible_sql(sql: str) -> None:
 
 def validate_sql_for_datasource(sql: str, datasource_type: Any) -> None:
     """对生成、模板渲染和最终执行 SQL 使用同一套数据源方言校验。"""
-    if str(datasource_type or "").strip().lower() not in {
-        "mysql",
-        "mariadb",
-        "analyticdb",
-        "doris",
-        "starrocks",
-    }:
+    if str(datasource_type or "").strip().lower() not in MYSQL_FAMILY:
         return
     validate_mysql_compatible_sql(sql)
     validate_mysql_date_format_grouping(sql)
@@ -611,7 +620,7 @@ def validate_sql_for_datasource(sql: str, datasource_type: Any) -> None:
 def validate_sql_for_generation(sql: str, datasource_type: Any) -> None:
     """校验 AI 生成 SQL 的方言约束；生成阶段统一避免兼容引擎不支持的 UNSIGNED。"""
     validate_sql_for_datasource(sql, datasource_type)
-    if str(datasource_type or "").strip().lower() not in {"mysql", "mariadb", "analyticdb", "doris", "starrocks"}:
+    if str(datasource_type or "").strip().lower() not in MYSQL_FAMILY:
         return
     tokens = sqlglot.Tokenizer(dialect="mysql").tokenize(str(sql or ""))
     for index, token in enumerate(tokens):

@@ -945,17 +945,49 @@ def _dictionary_table_comment(table_name: str, comments: dict[str, str], trackin
     )
 
 
-def _dictionary_field_comment(field: Any, cached_comment: str | None = None) -> str:
+def _dictionary_field_role(
+        table_name: str,
+        field_name: str,
+        field_role: str | None,
+        role_mappings: list[Any],
+) -> str | None:
+    """Merge explicit declarations for one already authorized workspace field."""
+    roles = {field_role.strip()} if field_role and field_role.strip() else set()
+    for mapping in role_mappings:
+        if not isinstance(mapping, dict):
+            continue
+        # Unqualified role glossary entries are not field assignments. Never
+        # infer a table from defaults or match similarly named fields.
+        if mapping.get("table") != table_name or mapping.get("field") != field_name:
+            continue
+        role = mapping.get("role")
+        if isinstance(role, str) and role.strip():
+            roles.add(role.strip())
+    if len(roles) > 1:
+        raise HTTPException(
+            status_code=422,
+            detail=f"工作空间字段 {table_name}.{field_name} 的角色配置冲突：{'、'.join(sorted(roles))}。请统一字段角色和字段角色映射。",
+        )
+    return next(iter(roles), None)
+
+
+def _dictionary_field_comment(
+        field: Any,
+        cached_comment: str | None = None,
+        *,
+        resolved_role: str | None = None,
+) -> str:
     aliases = getattr(field, "aliases", None)
     examples = getattr(field, "example_values", None)
     value_mappings = getattr(field, "value_mappings", None)
     expression = getattr(field, "expression", None)
     extra_properties = getattr(field, "extra_properties", None) or {}
     encoding = extra_properties.get("encoding") if isinstance(extra_properties, dict) else None
+    field_role = resolved_role if resolved_role is not None else getattr(field, "field_role", None)
     parts = [
         cached_comment,
         getattr(field, "field_comment", None),
-        f"role={getattr(field, 'field_role', None)}" if getattr(field, "field_role", None) else None,
+        f"role={field_role}" if field_role else None,
         f"encoding={encoding}" if encoding else None,
         f"source={getattr(field, 'source_field', None)}" if getattr(field, "source_field", None) else None,
         f"json_path={getattr(field, 'json_path', None)}" if getattr(field, "json_path", None) else None,
@@ -1056,6 +1088,7 @@ def _dictionary_schema_from_workspace(
     )
     tracking_validation_warnings.extend(event_projection.warnings)
     tracking_enabled = bool(getattr(tracking_config, "enabled", False))
+    role_mappings = (getattr(tracking_config, "field_role_mappings", None) or []) if tracking_enabled else []
     tracking_tables = {
         item.table_name: item
         for item in (tracking_config.tables or [])
@@ -1161,6 +1194,7 @@ def _dictionary_schema_from_workspace(
             field_comment = _dictionary_field_comment(
                 field,
                 schema_field_comments.get((table_name, field_name)),
+                resolved_role=_dictionary_field_role(table_name, field_name, getattr(field, "field_role", None), role_mappings),
             )
             fields.append((field_name, field_type, field_comment))
             seen_fields.add(field_name)
@@ -1172,7 +1206,8 @@ def _dictionary_schema_from_workspace(
             if cached_obj is not None and cached_field is None:
                 continue
             field_type = _schema_field_type(getattr(cached_field, "field_type", None), "text")
-            fields.append((schema_field, field_type, field_comment or ""))
+            field_role = _dictionary_field_role(table_name, schema_field, None, role_mappings)
+            fields.append((schema_field, field_type, _schema_field_comment(field_comment, f"role={field_role}" if field_role else None)))
             seen_fields.add(schema_field)
 
         allowed_event_fields = []

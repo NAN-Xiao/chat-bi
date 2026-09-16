@@ -1,0 +1,9 @@
+{
+  "rows": 28,
+  "expected_days": 28,
+  "interval_count": 5219,
+  "cross_day_pairs": 4,
+  "mismatch_count": 0,
+  "mismatches": [],
+  "pass": true
+}

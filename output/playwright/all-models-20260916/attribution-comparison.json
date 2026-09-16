@@ -1,0 +1,16 @@
+{
+  "rows": 2,
+  "expected": {
+    "total_touch_count": 6720,
+    "effective_touch_count": 16,
+    "effective_entity_count": 3,
+    "target_count": 3,
+    "attributed_value": 3
+  },
+  "numeric_match": true,
+  "rate_match": true,
+  "total_target_count": 3,
+  "total_contribution": 3.0,
+  "unmatched_targets": 0,
+  "pass": true
+}

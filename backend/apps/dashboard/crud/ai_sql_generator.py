@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import inspect
 import json
 import re
@@ -42,6 +43,17 @@ from apps.dashboard.crud.sql_generation_validation import (
     _select_expression_columns,
     same_select_alias_reference_issues,
 )
+from apps.dashboard.crud.event_sql_contract import event_result_contract_issues
+from apps.dashboard.crud.funnel_sql_validation import FUNNEL_TIMING_RULE, funnel_timing_issues
+from apps.dashboard.crud.path_sql_validation import PATH_SEQUENCE_RULE, path_sequence_issues
+from apps.dashboard.crud.interval_sql_validation import INTERVAL_START_DATE_RULE, interval_start_date_issues
+from apps.dashboard.crud.cohort_sql_validation import COHORT_MATURITY_RULE, cohort_maturity_contract, cohort_maturity_issues
+from apps.dashboard.crud.cohort_input_grain import COHORT_INPUT_RULE, cohort_input_contract, cohort_input_grain_issues
+from apps.dashboard.crud.event_grain_validation import event_grain_issues
+from apps.dashboard.crud.sql_generation_rules import build_date_scaffold, date_scaffold_issues, generation_sql_rules
+from apps.dashboard.crud.sql_generation_lifecycle import current_generation_run, run_sql_generation, SqlGenerationTimeout
+from apps.dashboard.crud.sql_generation_telemetry import check_generation_deadline, llm_invocation
+from apps.dashboard.crud.sql_output_bindings import bind_output_columns, generation_plan
 from apps.dashboard.models.dashboard_model import (
     DashboardAiSqlGenerateRequest,
     DashboardAiSqlGenerateResponse,
@@ -374,6 +386,9 @@ class DashboardManualChartGraphState(TypedDict, total=False):
     sql_plan: dict[str, Any]
     response: DashboardAiSqlGenerateResponse
     sql_repair_attempts: int
+    sql_validation_fingerprints: list[str]
+    sql_repair_stalled: bool
+    output_binding_issues: list[str]
     graph_trace: list[dict[str, Any]]
     last_node: str
 
@@ -413,6 +428,8 @@ def _write_llm_output_debug_file(node: str, full_text: str, require_sql: bool) -
         payload = {
             "created_at": datetime.now().isoformat(timespec="milliseconds"),
             "node": node,
+            "request_id": current_generation_run().request_id if current_generation_run() else None,
+            "llm_call": current_generation_run().llm_calls if current_generation_run() else None,
             "require_sql": require_sql,
             "output": full_text or "",
         }
@@ -2697,7 +2714,7 @@ def _deterministic_validate_manual_config(
     )
 
 
-def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any]) -> dict[str, Any]:
+def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any], sql_dialect: str = "") -> dict[str, Any]:
     """
     是什么：把已通过校验的手动配置整理成 SQL 生成计划，作为 LLM SQL 节点的结构化上下文。
     """
@@ -2715,7 +2732,36 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
     revenue = normalized_config.get("revenue") if isinstance(normalized_config.get("revenue"), dict) else {}
     attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
     result_contract: dict[str, Any] = {}
-    if analysis_model == "property":
+    if analysis_model == "event":
+        metrics = [
+            _metric_base_ir(metric, metric_id=_metric_item_id(metric, index), source="metric")
+            for index, metric in enumerate(normalized_config.get("metrics") or [])
+        ]
+        groups = normalized_config.get("groups") or []
+        group_columns = [str(group.get("alias") or group.get("field") or "") for group in groups]
+        date_column = (str((time_config.get("field") or {}).get("field") or "")
+                       if (normalized_config.get("chart") or {}).get("type") != "metric" else "")
+        dimensions = ([date_column] if date_column else []) + group_columns
+        metric_columns = [metric["alias"] for metric in metrics]
+        formula_columns = [formula["alias"] for formula in formula_ir.get("formulas") or []]
+        result_contract = {
+            "type": "event_table",
+            "required_columns": [*dimensions, *metric_columns, *formula_columns],
+            "date_field": date_column,
+            "group_fields": group_columns,
+            "groups": groups,
+            "metric_fields": metric_columns,
+            "metrics": metrics,
+            "formula_metrics": formula_ir.get("formulas") or [],
+            "filters": normalized_config.get("filters") or {},
+            "time": time_config,
+            "date_tokens": list(parameter_tokens or []) if uses_date_parameters else [],
+            "final_grain": dimensions,
+            "dimension_domain": "configured_metric_inputs_union",
+            "dimension_domain_rule": "分组维度集合从当前指标已完成事件、日期、全局及指标筛选的事实输入中提取；多个指标取这些输入的并集，不能从同表未选择的事件扩大维度范围。",
+            "identifier_policy": "输出别名必须按当前方言引用，完整保留配置名称，不能生成中文逗号作为 SQL 分隔符。",
+        }
+    elif analysis_model == "property":
         group_fields = _property_result_group_fields(normalized_config)
         required_columns = ["property_date"]
         required_columns.extend(group_fields)
@@ -2747,6 +2793,8 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             "window_days": RETENTION_COHORT_DAYS,
             "required_columns": required_columns,
             "day_value": "retention_rate",
+            "maturity": cohort_maturity_contract(time_config),
+            "cohort_input": cohort_input_contract(normalized_config),
             "final_grain": [
                 "cohort_date",
                 *(["related_property"] if "related_property" in required_columns else []),
@@ -2766,6 +2814,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             ],
             "step_count": len(_list_dict_items(funnel.get("steps"))),
             "window": _normalized_funnel_window(funnel),
+            "timing": {"anchor": "first_step_time", "step_time": "step_time", "order": ">=", "rule": FUNNEL_TIMING_RULE},
             "final_grain": ["step_order", "step_name"],
         }
     elif analysis_model == "distribution":
@@ -2865,6 +2914,11 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
     elif analysis_model == "path":
         result_contract = {
             "type": "path_sankey",
+            "sequence_rule": PATH_SEQUENCE_RULE,
+            "session_boundary": {
+                "initial_event": (normalized_config.get("path") or {}).get("initialEvent") or (normalized_config.get("path") or {}).get("initial_event"),
+                "anchor_step": 1, "direction": "forward", "preserve_later_edges": True,
+            },
             "required_columns": ["path_source", "path_target", "path_value", "path_step"],
             "source_field": "path_source",
             "target_field": "path_target",
@@ -2896,6 +2950,8 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             ],
             "metric_method": str((revenue.get("metric") or {}).get("method") or "count"),
             "cost_enabled": cost_enabled,
+            "maturity": cohort_maturity_contract(time_config),
+            "cohort_input": cohort_input_contract(normalized_config),
         }
     elif analysis_model == "attribution":
         window = _normalized_attribution_window(attribution.get("window"))
@@ -2927,8 +2983,31 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
                 "attribution_event",
             ],
         }
+    if analysis_model == "event" and result_contract.get("required_columns"):
+        result_contract["quoted_output_columns"] = [
+            exp.to_identifier(name, quoted=True).sql(dialect=get_sqlglot_dialect(sql_dialect))
+            for name in result_contract["required_columns"]
+        ]
+    output_bindings = {}
+    if analysis_model == "event":
+        if result_contract["date_field"]:
+            output_bindings["chart_date"] = result_contract["date_field"]
+        output_bindings.update({f"chart_group_{index + 1}": name for index, name in enumerate(result_contract["group_fields"])})
+        output_bindings.update({f"chart_metric_{index + 1}": metric["alias"] for index, metric in enumerate(result_contract["metrics"])})
+        output_bindings.update({f"chart_formula_{index + 1}": formula["alias"] for index, formula in enumerate(result_contract["formula_metrics"])})
     return {
         "analysis_model": analysis_model,
+        "output_bindings": output_bindings,
+        "sql_rules": generation_sql_rules(sql_dialect, time_config),
+        "date_scaffold": {
+            key: value for key, value in build_date_scaffold(time_config, sql_dialect).items()
+            if key != "select_sql"
+        } if uses_date_parameters else {},
+        "date_scaffold_required": (
+            uses_date_parameters and analysis_model in {"event", "property"}
+            and str((normalized_config.get("chart") or {}).get("type") or "").lower() != "metric"
+            and build_date_scaffold(time_config, sql_dialect)["supported"]
+        ),
         "property": property_config,
         "retention": retention,
         "funnel": normalized_config.get("funnel") or {},
@@ -3139,6 +3218,8 @@ def _dashboard_config_prompt(
         related_property = retention.get("relatedProperty") if isinstance(retention.get("relatedProperty"), dict) else {}
         retention_rules = [
             "当前 analysisModel=retention，必须严格按 retention.entityField、initialEvent 和 returnEvent 生成 cohort 留存查询。",
+            COHORT_MATURITY_RULE,
+            COHORT_INPUT_RULE,
             "初始事件定义分母 cohort，回访事件定义后续行为；两个事件都必须使用各自字段对象中的 eventTable、eventNameField 和 eventName，不得猜测事件名。",
             "initialEventAlias 和 returnEventAlias 只表示用户设置的展示名称，不得替换 SQL 事件条件中的 eventName。",
             "initialEventFilters 和 returnEventFilters 与指标内筛选使用相同的 logic/rules 结构；必须分别应用于初始事件明细和回访事件明细，不得互换或合并到全局筛选。",
@@ -3184,6 +3265,7 @@ def _dashboard_config_prompt(
         steps = _list_dict_items(funnel.get("steps"))
         funnel_window_text = _funnel_window_prompt_text(funnel)
         funnel_rules = [
+            FUNNEL_TIMING_RULE,
             "当前 analysisModel=funnel，必须严格按 funnel.entityField、funnel.steps 的顺序生成用户漏斗查询。",
             "每个 steps[i].event 都必须使用字段对象中的 eventTable、eventNameField 和 eventName 定位事件，不得猜测事件名或用步骤序号替代事件条件。",
             "漏斗按同一分析主体去重计数：步骤 1 是样本基数，后续步骤必须在前一步完成后发生，并且整个步骤链必须满足 funnel.window。",
@@ -3244,6 +3326,7 @@ def _dashboard_config_prompt(
     if analysis_model == "path":
         path_events = _list_dict_items(path.get("events"))
         path_rules = [
+            PATH_SEQUENCE_RULE,
             "当前 analysisModel=path，只能使用 path 配置生成路径查询；不得读取或套用留存、漏斗、分布、间隔模型的指标语义。",
             "路径分析以同一分析主体的会话为基础，从 path.initialEvent 开始向后寻找后续节点；相邻事件时间间隔超过 sessionGapSeconds 时必须结束当前会话。",
             "参与分析事件最多 30 个，事件本身不支持事件筛选；每个事件最多配置一个 splitProperties 拆分属性，该属性是事件节点身份的一部分，同一事件不同属性值必须作为不同节点。",
@@ -3284,6 +3367,8 @@ def _dashboard_config_prompt(
         observation_days = revenue.get("observationDays") or revenue.get("observation_days") or 30
         revenue_rules = [
             "当前 analysisModel=revenue，只能使用 revenue 配置生成收入查询；不得读取或套用事件、留存、漏斗、分布、间隔、路径模型的配置语义。",
+            COHORT_MATURITY_RULE,
+            COHORT_INPUT_RULE,
             "revenue.initialEvent 定义同期 Cohort：按日期和分组对 revenue.entityField 去重，得到 cohort_date 与 cohort_size；revenue.paymentEvent 只统计 Cohort 主体在初始日期后观察期内的行为。",
             "initialEvent 和 paymentEvent 必须分别使用字段对象中的 eventTable、eventNameField 和 eventName 定位事件，禁止从名称猜测其他事件。",
             "metric.method=count 表示付费事件总次数；entity_count 表示触发付费事件的主体去重数；per_entity_count 表示总次数除以触发主体数；property_sum/property_avg 必须使用 metric.field。",
@@ -3731,12 +3816,17 @@ def _retention_sql_result_issues(
     ))
     if missing:
         issues.append(f"留存 SQL 缺少固定结果列：{'、'.join(missing)}。")
+    issues.extend(cohort_maturity_issues(sql, normalized_config.get("time") or {}, RETENTION_COHORT_DAYS, sql_dialect or "mysql"))
+    issues.extend(cohort_input_grain_issues(sql, normalized_config, sql_dialect or "mysql"))
     return _unique_text_items(issues)
 
 
 def _funnel_sql_result_issues(
         sql: str,
         normalized_config: dict[str, Any],
+        *,
+        schema: str = "",
+        sql_dialect: str | None = None,
 ) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "funnel":
         return []
@@ -3750,7 +3840,11 @@ def _funnel_sql_result_issues(
     ]
     normalized_sql = str(sql or "").lower()
     missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
-    return [f"漏斗 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    issues = [f"漏斗 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
+    funnel = dict(normalized_config.get("funnel") or {})
+    funnel["window"] = _normalized_funnel_window(funnel)
+    issues.extend(funnel_timing_issues(sql, funnel, normalized_config.get("time") or {}, schema, sql_dialect or "mysql"))
+    return _unique_text_items(issues)
 
 
 def _sql_number_literal(expression: exp.Expression | None) -> float | None:
@@ -3988,6 +4082,7 @@ def _interval_sql_result_issues(
             issues.append("当前 StarRocks/Doris 数据源不支持 PERCENTILE_CONT ... WITHIN GROUP；请改用 PERCENTILE_APPROX(interval_seconds, 分位数)。")
         if not re.search(r"\bpercentile_approx\s*\(", normalized_sql):
             issues.append("当前 StarRocks/Doris 数据源必须使用 PERCENTILE_APPROX 计算四分位数。")
+    issues.extend(interval_start_date_issues(sql, sql_dialect or "mysql"))
     return _unique_text_items(issues)
 
 
@@ -4038,6 +4133,8 @@ def _path_sql_result_issues(
     if not re.search(r"\b(?:step_in_session|session_step|row_number\s*\()", normalized_sql):
         issues.append("路径 SQL 必须生成会话内步骤序号，并将源节点步骤映射为 path_step。")
     issues.extend(_path_epoch_timestampdiff_issues(sql, schema, sql_dialect))
+    issues.extend(path_sequence_issues(sql, sql_dialect or "mysql", schema=schema,
+                                       path_config=normalized_config.get("path") or {}))
     return _unique_text_items(issues)
 
 
@@ -4172,6 +4269,8 @@ def _revenue_sql_result_issues(
         issues.append("收入 SQL 必须按配置属性执行 SUM 聚合。")
     if metric_method == "property_avg" and not re.search(r"\bavg\s*\(", normalized_sql):
         issues.append("收入 SQL 必须按配置属性执行 AVG 聚合。")
+    issues.extend(cohort_maturity_issues(sql, normalized_config.get("time") or {}, observation_days, sql_dialect or "mysql"))
+    issues.extend(cohort_input_grain_issues(sql, normalized_config, sql_dialect or "mysql"))
     return _unique_text_items(issues)
 
 
@@ -4323,6 +4422,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
     common_prompt = (
         "你是 BI 手动看板 SQL 生成节点。确定性配置校验已经通过，你只负责根据当前配置、公式 IR 和 SQL plan 生成只读 SELECT SQL。\n"
         "必须使用配置里的时间字段、时间粒度、指标、筛选、分组、计算指标；time.field + time.grain 要生成日期维度；groups 只生成额外维度。不要编造未提供字段。\n"
+        "最终输出列必须逐字匹配 sql-plan.result_contract.required_columns，标识符直接使用 quoted_output_columns；不得增加/删除名称中的空格或将别名改为相似名称。\n"
         "请求中的 chart_type 非空时，返回的 chart_type 必须保持一致，不得改成其他图表类型。"
         "仅当请求中的 chart_type 为 donut，或用户明确要求环形图、圆环图、donut chart 时才允许返回 donut。\n"
         "当用户问题或当前配置涉及复杂分析，例如留存、转化、活跃、复购、漏斗、cohort 分析、分组比率、时间窗口对比时，优先使用 CTE 分层结构。"
@@ -4332,9 +4432,9 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
         "如果一个输出列或过滤条件依赖另一个输出列，必须先在子查询或 CTE 中生成被依赖字段，再由外层查询引用；例如 interval_label 依赖 interval_order 时，必须拆成 bucket_numbers 和 bucketed 两个查询层级。"
         "禁止生成 CASE ... END AS interval_order, CASE ... interval_order ... END AS interval_label 这类同层别名引用。\n"
         "时间边界层规则：\n"
-        "- bounds CTE 必须只返回一行时间边界，供后续 CTE 通过 JOIN 或 CROSS JOIN 引用。\n"
+        "- 时间范围与 SQL 结构以 sql-plan.sql_rules 和 date_scaffold 为准；不得强制采用固定名称的 bounds CTE。\n"
         "- 聚合函数和窗口函数不得出现在同一查询层的 WHERE 条件中。\n"
-        "- 当结束日期来自 MAX(date_field) 时，必须先在独立 CTE 中计算最大日期，再在下一层 bounds CTE 中计算开始日期。\n"
+        "- 仅当配置明确以最大业务日期为边界时，才可在独立聚合层计算边界；不得自行增加 MAX(date_field) 扫描。\n"
         "- 禁止生成 WHERE date_field >= <包含 MAX(date_field) 的表达式>。\n"
         "- 仅当当前图表配置要求可变时间范围时，日期边界必须使用当前配置提供的看板日期参数占位符，不能使用数据库当前日期函数。\n"
         "- 具体日期格式和分区字段类型必须服从当前 SQL 方言与配置的日期参数类型。\n"
@@ -4381,7 +4481,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             ")\n"
             "SELECT cohort_date,\n"
             "       COUNT(DISTINCT entity_id) AS cohort_size,\n"
-            "       ROUND(COUNT(DISTINCT CASE WHEN period_offset = 0 THEN entity_id END) * 100.0 / NULLIF(COUNT(DISTINCT entity_id), 0), 2) AS day_0,\n"
+            "       CASE WHEN cohort_date <= <typed_observation_end> THEN ROUND(COUNT(DISTINCT CASE WHEN period_offset = 0 THEN entity_id END) * 100.0 / NULLIF(COUNT(DISTINCT entity_id), 0), 2) ELSE NULL END AS day_0,\n"
             "       ...按同一条件聚合规则继续输出 day_1 到 day_7...\n"
             "FROM matched\n"
             "GROUP BY cohort_date\n"
@@ -4391,15 +4491,18 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "day_0 到 day_7 都表示对应周期回访人数占 cohort_size 的比例；不得输出长表 matched_rate 代替这些固定列。\n"
             "当 retention.simultaneous.enabled=true 且 aggregation=count 时，simultaneous_value 必须表示回访窗口内已匹配主体的事件明细总次数，不是平均次数、留存率或其他比例；若 simultaneous 先按 entity_id + behavior_date 聚合为 simultaneous_count，最终 Cohort 层必须使用 SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value，禁止使用 AVG、COUNT(simultaneous_count)、COUNT(*)、除以 cohort_size 或 ROUND 包装成比例。\n"
             "同时展示事件必须按 entity_id + behavior_date 聚合，并将 behavior_date 与 matched.behavior_date 关联；不得只按 cohort_date 关联，否则会漏掉第 1 日到第 7 日的回访事件。simultaneous_value 只汇总 matched 回访窗口内的记录，不得参与 cohort 分母或 period_offset 分桶。\n"
+            + COHORT_MATURITY_RULE + "\n"
+            + COHORT_INPUT_RULE + "\n"
         )
     elif str(analysis_model or "event") == "funnel":
         structure_prompt = (
+            FUNNEL_TIMING_RULE + "\n"
             "当前 SQL plan 的 analysis_model=funnel，必须使用漏斗专用的逐步匹配结构；禁止改写为彼此独立的事件人数统计。\n"
             "漏斗 SQL 结构范式：\n"
             "WITH bounds AS (...仅一行时间边界...),\n"
             "scoped_steps AS (...仅保留配置步骤事件，输出 entity_id、step_order、event_time、关联属性和步骤筛选结果；通过显式 JOIN/CROSS JOIN bounds 应用日期边界...),\n"
-            "step_1 AS (...按 entity_id 选择步骤 1 的首次有效发生时间...),\n"
-            "step_2 AS (...显式 JOIN step_1 与步骤 2 明细，要求 step_2_time >= step_1_time，并选择首次有效步骤 2...),\n"
+            "step_1 AS (...按 entity_id 选择步骤 1 的 MIN(event_time) AS first_step_time、MIN(event_time) AS step_time...),\n"
+            "step_2 AS (...显式 JOIN step_1 p 与步骤 2 明细 e，要求 e.event_time >= p.step_time，窗口相对 p.first_step_time；输出 p.entity_id、p.first_step_time、MIN(e.event_time) AS step_time...),\n"
             "...按 funnel.steps 配置顺序继续建立 step_N，每一步都必须发生在前一步之后，并满足相对步骤 1 的 funnel.window...,\n"
             "step_counts AS (...按配置顺序输出每一步完成主体数...),\n"
             "SELECT step_order, step_name, step_count,\n"
@@ -4413,6 +4516,7 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
         )
     elif str(analysis_model or "event") == "interval":
         structure_prompt = (
+            INTERVAL_START_DATE_RULE + "\n"
             "当前 SQL plan 的 analysis_model=interval，必须使用间隔分析专用的事件排序、配对、上限过滤和统计结构。\n"
             "间隔 SQL 结构范式：\n"
             "WITH scoped_events AS (...仅保留起点/终点事件、主体、事件时间、分组、关联属性和各自筛选...),\n"
@@ -4540,21 +4644,24 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
         )
     elif str(analysis_model or "event") == "path":
         structure_prompt = (
+            PATH_SEQUENCE_RULE + "\n"
             "当前 SQL plan 的 analysis_model=path，必须使用路径分析专用的会话切分、节点排序和相邻边聚合结构；禁止把路径分析改写为漏斗或普通事件计数。\n"
             "路径 SQL 结构范式：\n"
             "WITH scoped_events AS (...按 path.events 只保留配置事件，输出 entity_id、event_time、event_name、拆分属性和分组...),\n"
             "ordered_events AS (...按 entity_id 和配置分组排序，并用会话间隔识别会话边界...),\n"
             "sessionized AS (...为每条事件生成 session_id，并保留每个会话的事件顺序...),\n"
             "session_steps AS (...先用 ROW_NUMBER() 生成 step_in_session ...),\n"
-            "path_nodes AS (...从 session_steps 读取 step_in_session，从 path.initialEvent 开始向后取最多 10 个步骤；事件拆分属性参与节点身份...),\n"
-            "edges AS (...使用 LAG/LEAD 在同一会话内生成相邻 path_source/path_target，过滤跨会话边...),\n"
+            "valid_sessions AS (...从 session_steps 筛选 step_in_session=1 且原始事件键等于 path.initialEvent 的会话，输出全部主体、会话和配置分组键...),\n"
+            "path_nodes AS (...session_steps s 按全部主体、会话和配置分组键 INNER JOIN valid_sessions v，保留这些会话向后的最多 10 个步骤；事件拆分属性参与节点身份...),\n"
+            "edge_candidates AS (...使用 LEAD(event_name) OVER (PARTITION BY entity_id, session_id, <groups> ORDER BY step_in_session ASC) 生成 path_target，以 step_in_session AS path_step；禁止重新按 event_time 排序...),\n"
+            "edges AS (...从 edge_candidates 外层过滤 path_target IS NOT NULL...),\n"
             "SELECT path_source, path_target, COUNT(*) AS path_value, path_step\n"
             "FROM edges\n"
             "GROUP BY path_step, path_source, path_target\n"
             "ORDER BY path_step, path_value DESC。\n"
             "SQL 方言约束：窗口函数别名（例如 step_in_session）不能在生成该别名的同一 SELECT 层 WHERE、JOIN 或 HAVING 中引用；必须先在 session_steps 等中间 CTE 生成，再由外层过滤。禁止写 WHERE step_in_session <= 10 与 ROW_NUMBER() AS step_in_session 同层。\n"
             "下面的错误示例仅用于识别和禁止，绝对不要照抄：session_steps AS (SELECT uid, ROW_NUMBER() OVER (PARTITION BY uid ORDER BY event_time) AS step_in_session FROM sessionized WHERE event_name = 'configured_event' OR step_in_session = 1)。错误原因是 step_in_session 在本层才生成，且编号前过滤会改变真实路径顺序。\n"
-            "正确示例必须分层：session_steps AS (SELECT uid, session_id, event_time, event_name, ROW_NUMBER() OVER (PARTITION BY uid, session_id ORDER BY event_time) AS step_in_session FROM sessionized), path_nodes AS (SELECT s.uid, s.session_id, s.event_time, s.event_name, s.step_in_session FROM session_steps s WHERE s.step_in_session <= 10)。示例字段和值仅为结构示意，必须替换为当前配置。\n"
+            "正确示例必须分层：session_steps AS (SELECT uid, session_id, event_time, event_name, ROW_NUMBER() OVER (PARTITION BY uid, session_id ORDER BY event_time) AS step_in_session FROM sessionized), valid_sessions AS (SELECT uid,session_id FROM session_steps WHERE step_in_session=1 AND event_name=<configured_initial_event>), path_nodes AS (SELECT s.uid, s.session_id, s.event_time, s.event_name, s.step_in_session FROM session_steps s INNER JOIN valid_sessions v ON s.uid=v.uid AND s.session_id=v.session_id WHERE s.step_in_session <= 10)。示例字段和值仅为结构示意，必须替换为当前配置；配置有分组时同样保留并连接全部分组键。\n"
             "ROW_NUMBER、LAG、LEAD 等所有窗口函数别名都遵守相同分层规则；LEAD/LAG 生成的 path_target 或 previous_event 也必须在下一层过滤 NULL。推荐 edge_candidates 先生成 LEAD 列，再由 edges 外层过滤，避免在生成窗口别名的同层 WHERE 中引用它。会话间隔必须按声明的时间字段类型计算：若 event_time 为 DATETIME/TIMESTAMP，使用 TIMESTAMPDIFF(SECOND, prev_time, event_time)；若为 Unix 毫秒 BIGINT，使用 event_time - prev_time 与当前配置秒数乘以 1000 后的数值比较，例如 1800 秒写成 > 1800000，禁止把 BIGINT 直接传给 TIMESTAMPDIFF。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；path_value 是边的会话流量，必须应用 sessionGapSeconds。\n"
         )
@@ -4568,13 +4675,15 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "matched AS (...按 entityField 关联 Cohort 与观察期内付费事件，并计算 day_offset...),\n"
             "daily_values AS (...严格按 revenue.metric.method 计算每天指标...),\n"
             "SELECT cohort_date, cohort_size,\n"
-            "       <day_0_value> AS day_0, ... <day_N_value> AS day_N\n"
+            "       CASE WHEN cohort_date <= <typed_observation_end> THEN <day_0_value> ELSE NULL END AS day_0, ... <按 day_N 日期成熟条件保护的指标> AS day_N\n"
             "       <启用成本时输出 cost_value>\n"
             "FROM ... GROUP BY cohort_date, <groups> ORDER BY cohort_date, <groups>。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。\n"
             "最终 cohort_date 必须是可展示的 DATE 或 YYYY-MM-DD 日期文本，不能保留为 YYYYMMDD 编码值。\n"
             "day_offset 只能作为中间计算字段；day_0 到 day_N 的值必须遵守 metric_method，不得输出回访比例或主体留存率。\n"
             "只允许使用 sql-plan.revenue，禁止读取 retention、funnel、distribution、interval 或 path 配置。\n"
+            + COHORT_MATURITY_RULE + "\n"
+            + COHORT_INPUT_RULE + "\n"
         )
     elif str(analysis_model or "event") == "attribution":
         structure_prompt = (
@@ -4718,6 +4827,7 @@ def _dashboard_sql_user_prompt(state: DashboardManualChartGraphState) -> str:
     request = state["request"]
     datasource = state["datasource"]
     validation = state.get("validation_result")
+    model_plan = generation_plan(state.get("sql_plan") or {}, get_sqlglot_dialect(state.get("sql_dialect") or "") or "")
     return "\n".join([
         "确定性校验已通过，请生成 SQL。",
         "",
@@ -4730,7 +4840,7 @@ def _dashboard_sql_user_prompt(state: DashboardManualChartGraphState) -> str:
         "</formula-ir>",
         "",
         "<sql-plan>",
-        _safe_json(state.get("sql_plan") or {}),
+        _safe_json(model_plan),
         "</sql-plan>",
         "",
         _dashboard_config_prompt(
@@ -4742,6 +4852,10 @@ def _dashboard_sql_user_prompt(state: DashboardManualChartGraphState) -> str:
             sql_dialect=state.get("sql_dialect"),
             allowed_tables=state.get("allowed_tables") or [],
         ),
+        "",
+        "最终结果列约定（优先于显示名称）：",
+        _safe_json(model_plan.get("result_contract", {}).get("quoted_output_columns", [])),
+        model_plan.get("output_binding_instruction", ""),
     ])
 
 
@@ -4771,6 +4885,7 @@ def _log_graph_node_timing(
 ) -> None:
     context = _graph_node_log_context(state)
     message = (
+        f"request_id={current_generation_run().request_id if current_generation_run() else '-'}, "
         f"Dashboard manual chart graph node {'failed' if error else 'finished'}: "
         f"node={node}, "
         f"status={status}, "
@@ -4787,6 +4902,7 @@ def _log_graph_node_timing(
 
 
 async def _timed_graph_node(node: str, handler: Any, state: DashboardManualChartGraphState) -> dict[str, Any]:
+    check_generation_deadline()
     started_at = time.perf_counter()
     try:
         result = handler(state)
@@ -4813,6 +4929,7 @@ async def _timed_graph_node(node: str, handler: Any, state: DashboardManualChart
 
 
 def _timed_graph_node_sync(node: str, handler: Any, state: DashboardManualChartGraphState) -> dict[str, Any]:
+    check_generation_deadline()
     started_at = time.perf_counter()
     try:
         result = handler(state)
@@ -4855,7 +4972,8 @@ def _invoke_llm_json(
     require_sql: bool = True,
     node: str | None = None,
 ) -> DashboardAiSqlGenerateResponse:
-    result = llm.invoke(messages)
+    with llm_invocation(llm, node):
+        result = llm.invoke(messages)
     full_text = _text_chunk_content(getattr(result, "content", result))
     AppLogUtil.info(f"Dashboard manual chart graph raw node result: {full_text}")
     if node:
@@ -4870,7 +4988,8 @@ async def _async_invoke_llm_json(
     node: str | None = None,
 ) -> DashboardAiSqlGenerateResponse:
     if hasattr(llm, "ainvoke"):
-        result = await llm.ainvoke(messages)
+        with llm_invocation(llm, node):
+            result = await llm.ainvoke(messages)
         full_text = _text_chunk_content(getattr(result, "content", result))
     elif hasattr(llm, "invoke"):
         return await to_thread(_invoke_llm_json, llm, messages, require_sql, node)
@@ -4995,7 +5114,10 @@ def _route_after_deterministic_validate(state: DashboardManualChartGraphState) -
 
 
 def _node_build_sql_plan(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    sql_plan = _build_sql_plan(state.get("normalized_config") or {}, state.get("formula_ir") or {})
+    sql_plan = _build_sql_plan(
+        state.get("normalized_config") or {}, state.get("formula_ir") or {},
+        state.get("sql_dialect") or getattr(state.get("datasource"), "type", ""),
+    )
     return {
         "sql_plan": sql_plan,
         "graph_trace": _append_trace(state, "build_sql_plan"),
@@ -5010,12 +5132,17 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
         SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ], node="generate_sql")
+    response.sql, binding_issues = bind_output_columns(
+        response.sql, (state.get("sql_plan") or {}).get("output_bindings") or {},
+        get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+    )
     response.analysis_model = analysis_model if analysis_model in ANALYSIS_MODEL_LABELS else "event"
     validation = state.get("validation_result")
     if validation:
         response.intent = response.intent or validation.intent
     return {
         "response": response,
+        "output_binding_issues": binding_issues,
         "graph_trace": _append_trace(state, "generate_sql"),
         "last_node": "generate_sql",
     }
@@ -5037,7 +5164,7 @@ def _dashboard_sql_repair_user_prompt(state: DashboardManualChartGraphState) -> 
         "</sql-validation-issues>",
         "",
         f"上一版 SQL 未通过{analysis_label} SQL 协议或方言校验。请根据 sql-plan.result_contract 和上述具体错误完整重写 SQL。",
-        "不得删除日期、权限、事件、筛选、关联属性或同时展示约束，不得通过改列名掩盖错误。",
+        "不得删除日期、权限、事件、筛选、关联属性或同时展示约束。输出别名不匹配时必须按 quoted_output_columns 修正；其他聚合或筛选错误不能仅靠重命名掩盖。",
     ])
 
 
@@ -5056,9 +5183,14 @@ async def _async_node_repair_sql(state: DashboardManualChartGraphState) -> dict[
         )),
         HumanMessage(content=_dashboard_sql_repair_user_prompt(state)),
     ], node=node_name)
+    response.sql, binding_issues = bind_output_columns(
+        response.sql, (state.get("sql_plan") or {}).get("output_bindings") or {},
+        get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+    )
     response.analysis_model = analysis_model
     return {
         "response": response,
+        "output_binding_issues": binding_issues,
         "sql_repair_attempts": int(state.get("sql_repair_attempts") or 0) + 1,
         "graph_trace": _append_trace(state, node_name),
         "last_node": node_name,
@@ -5074,6 +5206,22 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     sql = (response.sql or "").strip()
     datasource = state.get("datasource")
     datasource_type = getattr(datasource, "type", None) or state.get("sql_dialect")
+    # A failed parse is not an empty AST: semantic checks would manufacture
+    # missing-event/field errors and send misleading feedback to the repair node.
+    try:
+        parse_sql = re.sub(r"\{\{dashboard_[a-z0-9_]+\}\}", "20260101", sql, flags=re.IGNORECASE)
+        statements = [item for item in sqlglot.parse(parse_sql, read=get_sqlglot_dialect(datasource_type or "")) if item is not None]
+    except sqlglot.errors.SqlglotError as exc:
+        details = getattr(exc, "errors", None) or []
+        detail = details[0] if details else {}
+        response.success = False
+        response.message = "生成 SQL 存在语法错误。"
+        response.issues = [
+            f"SQL 解析失败：第 {detail.get('line', '?')} 行、第 {detail.get('col', '?')} 列，"
+            f"{detail.get('description') or type(exc).__name__}。请修正标点、引号和标识符引用。"
+        ]
+        response.advice = "先修复语法错误，再检查事件、字段与聚合配置。"
+        return _sql_validation_result(state, response)
     dialect_issue: str | None = None
     if sql and datasource_type:
         try:
@@ -5111,7 +5259,7 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
                 datasource=state.get("datasource"),
             )
         if analysis_model == "funnel":
-            return _funnel_sql_result_issues(sql, normalized)
+            return _funnel_sql_result_issues(sql, normalized, schema=str(state.get("schema") or ""), sql_dialect=state.get("sql_dialect"))
         if analysis_model == "distribution":
             return _distribution_sql_result_issues(
                 sql,
@@ -5251,6 +5399,8 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     elif funnel_issues := _funnel_sql_result_issues(
         sql,
         state.get("normalized_config") or {},
+        schema=str(state.get("schema") or ""),
+        sql_dialect=state.get("sql_dialect"),
     ):
         response.success = False
         response.message = "生成 SQL 未满足漏斗分析生成要求。"
@@ -5352,9 +5502,60 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 存在字段引用或日期类型错误。"
         response.advice = "请根据字段来源和实际类型修复完整查询。"
         response.issues = _unique_text_items(list(response.issues or []) + structural_issues)
+    # Gather independent deterministic failures together, so a repair has the
+    # complete contract rather than discovering one restriction per LLM call.
+    additional_issues = _model_sql_result_issues() + list(state.get("output_binding_issues") or [])
+    additional_issues.extend(_json_subfield_sql_issues(
+        sql, state.get("json_subfield_requirements") or [], dialect=state.get("sql_dialect") or "",
+    ))
+    contract = {
+        **((state.get("sql_plan") or {}).get("result_contract") or {}),
+        "date_scaffold_required": (state.get("sql_plan") or {}).get("date_scaffold_required", False),
+    }
+    contract_sql = re.sub(r"\{\{(dashboard_[a-z0-9_]+)\}\}", r":\1", sql, flags=re.IGNORECASE)
+    contract_statements = sqlglot.parse(contract_sql, read=get_sqlglot_dialect(datasource_type or ""))
+    for statement in contract_statements:
+        additional_issues.extend(event_result_contract_issues(
+            statement, contract, get_sqlglot_dialect(datasource_type or "") or "",
+        ))
+        additional_issues.extend(event_grain_issues(
+            statement, contract, get_sqlglot_dialect(datasource_type or "") or "",
+        ))
+    if (state.get("sql_plan") or {}).get("date_scaffold_required"):
+        additional_issues.extend(date_scaffold_issues(
+            sql, state["sql_plan"]["date_scaffold"], state.get("sql_dialect") or datasource_type or "",
+        ))
+    if additional_issues:
+        if response.success:
+            response.message = "生成 SQL 与图表配置不一致。"
+        response.success = False
+        response.advice = "请按当前配置及全部校验错误修复 SQL。"
+        response.issues = _unique_text_items(list(response.issues or []) + additional_issues)
+    return _sql_validation_result(state, response)
+
+
+def _sql_validation_result(state: DashboardManualChartGraphState, response: DashboardAiSqlGenerateResponse) -> dict[str, Any]:
+    history = list(state.get("sql_validation_fingerprints") or [])
+    canonical_sql = response.sql.strip()
+    parsed = _sqlglot_statements_for_generation_validation(response.sql, state.get("sql_dialect"))
+    if parsed:
+        canonical_sql = ";".join(statement.sql(comments=False) for statement in parsed)
+    fingerprint = hashlib.sha256(_safe_json([canonical_sql, sorted(response.issues)]).encode("utf-8")).hexdigest()
+    stalled = not response.success and fingerprint in history
+    if stalled:
+        response.advice = "自动修复重复返回相同 SQL 和错误，已停止无效重试。请查看具体校验错误。"
+    if not response.success:
+        history.append(fingerprint)
+    AppLogUtil.info(
+        f"Dashboard SQL validation: request_id={current_generation_run().request_id if current_generation_run() else '-'}, "
+        f"success={response.success}, repair_attempts={state.get('sql_repair_attempts', 0)}, "
+        f"stalled={stalled}, fingerprint={fingerprint}, issues={_safe_json(response.issues)}"
+    )
     return {
         "response": response,
-        "graph_trace": _append_trace(state, "validate_sql"),
+        "sql_validation_fingerprints": history,
+        "sql_repair_stalled": stalled,
+        "graph_trace": _append_trace(state, "validate_sql", "passed" if response.success else "failed"),
         "last_node": "validate_sql",
     }
 
@@ -5367,6 +5568,7 @@ def _route_after_sql_validate(state: DashboardManualChartGraphState) -> str:
         and response.success is False
         and bool(str(response.sql or "").strip())
         and bool(response.issues)
+        and not state.get("sql_repair_stalled")
         and int(state.get("sql_repair_attempts") or 0) < settings.DASHBOARD_SQL_MAX_REPAIR_ATTEMPTS
     ):
         if analysis_model in ANALYSIS_MODEL_LABELS:
@@ -5613,6 +5815,8 @@ async def generate_dashboard_ai_sql(
     做了什么：按 collect_context -> normalize_manual_config -> build_formula_ir -> deterministic_validate -> build_sql_plan -> generate_sql -> validate_sql -> explain_advice -> finalize_response 编排。
     """
     try:
+        if current_generation_run() is None:
+            return await run_sql_generation(generate_dashboard_ai_sql(session, current_user, request))
         final_state = await MANUAL_CHART_GRAPH.ainvoke({
             "session": session,
             "current_user": current_user,
@@ -5620,6 +5824,8 @@ async def generate_dashboard_ai_sql(
             "graph_trace": [],
         })
     except Exception as exc:
+        if isinstance(exc, (SqlGenerationTimeout, HTTPException)):
+            raise
         AppLogUtil.error(f"Dashboard manual chart graph failed: {exc}")
         raise HTTPException(status_code=500, detail=f"AI 生成 SQL 失败：{exc}") from exc
 

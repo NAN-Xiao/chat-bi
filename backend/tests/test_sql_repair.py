@@ -919,6 +919,24 @@ def test_mysql_compatible_sql_rejects_ambiguous_duplicate_cte_outputs() -> None:
     with pytest.raises(SqlStructureValidationError, match="同名输出列"):
         validate_mysql_compatible_sql(sql)
 
+
+def test_mysql_order_by_resolves_unique_output_alias_before_duplicate_sources():
+    sql = "WITH a AS (SELECT 1 AS uid), b AS (SELECT 2 AS uid) SELECT a.uid AS uid FROM a CROSS JOIN b ORDER BY uid"
+    validate_mysql_compatible_sql(sql)
+
+
+@pytest.mark.parametrize("query", [
+    "SELECT uid FROM a CROSS JOIN b ORDER BY uid",
+    "SELECT a.uid AS uid FROM a CROSS JOIN b WHERE uid > 0 ORDER BY uid",
+    "SELECT a.uid AS uid FROM a CROSS JOIN b GROUP BY uid",
+    "SELECT a.uid AS uid FROM a CROSS JOIN b ORDER BY SUM(uid)",
+    "SELECT a.uid AS uid,b.uid AS uid FROM a CROSS JOIN b ORDER BY uid",
+])
+def test_output_alias_does_not_hide_ambiguous_source_or_duplicate_output(query):
+    sql = "WITH a AS (SELECT 1 AS uid), b AS (SELECT 2 AS uid) " + query
+    with pytest.raises(SqlStructureValidationError, match="同名输出列"):
+        validate_mysql_compatible_sql(sql)
+
 def test_regenerate_sql_after_error_streaming_reasoning_uses_structured_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

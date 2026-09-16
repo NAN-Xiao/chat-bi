@@ -1,0 +1,35 @@
+{
+  "expected_counts": [
+    203,
+    40,
+    0
+  ],
+  "actual": [
+    {
+      "step_order": 1,
+      "step_name": "游戏启动",
+      "step_count": 203,
+      "step_rate": "1.0000000000000000000000",
+      "step_conversion_rate": null,
+      "step_dropoff_rate": null
+    },
+    {
+      "step_order": 2,
+      "step_name": "当日活跃",
+      "step_count": 40,
+      "step_rate": "0.1970443349753694581281",
+      "step_conversion_rate": "0.1970443349753694581281",
+      "step_dropoff_rate": "0.802955665024630541872"
+    },
+    {
+      "step_order": 3,
+      "step_name": "后端充值",
+      "step_count": 0,
+      "step_rate": "0E-22",
+      "step_conversion_rate": "0E-22",
+      "step_dropoff_rate": "1.000000000000000000000"
+    }
+  ],
+  "counts_match": true,
+  "pass": true
+}
