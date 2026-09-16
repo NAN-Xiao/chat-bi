@@ -68,7 +68,7 @@ const defaultForm = {
   id: null as number | string | null,
   name: '',
   description: '',
-  active: false,
+  active: true,
   status: null as KnowledgeBaseStatus | null,
 }
 
@@ -235,7 +235,6 @@ const beforeKnowledgeUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFi
 
   pendingFile.value = rawFile
   uploadFileName.value = rawFile.name
-  form.value.active = false
   form.value.status = 'PENDING'
   setNameFromFile(rawFile)
   ElMessage.success(t('knowledge_base.upload_selected'))
@@ -439,6 +438,9 @@ onBeforeUnmount(() => {
           <el-table-column :label="t('knowledge_base.updated_at')" width="220">
             <template #default="{ row }">{{ formatCardTime(row.update_time) }}</template>
           </el-table-column>
+          <el-table-column :label="t('knowledge_base.updated_by')" width="180" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.uploaded_by_name || '—' }}</template>
+          </el-table-column>
           <el-table-column fixed="right" :label="t('ds.actions')" width="320">
             <template #default="{ row }">
               <div class="table-actions">
@@ -512,7 +514,7 @@ onBeforeUnmount(() => {
         <el-form-item prop="active" :label="t('knowledge_base.status')">
           <el-switch
             v-model="form.active"
-            :disabled="form.status !== 'READY' || Boolean(pendingFile)"
+            :disabled="Boolean(form.id) && form.status !== 'READY' && !pendingFile && !form.active"
             :active-text="t('knowledge_base.active')"
             :inactive-text="t('knowledge_base.inactive')"
           />
@@ -598,6 +600,10 @@ onBeforeUnmount(() => {
           <div class="summary-item">
             <span class="summary-label">{{ t('knowledge_base.updated_at') }}</span>
             <span class="summary-value">{{ formatCardTime(selectedCard?.update_time) }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">{{ t('knowledge_base.updated_by') }}</span>
+            <span class="summary-value">{{ selectedCard?.uploaded_by_name || '—' }}</span>
           </div>
           <div class="summary-item summary-description">
             <span class="summary-label">{{ t('knowledge_base.description') }}</span>

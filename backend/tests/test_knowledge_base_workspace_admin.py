@@ -175,10 +175,11 @@ def test_non_ready_document_cannot_be_activated(monkeypatch) -> None:
         tenant_id=23,
         visibility_scope=WORKSPACE_SCOPE.value,
         status=KnowledgeBaseStatusEnum.PROCESSING,
+        active=False,
         content=None,
         file_id="test.md",
     )
-    session = SimpleNamespace(get=lambda _model, _id: record)
+    session = SimpleNamespace(get=lambda _model, _id, **_kwargs: record)
     monkeypatch.setattr(knowledge_base_api, "_scope_tenant_id", lambda *_args, **_kwargs: 23)
     monkeypatch.setattr(knowledge_base_api, "_require_record_manage", lambda *_args: None)
 
@@ -203,11 +204,13 @@ def test_non_ready_document_cannot_be_activated(monkeypatch) -> None:
 
 
 def test_activation_preflights_capacity_and_returns_chinese_counts(monkeypatch) -> None:
+    monkeypatch.setattr(knowledge_base_api, "lock_knowledge_activation", lambda _session: None)
     record = SimpleNamespace(
         id=1,
         tenant_id=23,
         visibility_scope=WORKSPACE_SCOPE.value,
         status=KnowledgeBaseStatusEnum.READY,
+        active=False,
         content="完整正文",
         file_id="test.md",
     )
@@ -216,7 +219,7 @@ def test_activation_preflights_capacity_and_returns_chinese_counts(monkeypatch) 
         committed = False
         rolled_back = False
 
-        def get(self, _model, _id):
+        def get(self, _model, _id, **_kwargs):
             return record
 
         def add(self, _record):

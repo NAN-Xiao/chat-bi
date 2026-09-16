@@ -12,9 +12,10 @@ from xml.etree import ElementTree as ET
 
 from sqlmodel import Session
 
+from apps.knowledge_base.context import KnowledgeContextError, build_knowledge_context, lock_knowledge_activation
 from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseStatusEnum
 from common.core.db import engine
-from common.core.task_queue import current_task_tenant_id, task_handler
+from common.core.task_queue import current_task_context, current_task_tenant_id, task_handler
 from common.utils.file_utils import AppFileUtils
 
 logger = logging.getLogger(__name__)
@@ -117,15 +118,27 @@ def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
     """
     record_id = int(payload["id"])
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
+    expected_file_id = payload.get("file_id")
 
     with Session(engine) as session:
-        record = session.get(KnowledgeBase, record_id)
+        record = session.get(KnowledgeBase, record_id, with_for_update=True)
         if record is None or int(record.tenant_id) != tenant_id:
             return {"id": record_id, "tenant_id": tenant_id, "status": "missing"}
+        if "file_id" not in payload:
+            # Narrow rollout support for already-queued legacy jobs: the stored
+            # task ID must prove that this job still owns the current upload.
+            legacy_task_id = (current_task_context() or {}).get("id")
+            if not legacy_task_id or record.task_id != legacy_task_id:
+                return {"id": record_id, "tenant_id": tenant_id, "status": "superseded"}
+            expected_file_id = record.file_id
+            logger.info("Processing verified legacy knowledge upload task: id=%s task_id=%s", record_id, legacy_task_id)
+        if record.file_id != expected_file_id:
+            return {"id": record_id, "tenant_id": tenant_id, "status": "superseded"}
+        if record.status not in {KnowledgeBaseStatusEnum.PENDING, KnowledgeBaseStatusEnum.PROCESSING}:
+            return {"id": record_id, "tenant_id": tenant_id, "status": record.status}
 
         now = datetime.now()
         record.status = KnowledgeBaseStatusEnum.PROCESSING
-        record.active = False
         record.error_message = None
         record.update_time = now
         session.add(record)
@@ -134,24 +147,50 @@ def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
 
         try:
             content = _extract_content(record)
-            record.content = content
-            record.status = KnowledgeBaseStatusEnum.READY
-            record.error_message = None
+            error = None
         except Exception as exc:
             logger.exception(
                 "Knowledge base document processing failed: id=%s tenant_id=%s",
                 record_id,
                 tenant_id,
             )
-            record.status = KnowledgeBaseStatusEnum.FAILED
+            content = None
             message = str(exc).strip()
-            record.error_message = (
+            error = (
                 message[:1000]
                 if isinstance(exc, ValueError)
                 and message
                 and any("\u4e00" <= char <= "\u9fff" for char in message)
                 else KNOWLEDGE_PROCESS_FAILED_MESSAGE
             )
+
+        # Reload under a row lock so replacement and manual deactivation during
+        # extraction cannot be overwritten by this processing task.
+        session.refresh(record, with_for_update=True)
+        if record.file_id != expected_file_id:
+            return {"id": record_id, "tenant_id": tenant_id, "status": "superseded"}
+        if record.status != KnowledgeBaseStatusEnum.PROCESSING:
+            return {"id": record_id, "tenant_id": tenant_id, "status": record.status}
+
+        if error is None:
+            record.content = content
+            record.status = KnowledgeBaseStatusEnum.READY
+            record.error_message = None
+            if record.active:
+                lock_knowledge_activation(session)
+                session.add(record)
+                session.flush()
+                try:
+                    build_knowledge_context(
+                        session, tenant_id=tenant_id, surface="knowledge_base_activation",
+                    )
+                except KnowledgeContextError as exc:
+                    record.active = False
+                    record.error_message = exc.message
+        else:
+            record.status = KnowledgeBaseStatusEnum.FAILED
+            record.active = False
+            record.error_message = error
         record.update_time = datetime.now()
         session.add(record)
         session.commit()

@@ -27,6 +27,20 @@ KNOWLEDGE_CONTEXT_SYSTEM_RULES = """知识库是当前请求的最高业务语�
 生成与修复 SQL 时都必须保留知识库口径，不得因低优先级元数据、Data Skill 或历史 SQL 的冲突而退回旧口径。知识不足时明确说明，不得编造。"""
 
 
+def lock_knowledge_activation(session: Session) -> None:
+    """Serialize capacity-changing transactions until commit/rollback.
+
+    Platform knowledge overlaps every workspace, so activation uses one shared
+    database lock rather than independent workspace/document locks. Assistant
+    reads do not acquire this lock. SQLite already serializes write transactions.
+    """
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        session.exec(select(func.pg_advisory_xact_lock(0x4B4E4F57, 0x41435456)))
+    elif dialect != "sqlite":
+        raise RuntimeError("知识库启用校验不支持当前系统数据库类型。")
+
+
 class KnowledgeContextError(RuntimeError):
     """A knowledge-context failure with a stable internal code and Chinese message."""
 

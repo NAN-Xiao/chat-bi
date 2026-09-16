@@ -2094,6 +2094,7 @@
     "status": "상태",
     "active": "사용 가능",
     "inactive": "비활성",
+    "updated_by": "업데이트 사용자",
     "updated_at": "업데이트 시간",
     "scope": "지식 범위",
     "publish_version": "릴리스 버전",

@@ -2143,6 +2143,7 @@
     "status": "Status",
     "active": "Available",
     "inactive": "Disabled",
+    "updated_by": "Updated by",
     "updated_at": "Updated at",
     "scope": "Knowledge Scope",
     "publish_version": "Release Version",

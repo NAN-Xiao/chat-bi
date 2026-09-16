@@ -2144,6 +2144,7 @@
     "status": "状态",
     "active": "可用",
     "inactive": "停用",
+    "updated_by": "更新",
     "updated_at": "更新时间",
     "scope": "知识范围",
     "publish_version": "发布版本",

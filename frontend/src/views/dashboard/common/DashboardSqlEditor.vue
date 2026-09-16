@@ -8774,9 +8774,6 @@ const analysisModelFormContext = {
                 近似计算
               </el-checkbox>
             </div>
-            <el-button v-if="builderGenerationActive" @click="cancelBuilderSqlGeneration">
-              取消
-            </el-button>
             <el-button
               type="primary"
               :disabled="!canRunEditorPreview"

@@ -17,10 +17,11 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import desc, or_
 from sqlmodel import select
 
-from apps.knowledge_base.context import KnowledgeContextError, build_knowledge_context
+from apps.knowledge_base.context import KnowledgeContextError, build_knowledge_context, lock_knowledge_activation
 from apps.knowledge_base.models import (
     KnowledgeBase,
     KnowledgeBaseItem,
@@ -219,6 +220,8 @@ def _serialize_record(
         id=int(record.id),
         tenant_id=int(record.tenant_id),
         create_by=record.create_by,
+        uploaded_by=record.uploaded_by,
+        uploaded_by_name=record.uploaded_by_name,
         name=record.name,
         description=record.description,
         content=record.content,
@@ -304,7 +307,7 @@ async def save_knowledge_base(
     id: Optional[int] = Form(None),
     name: str = Form(...),
     description: str = Form(""),
-    active: bool = Form(False),
+    active: Optional[bool] = Form(None),
     visibility_scope: str = Form(KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value),
     tenant_id: Optional[int] = Form(None),
     file: Optional[UploadFile] = File(None),
@@ -318,36 +321,33 @@ async def save_knowledge_base(
     if not clean_name:
         raise _knowledge_http_error(400, "knowledge_name_required", "请输入知识库名称。")
     clean_description = description.strip()
-    if active and file is not None:
-        raise _knowledge_http_error(
-            400,
-            "knowledge_content_not_ready",
-            "新建或更换文档时请先停用知识库，待文档处理完成后再启用。",
-        )
-
     requested_scope = _parse_scope(visibility_scope)
     now = _now()
     should_process = file is not None
 
     if id:
-        record = session.get(KnowledgeBase, int(id))
+        record = await run_in_threadpool(session.get, KnowledgeBase, int(id), with_for_update=True)
         if not record:
             raise _knowledge_http_error(404, "knowledge_not_found", "知识库不存在。")
         scope = _parse_scope(record.visibility_scope)
         scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
         _require_record_manage(current_user, record, scope_tenant_id)
+        was_active = bool(record.active)
+        requested_active = was_active if active is None else active
     else:
         _require_scope_manage(current_user, requested_scope)
         if file is None:
             raise _knowledge_http_error(400, "knowledge_file_required", "请先选择知识库文档。")
         scope = requested_scope
         scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
+        was_active = False
+        requested_active = True if active is None else active
         record = KnowledgeBase(
             tenant_id=scope_tenant_id,
             create_by=int(current_user.id),
             name=clean_name,
             description=clean_description,
-            active=active,
+            active=requested_active,
             visibility_scope=scope,
             status=KnowledgeBaseStatusEnum.PENDING,
             create_time=now,
@@ -356,7 +356,7 @@ async def save_knowledge_base(
 
     record.name = clean_name
     record.description = clean_description
-    record.active = active
+    record.active = requested_active
     record.update_time = now
 
     if file is not None:
@@ -367,20 +367,22 @@ async def save_knowledge_base(
         record.file_name = file_name
         record.file_ext = file_ext
         record.status = KnowledgeBaseStatusEnum.PENDING
-        record.active = False
+        record.uploaded_by = int(current_user.id)
+        record.uploaded_by_name = current_user.name
         record.error_message = None
         record.task_id = None
         if old_file_id and old_file_id != file_id:
             AppFileUtils.delete_file(old_file_id)
 
-    if record.active:
-        if record.status != KnowledgeBaseStatusEnum.READY and record.status != KnowledgeBaseStatusEnum.READY.value:
+    is_ready = record.status in {KnowledgeBaseStatusEnum.READY, KnowledgeBaseStatusEnum.READY.value}
+    if record.active and not should_process:
+        if not is_ready and not was_active:
             raise _knowledge_http_error(
                 400,
                 "knowledge_content_not_ready",
                 "文档尚未处理完成，请检查处理状态后重试。",
             )
-        if not (record.content or "").strip():
+        if is_ready and not (record.content or "").strip():
             raise _knowledge_http_error(
                 400,
                 "knowledge_content_not_ready",
@@ -389,8 +391,9 @@ async def save_knowledge_base(
 
     session.add(record)
     session.flush()
-    if record.active:
+    if record.active and is_ready:
         try:
+            await run_in_threadpool(lock_knowledge_activation, session)
             build_knowledge_context(
                 session,
                 tenant_id=int(record.tenant_id),
@@ -399,30 +402,33 @@ async def save_knowledge_base(
         except KnowledgeContextError as exc:
             session.rollback()
             raise _knowledge_http_error(400, exc.code, exc.message, details=exc.details) from exc
+        record.error_message = None
     session.commit()
     session.refresh(record)
 
     if should_process:
+        process_payload = {"id": int(record.id), "tenant_id": int(record.tenant_id), "file_id": record.file_id}
         try:
             register_builtin_tasks()
             task = await enqueue_task(
                 "knowledge_base.process_document",
-                {"id": int(record.id), "tenant_id": int(record.tenant_id)},
+                process_payload,
                 created_by=int(current_user.id),
                 tenant_id=int(record.tenant_id),
             )
-            record.task_id = task.get("id")
+            task_id = task.get("id")
         except Exception:
-            record.task_id = None
-            record.error_message = None
+            task_id = None
             background_tasks.add_task(
                 process_knowledge_base_document,
-                {"id": int(record.id), "tenant_id": int(record.tenant_id)},
+                process_payload,
             )
-        record.update_time = _now()
-        session.add(record)
-        session.commit()
-        session.refresh(record)
+        await run_in_threadpool(session.refresh, record, with_for_update=True)
+        if record.file_id == process_payload["file_id"]:
+            record.task_id = task_id
+            session.add(record)
+            session.commit()
+            session.refresh(record)
 
     return _serialize_record(current_user, record, scope_tenant_id)
 

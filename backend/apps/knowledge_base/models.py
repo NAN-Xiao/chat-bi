@@ -42,6 +42,8 @@ class KnowledgeBase(SQLModel, table=True):
     id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
     tenant_id: int = Field(default=1, sa_column=Column(BigInteger, nullable=False, server_default="1"))
     create_by: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
+    uploaded_by: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
+    uploaded_by_name: Optional[str] = Field(default=None, sa_column=Column(String(255), nullable=True))
     name: str = Field(sa_column=Column(String(255), nullable=False))
     description: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     content: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
@@ -74,6 +76,8 @@ class KnowledgeBaseItem(BaseModel):
     id: int
     tenant_id: int
     create_by: Optional[int] = None
+    uploaded_by: Optional[int] = None
+    uploaded_by_name: Optional[str] = None
     name: str
     description: Optional[str] = None
     content: Optional[str] = None

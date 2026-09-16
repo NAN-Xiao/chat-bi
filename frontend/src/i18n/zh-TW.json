@@ -2143,6 +2143,7 @@
     "status": "狀態",
     "active": "可用",
     "inactive": "停用",
+    "updated_by": "更新",
     "updated_at": "更新時間",
     "scope": "知識範圍",
     "publish_version": "發布版本",

@@ -7,6 +7,8 @@ export interface KnowledgeBaseItem {
   id: number | string
   tenant_id: number | string
   create_by?: number | string | null
+  uploaded_by?: number | string | null
+  uploaded_by_name?: string | null
   name: string
   description?: string | null
   content?: string | null
