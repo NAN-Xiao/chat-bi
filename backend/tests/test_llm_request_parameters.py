@@ -50,7 +50,10 @@ async def _surface_llm(surface, config, monkeypatch):
     created = []
 
     async def create_service(*args, **kwargs):
-        service = chat_llm.LLMService(*args, **kwargs, config=config)
+        recommendation_mode = kwargs.pop("recommendation_mode", False)
+        assert recommendation_mode is True
+        service_config = chat_llm._recommendation_llm_config(config)
+        service = chat_llm.LLMService(*args, **kwargs, config=service_config)
         created.append(service)
         return service
 
