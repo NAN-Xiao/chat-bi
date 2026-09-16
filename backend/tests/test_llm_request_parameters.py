@@ -84,6 +84,11 @@ def test_model_requests_use_only_configured_parameters(surface, params, monkeypa
     config = LLMConfig(model_id=7, model_type="openai", model_name="test-model",
                        api_base_url="https://model.test/v1", api_key="test-key",
                        additional_params=copy.deepcopy(params))
+    expected_config = (
+        chat_llm._recommendation_llm_config(config)
+        if surface == "recommendation"
+        else config
+    )
     requests = []
 
     def handle(request):
@@ -91,6 +96,8 @@ def test_model_requests_use_only_configured_parameters(surface, params, monkeypa
         requests.append(body)
         expected = {key: value for key, value in params.items() if key != "extra_body"}
         expected.update(params.get("extra_body", {}))
+        if surface == "recommendation":
+            expected.pop("enable_thinking", None)
         # 像严格的模型服务一样拒绝未经声明的参数，不在异常后删除参数重试。
         for key in ("enable_thinking", "temperature", "top_p", "reasoning_effort", "vendor_option"):
             if key in body and key not in expected:
@@ -108,7 +115,7 @@ def test_model_requests_use_only_configured_parameters(surface, params, monkeypa
         with httpx.Client(transport=httpx.MockTransport(handle)) as sync_client:
             async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as async_client:
                 def factory(received_config):
-                    assert received_config == config
+                    assert received_config == expected_config
                     transport_config = received_config.model_copy(update={"additional_params": {
                         **received_config.additional_params,
                         "http_client": sync_client, "http_async_client": async_client,

@@ -108,6 +108,55 @@ def test_recommendation_mode_does_not_inject_qwen_parameter_into_other_models(mo
     assert captured[0].additional_params == {"temperature": 0.6}
 
 
+def test_recommendation_mode_removes_stale_qwen_parameter_from_gpt(monkeypatch):
+    config = _config(
+        model_name="gpt-4.1",
+        additional_params={
+            "temperature": 0.6,
+            "extra_body": {"enable_thinking": True, "vendor_option": "value"},
+        },
+    )
+    captured = []
+    session, user = _patch_service_context(monkeypatch, config, captured)
+
+    asyncio.run(
+        chat_llm.LLMService.create(
+            session,
+            user,
+            ChatQuestion(chat_id=3001),
+            None,
+            recommendation_mode=True,
+        )
+    )
+
+    assert captured[0].additional_params == {
+        "temperature": 0.6,
+        "extra_body": {"vendor_option": "value"},
+    }
+    assert config.additional_params["extra_body"]["enable_thinking"] is True
+
+
+def test_recommendation_mode_removes_empty_extra_body_from_gpt(monkeypatch):
+    config = _config(
+        model_name="gpt-4o",
+        additional_params={"temperature": 0.6, "extra_body": {"enable_thinking": False}},
+    )
+    captured = []
+    session, user = _patch_service_context(monkeypatch, config, captured)
+
+    asyncio.run(
+        chat_llm.LLMService.create(
+            session,
+            user,
+            ChatQuestion(chat_id=3001),
+            None,
+            recommendation_mode=True,
+        )
+    )
+
+    assert captured[0].additional_params == {"temperature": 0.6}
+
+
 def test_normal_smart_qa_keeps_qwen_thinking_configuration(monkeypatch):
     config = _config(
         additional_params={"extra_body": {"enable_thinking": True, "vendor_option": "value"}}

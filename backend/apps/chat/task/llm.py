@@ -148,15 +148,22 @@ APP_TEMP_SQL_TEXT_KEY = "app_temp_sql_text"
 def _recommendation_llm_config(config: LLMConfig) -> LLMConfig:
     additional_params = dict(config.additional_params or {})
     extra_body = additional_params.get("extra_body")
-    supports_thinking_toggle = str(config.model_name or "").lower().startswith("qwen3")
-    if isinstance(extra_body, dict) and "enable_thinking" in extra_body:
-        supports_thinking_toggle = True
-    if not supports_thinking_toggle:
+    is_qwen_reasoning_model = str(config.model_name or "").lower().startswith("qwen3")
+    if is_qwen_reasoning_model:
+        recommendation_extra_body = dict(extra_body) if isinstance(extra_body, dict) else {}
+        recommendation_extra_body["enable_thinking"] = False
+        additional_params["extra_body"] = recommendation_extra_body
+        return config.model_copy(update={"additional_params": additional_params})
+
+    if not isinstance(extra_body, dict) or "enable_thinking" not in extra_body:
         return config
 
-    recommendation_extra_body = dict(extra_body) if isinstance(extra_body, dict) else {}
-    recommendation_extra_body["enable_thinking"] = False
-    additional_params["extra_body"] = recommendation_extra_body
+    recommendation_extra_body = dict(extra_body)
+    recommendation_extra_body.pop("enable_thinking", None)
+    if recommendation_extra_body:
+        additional_params["extra_body"] = recommendation_extra_body
+    else:
+        additional_params.pop("extra_body", None)
     return config.model_copy(update={"additional_params": additional_params})
 
 
