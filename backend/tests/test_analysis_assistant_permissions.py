@@ -238,7 +238,7 @@ def test_chat_builds_business_sql_context_before_streaming(monkeypatch: pytest.M
         return None
 
     async def _fake_create_llm(*_args, **_kwargs):
-        return _Llm(), SimpleNamespace(model_id=7, model_name="test-model")
+        return _Llm(), analysis_api.LLMConfig(model_id=7, model_name="test-model", model_type="openai")
 
     async def _fake_resolve_time_policy(**_kwargs):
         return _resolved_time()
@@ -333,7 +333,7 @@ def test_chat_deduplicates_real_unresolved_time_policy_trace_after_snapshot(
         return None
 
     async def _fake_create_llm(*_args, **_kwargs):
-        return _Llm(), SimpleNamespace(model_id=7, model_name="test-model")
+        return _Llm(), analysis_api.LLMConfig(model_id=7, model_name="test-model", model_type="openai")
 
     async def _fake_resolve_time_policy(**_kwargs):
         return resolve_analysis_time_policy(
@@ -622,7 +622,7 @@ def test_report_interpretation_does_not_resolve_chat_time_policy(
     llm = _Llm()
 
     async def _fake_create_llm(*_args, **_kwargs):
-        return llm, SimpleNamespace(model_id=7, model_name="test-model")
+        return llm, analysis_api.LLMConfig(model_id=7, model_name="test-model", model_type="openai")
 
     async def _unexpected_time_policy(**_kwargs):
         raise AssertionError("报表解读不得解析综合分析聊天时间策略")
@@ -747,7 +747,7 @@ def _mock_time_safe_chat_runtime(
         return None
 
     async def _fake_create_llm(*_args, **_kwargs):
-        return _Llm(), SimpleNamespace(model_id=7, model_name="test-model")
+        return _Llm(), analysis_api.LLMConfig(model_id=7, model_name="test-model", model_type="openai")
 
     async def _fake_resolve_time_policy(**_kwargs):
         return _resolved_time()
@@ -1007,8 +1007,11 @@ def test_chat_repaired_sql_is_time_enforced_before_retry_execution(
     response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
     payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
 
-    assert repair_calls == ["repair"]
-    assert len(execute_calls) == 2
+    assert repair_calls == (["repair"] if repair_trigger == "database" else [])
+    assert len(execute_calls) == (2 if repair_trigger == "database" else 1)
+    if repair_trigger == "semantic":
+        assert 'quality_warnings' in payload
+        assert 'semantic mismatch' in payload
     assert all("2026-07-13" in sql and "2026-07-26" in sql for sql in execute_calls)
     assert '"status":"failed"' not in payload
     assert '"type":"finish"' in payload

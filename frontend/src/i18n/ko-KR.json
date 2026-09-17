@@ -1842,7 +1842,8 @@
       "FILTER_CUSTOM_PROMPT": "사용자 정의 Agent 매칭",
       "EXECUTE_SQL": "SQL 실행",
       "GENERATE_PICTURE": "이미지 생성",
-      "FILTER_DATA_SKILL": "데이터 Skill 매칭"
+      "FILTER_DATA_SKILL": "데이터 Skill 매칭",
+      "KNOWLEDGE_REVIEW": "지식 규칙 검증"
     },
     "log_system": "대화 템플릿",
     "log_question": "현재 질문",

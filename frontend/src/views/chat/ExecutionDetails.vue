@@ -13,6 +13,7 @@ import LogTerm from './execution-component/LogTerm.vue'
 import LogSQLSample from './execution-component/LogSQLSample.vue'
 import LogCustomPrompt from './execution-component/LogCustomPrompt.vue'
 import LogDataQuery from './execution-component/LogDataQuery.vue'
+import LogKnowledgeReview from './execution-component/LogKnowledgeReview.vue'
 import LogChooseTable from './execution-component/LogChooseTable.vue'
 import LogGeneratePicture from './execution-component/LogGeneratePicture.vue'
 import LogWithAi from '@/views/chat/execution-component/LogWithAi.vue'
@@ -121,6 +122,7 @@ defineExpose({
           />
           <LogChooseTable v-else-if="ele.operate_key === 'CHOOSE_TABLE'" :item="ele" />
           <LogDataQuery v-else-if="ele.operate_key === 'EXECUTE_SQL'" :item="ele" />
+          <LogKnowledgeReview v-else-if="ele.operate_key === 'KNOWLEDGE_REVIEW'" :item="ele" />
           <LogGeneratePicture v-else-if="ele.operate_key === 'GENERATE_PICTURE'" :item="ele" />
           <LogWithAi v-else :item="ele" />
         </div>

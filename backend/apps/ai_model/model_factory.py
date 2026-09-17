@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any, Type
 from urllib.parse import urlparse
 
 from langchain.chat_models.base import BaseChatModel
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlmodel import Session, select
 
 from apps.ai_model.openai.llm import BaseChatOpenAI
@@ -33,6 +33,22 @@ class LLMConfig(BaseModel):
     api_key: Optional[str] = None
     api_base_url: Optional[str] = None
     additional_params: Dict[str, Any] = {}
+    knowledge_review_json_mode: bool = False
+    knowledge_review_extra_body: Dict[str, Any] = {}
+
+    @model_validator(mode='before')
+    @classmethod
+    def extract_review_options(cls, values):
+        values = dict(values)
+        parameters = dict(values.get('additional_params') or {})
+        for key in ('knowledge_review_json_mode', 'knowledge_review_extra_body'):
+            if key in parameters:
+                value = parameters.pop(key)
+                if key in values and values[key] != value:
+                    raise ValueError(f'Conflicting model configuration: {key}')
+                values[key] = value
+        values['additional_params'] = parameters
+        return values
 
     class Config:
         """
@@ -58,6 +74,8 @@ class LLMConfig(BaseModel):
             self.model_name,
             self.api_key,
             self.api_base_url,
+            self.knowledge_review_json_mode,
+            json.dumps(self.knowledge_review_extra_body, sort_keys=True),
             hashable_params
         ))
 

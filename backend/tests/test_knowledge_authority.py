@@ -11,7 +11,9 @@ KNOWLEDGE = '<knowledge-context><workspace-knowledge><document id="6"><knowledge
 
 class ReviewModel:
     def __init__(self, verdict):
-        self.verdict = verdict
+        self.verdict = {'output_complies': verdict.get('status') == 'resolved',
+                        'relationship': 'unrelated' if verdict.get('status') == 'not_applicable' else 'overrides',
+                        'reason': '测试中的业务规则判断', **verdict}
         self.messages = []
 
     def invoke(self, messages):
@@ -23,7 +25,7 @@ def test_explicit_document_evidence_can_resolve_business_rule_conflict():
     model = ReviewModel({"status": "resolved", "document_id": "6", "quote": "渠道使用 adinfo.mediaSource。"})
     assert knowledge_resolves_business_conflict(model, KNOWLEDGE, "渠道必须使用 adinfo.channel", "SELECT adinfo.mediaSource")
     submitted = json.loads(model.messages[-1].content)
-    assert KNOWLEDGE == submitted["knowledge_context"]
+    assert '渠道使用 adinfo.mediaSource。' in submitted['documents']['6']['content']
     assert "渠道必须使用 adinfo.channel" == submitted["lower_priority_rule"]
 
 
@@ -68,7 +70,7 @@ def test_model_failure_is_explicit_and_does_not_drop_business_validation():
         def invoke(self, messages):
             raise TimeoutError("unavailable")
 
-    with pytest.raises(KnowledgeContextError, match="冲突校验失败"):
+    with pytest.raises(KnowledgeContextError, match="暂时不可用"):
         knowledge_resolves_business_conflict(UnavailableModel(), KNOWLEDGE, "业务校验", "SELECT 1")
 
 
@@ -76,8 +78,8 @@ def test_overriding_one_sql_rule_does_not_skip_other_skill_rules():
     from apps.chat.task.llm import _data_skill_sql_validation_violation
 
     rules = [
-        {"required_sql_contains": ["old_field"], "message": "旧字段口径"},
-        {"required_sql_contains": ["required_filter"], "message": "另一条校验"},
+        {"rule_type": "business", "required_sql_contains": ["old_field"], "message": "旧字段口径"},
+        {"rule_type": "business", "required_sql_contains": ["required_metric"], "message": "另一条校验"},
     ]
     skill = '<!-- data-skill-sql-validation: ' + json.dumps(rules) + ' -->'
     violation = _data_skill_sql_validation_violation(
@@ -93,7 +95,7 @@ def test_analysis_identifier_retry_accepts_document_override():
 
     knowledge = KNOWLEDGE.replace("渠道使用 adinfo.mediaSource。", "事件使用 `Paid`。")
     model = ReviewModel({"status": "resolved", "document_id": "6", "quote": "事件使用 `Paid`。"})
-    output = analysis_api._llm_text_with_data_skill_identifier_retry(
+    output = analysis_api._llm_text_for_executable_sql(
         model, [HumanMessage(content=knowledge)], "event = 'OldPaid'",
         initial_text="SELECT * FROM events WHERE event = 'Paid'",
     )

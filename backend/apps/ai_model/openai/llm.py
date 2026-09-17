@@ -24,6 +24,7 @@ from langchain_openai import ChatOpenAI
 from langchain_openai.chat_models.base import _create_usage_metadata
 
 from common.utils.utils import AppLogUtil
+from common.utils.llm_attempts import record_llm_retry
 
 _OPENAI_RETRYABLE_STATUS_CODES = {408, 409, 429}
 _OPENAI_RETRYABLE_EXCEPTION_NAMES = {
@@ -66,6 +67,9 @@ class OpenAIRetryFailureLogHandler(logging.Handler):
     """Promote retryable OpenAI SDK failures into the application log."""
 
     def emit(self, record: logging.LogRecord) -> None:
+        if record.getMessage().startswith("Retrying request to "):
+            record_llm_retry()
+            return
         if not record.getMessage().startswith("Encountered ") or not record.exc_info:
             return
         error = record.exc_info[1]

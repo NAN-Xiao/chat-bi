@@ -900,66 +900,6 @@
     "independent": true
   },
   {
-    "id": 76,
-    "workspace": "修仙",
-    "dashboard_id": "17531de20e5d439f9ddfb2eeececced5",
-    "dashboard_name": "ROI看板",
-    "datasource_id": 6,
-    "question": "最近90天各投放批次ROI随回收天数如何变化，只比较成熟批次。",
-    "topic": "ROI总览",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "trend",
-    "independent": true
-  },
-  {
-    "id": 77,
-    "workspace": "修仙",
-    "dashboard_id": "17531de20e5d439f9ddfb2eeececced5",
-    "dashboard_name": "ROI看板",
-    "datasource_id": 6,
-    "question": "最近60天各地区ROI排名如何，并列出投入与回收金额。",
-    "topic": "地区ROI",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "ranking",
-    "independent": true
-  },
-  {
-    "id": 78,
-    "workspace": "修仙",
-    "dashboard_id": "17531de20e5d439f9ddfb2eeececced5",
-    "dashboard_name": "ROI看板",
-    "datasource_id": 6,
-    "question": "最近60天不同广告与地区组合的ROI有何差异？",
-    "topic": "广告地区ROI",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 79,
-    "workspace": "修仙",
-    "dashboard_id": "17531de20e5d439f9ddfb2eeececced5",
-    "dashboard_name": "ROI看板",
-    "datasource_id": 6,
-    "question": "最近30天投放安装量按日如何变化？",
-    "topic": "安装趋势",
-    "time_scope": "last_30_days",
-    "expected_answer_kind": "trend",
-    "independent": true
-  },
-  {
-    "id": 80,
-    "workspace": "修仙",
-    "dashboard_id": "17531de20e5d439f9ddfb2eeececced5",
-    "dashboard_name": "ROI看板",
-    "datasource_id": 6,
-    "question": "识别默认统计窗口内ROI明显偏低的地区或广告组合。",
-    "topic": "ROI异常",
-    "time_scope": "default_28d",
-    "expected_answer_kind": "anomaly",
-    "independent": true
-  },
-  {
     "id": 81,
     "workspace": "修仙",
     "dashboard_id": "a34aef6cb7214f7fa23e5846a0a66236",

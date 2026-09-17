@@ -24,18 +24,36 @@ from common.error import AppDBConnectionError, DataUnavailableError, SingleMessa
 
 
 @pytest.mark.parametrize('finish_step', [ChatFinishStep.QUERY_DATA, ChatFinishStep.GENERATE_CHART])
-def test_null_time_projection_never_emits_success(monkeypatch, finish_step):
+def test_null_time_projection_preserves_successful_sql_with_chart_warning(monkeypatch, finish_step):
     service = FakeSmartQAService(sql_answer=_sql_answer("SELECT STR_TO_DATE(raw_day, '%Y%m%d') AS day, value FROM orders"))
     service.ds.type = 'mysql'
     service.get_chart_type_from_sql_answer = lambda *args, **kwargs: 'line'
     service.execute_sql = lambda **kwargs: {'fields': ['day', 'value'], 'data': [{'day': None, 'value': 56}]}
     monkeypatch.setattr(graph, 'validate_user_query_sql_or_raise', lambda **kwargs: (kwargs['sql'], {'orders'}))
     chunks = list(graph.run_smart_qa_graph(service, in_chat=True, stream=True, finish_step=finish_step))
-    assert service.saved_data == []
+    assert service.saved_data[0]['data'] == [{'day': None, 'value': 56}]
     assert not service.chart_generated
     assert not service.repair_contexts
-    assert any(event['type'] == 'error' for event in _events(chunks))
-    assert not any(event.get('content') == 'execute-success' for event in _events(chunks))
+    assert not any(event['type'] == 'error' for event in _events(chunks))
+    assert any(event.get('content') == 'execute-success' for event in _events(chunks))
+    assert any(event.get('notice', {}).get('reason') == 'chart_dimension_unavailable' for event in _events(chunks))
+
+
+def test_quality_warnings_are_visible_without_sql_retry(monkeypatch):
+    sql = 'SELECT amount FROM orders'
+    service = FakeSmartQAService(sql_answer=_sql_answer(sql))
+    service.sql_quality_warnings = ['配置期望净额，当前返回原始金额']
+    monkeypatch.setattr(graph, 'validate_user_query_sql_or_raise', lambda **kwargs: (kwargs['sql'], {'orders'}))
+    chunks = list(graph.run_smart_qa_graph(service, in_chat=True, stream=True, finish_step=ChatFinishStep.GENERATE_CHART))
+    events = _events(chunks)
+    warning = next(e for e in events if e.get('notice', {}).get('reason') == 'semantic_mismatch')
+    assert warning['notice']['quality_warnings'] == service.sql_quality_warnings
+    assert len(service.executed) == 1
+    assert service.saved_sql == [sql]
+    assert not service.repair_contexts
+    assert service.chart_generated
+    assert not any(e['type'] == 'error' for e in events)
+    assert any(event.get('content') == 'execute-success' for event in _events(chunks))
 
 
 def test_date_format_conflict_repairs_before_execution(monkeypatch):
@@ -1008,6 +1026,125 @@ def test_prepare_and_execute_share_two_attempt_budget(monkeypatch: pytest.Monkey
     assert any(event["type"] == "error" for event in _events(chunks))
 
 
+def test_verified_knowledge_failure_repairs_and_revalidates_before_execution(monkeypatch):
+    from apps.knowledge_base.authority import KnowledgeOutputValidationError, KnowledgeVerdict
+    first = 'SELECT old_amount FROM orders'
+    repaired = 'SELECT net_amount FROM orders'
+    service = FakeSmartQAService(sql_answer=_sql_answer(first))
+    service.repair_answers = [_sql_answer(repaired)]
+    original_check = service.check_sql
+    checks=[]
+    def check_sql(*args, **kwargs):
+        answer = kwargs['res']
+        checks.append(answer)
+        if 'old_amount' in answer:
+            raise KnowledgeOutputValidationError(KnowledgeVerdict(
+                status='invalid_output',relationship='overrides',document_id='6',
+                quote='金额按净额统计。',reason='金额字段错误'))
+        return original_check(*args, **kwargs)
+    service.check_sql = check_sql
+    monkeypatch.setattr(graph, 'validate_user_query_sql_or_raise', lambda **kw:(kw['sql'],{'orders'}))
+    chunks=list(graph.run_smart_qa_graph(service,in_chat=True,stream=True,finish_step=ChatFinishStep.GENERATE_CHART))
+    assert len(checks)==2
+    assert [a['sql'] for a in service.executed]==[repaired]
+    assert service.repair_contexts[0].reason==SqlRepairReason.KNOWLEDGE_VALIDATION
+    assert '金额按净额统计。' in service.repair_contexts[0].error_message
+    assert service.chart_generated
+    assert not any(e['type']=='error' for e in _events(chunks))
+
+
+def test_true_knowledge_conflict_never_retries_or_executes():
+    from apps.knowledge_base.context import KnowledgeContextError
+    service=FakeSmartQAService(sql_answer=_sql_answer('SELECT amount FROM orders'))
+    def check_sql(*args,**kwargs):
+        raise KnowledgeContextError('knowledge_conflict','同层知识存在冲突')
+    service.check_sql=check_sql
+    chunks=list(graph.run_smart_qa_graph(service,in_chat=True,stream=True,finish_step=ChatFinishStep.GENERATE_CHART))
+    assert not service.repair_contexts
+    assert not service.executed
+    assert not service.chart_generated
+    assert any(e['type']=='error' for e in _events(chunks))
+
+
+@pytest.mark.parametrize('stage', ['initial', 'scope', 'dynamic'])
+@pytest.mark.parametrize('kind', ['parse_message', 'wrapped_skill', 'wrapped_date', 'wrapped_knowledge'])
+def test_repairable_violation_routes_consistently_at_every_prepare_stage(monkeypatch, stage, kind):
+    from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
+    from apps.knowledge_base.authority import KnowledgeOutputValidationError, KnowledgeVerdict
+    first='SELECT old_amount FROM orders'
+    repaired='SELECT net_amount FROM orders'
+    service=FakeSmartQAService(sql_answer=_sql_answer(first), current_assistant=SimpleNamespace(type=1) if stage=='dynamic' else None)
+    service.repair_answers=[_sql_answer(repaired)]
+    checks=[]
+    def validate(sql):
+        checks.append(sql)
+        if sql!=first:return
+        if kind=='parse_message':raise SingleMessageError('Parse SQL Error: invalid projection')
+        inner={
+            'wrapped_skill':llm.DataSkillSqlValidationError('必须使用净额字段'),
+            'wrapped_date':ChatDateFilterConfigurationError('missing_date_filter'),
+            'wrapped_knowledge':KnowledgeOutputValidationError(KnowledgeVerdict(
+                status='invalid_output',relationship='overrides',output_complies=False,
+                document_id='6',quote='金额必须按净额统计。',reason='使用了旧字段')),
+        }[kind]
+        raise SingleMessageError('SQL准备失败') from inner
+    base_check=service.check_sql
+    if stage=='initial':
+        def check_sql(**kwargs):
+            sql,tables=base_check(**kwargs);validate(sql);return sql,tables
+        service.check_sql=check_sql
+    if stage=='scope':
+        def scope(**kwargs):
+            validate(kwargs['sql']);return kwargs['sql'],{'orders'}
+        monkeypatch.setattr(graph,'validate_user_query_sql_or_raise',scope)
+    else:
+        monkeypatch.setattr(graph,'validate_user_query_sql_or_raise',lambda **kw:(kw['sql'],{'orders'}))
+    if stage=='dynamic':
+        def check_save_sql(**kwargs):
+            sql=json.loads(kwargs['res'])['sql'];validate(sql);return sql
+        service.check_save_sql=check_save_sql
+    chunks=list(graph.run_smart_qa_graph(service,in_chat=True,stream=True,finish_step=ChatFinishStep.GENERATE_CHART))
+    assert checks==[first,repaired]
+    assert [attempt['sql'] for attempt in service.executed]==[repaired]
+    assert service.chart_generated
+    assert len(service.repair_contexts)==1
+    if kind=='wrapped_knowledge':assert '金额必须按净额统计。' in service.repair_contexts[0].error_message
+    assert not any(e['type']=='error' for e in _events(chunks))
+
+
+def test_wrapped_structured_skill_violation_keeps_repair_evidence(monkeypatch):
+    from apps.chat.task.sql_repair import DataSkillSqlViolation
+    violation=DataSkillSqlViolation('必须补齐日期',2,(),('LEFT JOIN',),(),(),())
+    service=FakeSmartQAService(sql_answer=_sql_answer('SELECT value FROM orders'))
+    service.repair_answers=[_sql_answer('SELECT value, 0 AS missing FROM orders')]
+    original=service.check_sql
+    def check_sql(**kwargs):
+        sql,tables=original(**kwargs)
+        if 'missing' not in sql:raise RuntimeError('validation wrapper') from llm.DataSkillSqlValidationError(violation)
+        return sql,tables
+    service.check_sql=check_sql
+    monkeypatch.setattr(graph,'validate_user_query_sql_or_raise',lambda **kw:(kw['sql'],{'orders'}))
+    list(graph.run_smart_qa_graph(service,in_chat=True,stream=True,finish_step=ChatFinishStep.GENERATE_CHART))
+    assert service.repair_contexts[0].violation==violation
+    assert service.chart_generated
+
+
+@pytest.mark.parametrize('repeat_same', [True, False])
+def test_exhausted_repair_reports_attempts_without_executing_invalid_sql(monkeypatch, repeat_same):
+    first='SELECT wrong0 FROM orders'
+    service=FakeSmartQAService(sql_answer=_sql_answer(first))
+    service.repair_answers=[_sql_answer(first)] if repeat_same else [_sql_answer('SELECT wrong1 FROM orders'),_sql_answer('SELECT wrong2 FROM orders')]
+    service.check_sql=lambda **kwargs: (_ for _ in ()).throw(SingleMessageError('Parse SQL Error: invalid expression'))
+    chunks=list(graph.run_smart_qa_graph(service,in_chat=True,stream=True,finish_step=ChatFinishStep.GENERATE_CHART))
+    assert not service.executed and not service.chart_generated
+    payload=json.loads(service.saved_errors[-1])
+    assert payload['error_type']=='sql_repair_exhausted'
+    assert payload['repair_attempts']==(1 if repeat_same else 2)
+    assert payload['stop_reason']==('repeated_failure' if repeat_same else 'attempt_limit')
+    assert 'traceback' not in payload and 'wrong0' not in payload['message']
+    assert any(e['type']=='error' for e in _events(chunks))
+
+
 def test_execute_sql_repair_uses_user_visible_sql_and_logs_expanded_sql() -> None:
     user_visible_sql = "SELECT * FROM orders"
     real_execute_sql = "SELECT id, amount FROM public.orders"
@@ -1330,9 +1467,9 @@ def test_data_skill_schema_unavailable_is_streamed_as_business_feedback(monkeypa
     assert not any(event["type"] == "error" for event in events)
 
 
-def test_missing_event_value_is_pruned_and_streamed_as_business_notice(monkeypatch: pytest.MonkeyPatch):
+def test_missing_event_value_is_preserved_with_quality_notice(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：埋点值本身不存在时，应保留可生成指标，裁掉对应 0 值指标，并给业务通知。
+    是什么：缺失事件仅给提示，不改写可执行 SQL 或删除真实返回的零值。
     """
     sql = _mixed_missing_event_sql()
     service = FakeSmartQAService(sql_answer=_sql_answer(sql, ["daily_metrics", "fact_events"]))
@@ -1353,14 +1490,14 @@ def test_missing_event_value_is_pruned_and_streamed_as_business_notice(monkeypat
 
     def _execute_sql(**kwargs):
         service.executed.append(kwargs)
-        assert "spaceship_upgrade_complete" not in kwargs["sql"]
-        assert "missing_event" not in kwargs["sql"]
-        assert "飞船升级完成触发用户数" not in kwargs["sql"]
+        assert "spaceship_upgrade_complete" in kwargs["sql"]
+        assert "missing_event" in kwargs["sql"]
+        assert "飞船升级完成触发用户数" in kwargs["sql"]
         return {
-            "fields": ["日期", "DAU", "PDAU"],
+            "fields": ["日期", "DAU", "PDAU", "飞船升级完成触发用户数"],
             "data": [
-                {"日期": "2026-07-01", "DAU": 10, "PDAU": 2},
-                {"日期": "2026-07-02", "DAU": 12, "PDAU": 3},
+                {"日期": "2026-07-01", "DAU": 10, "PDAU": 2, "飞船升级完成触发用户数": 0},
+                {"日期": "2026-07-02", "DAU": 12, "PDAU": 3, "飞船升级完成触发用户数": 0},
             ],
         }
 
@@ -1398,13 +1535,13 @@ def test_missing_event_value_is_pruned_and_streamed_as_business_notice(monkeypat
 
     assert len(service.executed) == 1
     assert service.saved_sql[-1] == service.executed[0]["sql"]
-    assert service.saved_data[-1]["fields"] == ["日期", "DAU", "PDAU"]
-    assert all("飞船升级完成触发用户数" not in row for row in service.saved_data[-1]["data"])
-    assert captured_chart_result["fields"] == ["日期", "DAU", "PDAU"]
+    assert service.saved_data[-1]["fields"] == ["日期", "DAU", "PDAU", "飞船升级完成触发用户数"]
+    assert all(row["飞船升级完成触发用户数"] == 0 for row in service.saved_data[-1]["data"])
+    assert captured_chart_result["fields"] == ["日期", "DAU", "PDAU", "飞船升级完成触发用户数"]
     assert feedback_event["notice"]["reason"] == "missing_event"
     assert feedback_event["notice"]["items"] == ["spaceship_upgrade_complete"]
     assert saved_feedback["notice"]["notice_type"] == "data_scope_gap"
-    assert "已生成其余可支持的结果" in feedback_event["content"]
+    assert "已保留查询" in feedback_event["content"]
     assert not any(event["type"] == "error" for event in events)
     assert any(event["type"] == "chart" for event in events)
     assert service.finished is True
@@ -1440,9 +1577,9 @@ def test_schema_qualified_missing_event_cte_prunes_outer_coalesce_field(monkeypa
     assert all("飞船升级完成触发用户数" not in row for row in cleanup.result["data"])
 
 
-def test_schema_qualified_missing_event_is_rewritten_before_execute(monkeypatch: pytest.MonkeyPatch):
+def test_schema_qualified_missing_event_is_preserved_before_execute(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：缺失埋点应在 SQL 准备阶段被移出最终执行 SQL，而不是执行后只裁图表字段。
+    是什么：缺失事件不再改变原 SQL、返回列和数据，只显示提示。
     """
     sql = _schema_qualified_missing_event_sql()
     service = FakeSmartQAService(sql_answer=_sql_answer(sql, ["fact_sessions", "fact_payments", "fact_events"]))
@@ -1465,16 +1602,16 @@ def test_schema_qualified_missing_event_is_rewritten_before_execute(monkeypatch:
 
     def _execute_sql(**kwargs):
         service.executed.append(kwargs)
-        assert "spaceship_upgrade_complete" not in kwargs["sql"]
-        assert "spaceship_upgrade" not in kwargs["sql"]
-        assert "飞船升级完成触发用户数" not in kwargs["sql"]
+        assert "spaceship_upgrade_complete" in kwargs["sql"]
+        assert "spaceship_upgrade" in kwargs["sql"]
+        assert "飞船升级完成触发用户数" in kwargs["sql"]
         assert "DAU" in kwargs["sql"]
         assert "PDAU" in kwargs["sql"]
         return {
-            "fields": ["日期", "DAU", "PDAU"],
+            "fields": ["日期", "DAU", "PDAU", "飞船升级完成触发用户数"],
             "data": [
-                {"日期": "2026-07-01", "DAU": 10, "PDAU": 2},
-                {"日期": "2026-07-02", "DAU": 12, "PDAU": 3},
+                {"日期": "2026-07-01", "DAU": 10, "PDAU": 2, "飞船升级完成触发用户数": 0},
+                {"日期": "2026-07-02", "DAU": 12, "PDAU": 3, "飞船升级完成触发用户数": 0},
             ],
         }
 
@@ -1511,21 +1648,20 @@ def test_schema_qualified_missing_event_is_rewritten_before_execute(monkeypatch:
     events = _events(chunks)
     feedback_event = next(event for event in events if event["type"] == "analysis-result")
 
-    assert len(validated_sql) == 2
+    assert len(validated_sql) == 1
     assert "spaceship_upgrade_complete" in validated_sql[0]
-    assert "spaceship_upgrade_complete" not in validated_sql[1]
     assert service.saved_sql[-1] == service.executed[0]["sql"]
-    assert service.saved_data[-1]["fields"] == ["日期", "DAU", "PDAU"]
-    assert captured_chart_result["fields"] == ["日期", "DAU", "PDAU"]
+    assert service.saved_data[-1]["fields"] == ["日期", "DAU", "PDAU", "飞船升级完成触发用户数"]
+    assert captured_chart_result["fields"] == ["日期", "DAU", "PDAU", "飞船升级完成触发用户数"]
     assert feedback_event["notice"]["items"] == ["spaceship_upgrade_complete"]
-    assert feedback_event["notice"]["removed_fields"] == ["飞船升级完成触发用户数"]
+    assert feedback_event["notice"]["removed_fields"] == []
     assert not any(event["type"] == "error" for event in events)
     assert service.finished is True
 
 
-def test_only_missing_event_metric_stops_without_zero_chart(monkeypatch: pytest.MonkeyPatch):
+def test_only_missing_event_metric_executes_with_explicit_notice(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：只统计不存在埋点时，应直接提示缺少埋点，不能把聚合 0 展示成有效图表。
+    是什么：只统计缺失事件时，仍执行 SQL，并明确提示零值可能源于事件缺失。
     """
     sql = _direct_missing_event_metric_sql()
     service = FakeSmartQAService(sql_answer=_sql_answer(sql, ["fact_sessions", "fact_events"]))
@@ -1558,16 +1694,17 @@ def test_only_missing_event_metric_stops_without_zero_chart(monkeypatch: pytest.
     feedback_event = next(event for event in events if event["type"] == "analysis-result")
     event_types = [event["type"] for event in events]
 
-    assert service.saved_sql == []
-    assert service.executed == []
-    assert service.chart_generated is False
-    assert "sql-data" not in event_types
-    assert "chart" not in event_types
+    assert service.saved_sql == [sql]
+    assert len(service.executed) == 1
+    assert service.chart_generated is True
+    assert "sql-data" in event_types
+    assert "chart" in event_types
     assert event_types[-1] == "finish"
     assert feedback_event["notice"]["reason"] == "missing_event"
     assert feedback_event["notice"]["items"] == ["dragon_summon_success"]
     assert feedback_event["notice"]["removed_fields"] == []
-    assert feedback_event["content"] == "当前数据源缺少 dragon_summon_success 埋点数据。"
+    assert "当前数据源缺少 dragon_summon_success 埋点数据。" in feedback_event["content"]
+    assert "已保留查询" in feedback_event["content"]
     assert service.finished is True
 
 

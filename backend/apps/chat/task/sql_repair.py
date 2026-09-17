@@ -19,7 +19,7 @@ from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
 from apps.dashboard.crud.sql_generation_validation import (
     same_select_alias_reference_issues,
 )
-from apps.datasource.crud.permission_errors import SqlSchemaScopeError
+from apps.datasource.crud.permission_errors import SqlSchemaScopeError, SqlPermissionScopeError
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
 from common.utils.sql_date_validation import SqlDateConversionError, validate_sql_date_conversions
 from common.user_facing_errors import (
@@ -157,6 +157,7 @@ _NAMED_SECRET_PATTERN = re.compile(
 
 
 class SqlRepairReason(str, Enum):
+    KNOWLEDGE_VALIDATION = "knowledge_validation"
     SQL_RESPONSE_FORMAT = "sql_response_format"
     SQL_PARSE = "sql_parse"
     DATA_SKILL_VALIDATION = "data_skill_validation"
@@ -194,6 +195,21 @@ class SqlRepairContext:
     violation: DataSkillSqlViolation | None
     attempt: int
     max_attempts: int = SQL_REPAIR_MAX_ATTEMPTS
+
+
+class SqlRepairExhaustedError(SingleMessageError):
+    """A bounded repair completed without a valid SQL result."""
+    error_type = 'sql_repair_exhausted'
+
+    def __init__(self, context: SqlRepairContext, *, repeated: bool):
+        self.context = context
+        self.stop_reason = 'repeated_failure' if repeated else 'attempt_limit'
+        explanation = '同一SQL问题仍然存在' if repeated else 'SQL仍未通过校验'
+        super().__init__(f'已尝试{context.attempt}次自动修复，{explanation}，已停止重试。请联系管理员检查查询规则或稍后重试。')
+
+    def public_payload(self):
+        return {'message': self.message, 'error_type': self.error_type,
+                'repair_attempts': self.context.attempt, 'stop_reason': self.stop_reason}
 
 
 def _walk_error_chain(error: Any):
@@ -235,17 +251,48 @@ def sanitize_sql_repair_error(error: Any) -> str:
     return message[:_MAX_ERROR_LENGTH]
 
 
+def prepare_sql_failure_cause(error: Exception) -> Exception:
+    """Recover the actionable cause without allowing a prior violation to mask a terminal failure."""
+    from apps.knowledge_base.authority import KnowledgeOutputValidationError
+    from apps.knowledge_base.context import KnowledgeContextError
+
+    chain = list(_walk_error_chain(error))
+    for item in chain:
+        if isinstance(item, (SqlRepairExhaustedError, DataUnavailableError, AppDBConnectionError, TimeoutError, PermissionError, SqlPermissionScopeError)):
+            return item
+        if isinstance(item, KnowledgeContextError) and not isinstance(item, KnowledgeOutputValidationError):
+            return item
+    actionable = (KnowledgeOutputValidationError, ChatDateFilterConfigurationError, DataSkillSqlValidationError,
+                  ParseError, TokenError, SqlStructureValidationError, SqlDateConversionError, SqlSchemaScopeError)
+    return next((item for item in chain if isinstance(item, actionable)), error)
+
+
 def classify_prepare_sql_error(error: Exception) -> SqlRepairReason | None:
-    if any(isinstance(item, ChatDateFilterConfigurationError) for item in _walk_error_chain(error)):
+    from apps.knowledge_base.authority import KnowledgeOutputValidationError
+    from apps.knowledge_base.context import KnowledgeContextError
+
+    source = prepare_sql_failure_cause(error)
+    if isinstance(source, (SqlRepairExhaustedError, DataUnavailableError, AppDBConnectionError, TimeoutError, PermissionError, SqlPermissionScopeError)):
+        return None
+    if isinstance(source, KnowledgeContextError) and not isinstance(source, KnowledgeOutputValidationError):
+        return None
+    if classify_error(error).error_type == PERMISSION_DENIED_ERROR_TYPE:
+        return None
+    if isinstance(source, KnowledgeOutputValidationError):
+        return SqlRepairReason.KNOWLEDGE_VALIDATION
+    if isinstance(source, ChatDateFilterConfigurationError):
         return SqlRepairReason.DATE_FILTER_CONFIGURATION
-    if any(isinstance(item, DataSkillSqlValidationError) for item in _walk_error_chain(error)):
+    if isinstance(source, DataSkillSqlValidationError):
         return SqlRepairReason.DATA_SKILL_VALIDATION
-    if any(isinstance(item, (ParseError, TokenError)) for item in _walk_error_chain(error)):
+    if isinstance(source, (ParseError, TokenError)):
         return SqlRepairReason.SQL_PARSE
-    if any(isinstance(item, (SqlStructureValidationError, SqlDateConversionError)) for item in _walk_error_chain(error)):
+    if isinstance(source, (SqlStructureValidationError, SqlDateConversionError)):
         return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
-    if any(isinstance(item, SqlSchemaScopeError) for item in _walk_error_chain(error)):
+    if isinstance(source, SqlSchemaScopeError):
         return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+
+    if classify_error(error).error_type == DATA_UNAVAILABLE_ERROR_TYPE:
+        return None
 
     message = _error_chain_message(error)
     lowered = message.lower()
@@ -657,11 +704,13 @@ def _candidate_errnos(error: Any) -> set[int]:
 
 
 def classify_execute_sql_error(error: Exception) -> SqlRepairReason | None:
-    if any(isinstance(item, (SqlStructureValidationError, SqlDateConversionError)) for item in _walk_error_chain(error)):
-        return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
-    excluded_types = (DataUnavailableError, AppDBConnectionError, TimeoutError, PermissionError)
+    excluded_types = (SqlRepairExhaustedError, DataUnavailableError, AppDBConnectionError, TimeoutError, PermissionError, SqlPermissionScopeError)
     if any(isinstance(item, excluded_types) for item in _walk_error_chain(error)):
         return None
+    if classify_error(error).error_type == PERMISSION_DENIED_ERROR_TYPE:
+        return None
+    if any(isinstance(item, (SqlStructureValidationError, SqlDateConversionError)) for item in _walk_error_chain(error)):
+        return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
 
     message = _error_chain_message(error)
     if any(pattern.search(message) for pattern in _NON_REPAIRABLE_EXECUTE_TEXT_PATTERNS):

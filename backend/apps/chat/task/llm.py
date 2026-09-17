@@ -84,7 +84,8 @@ from apps.datasource.crud.sql_engine import (
 )
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
-from apps.knowledge_base.authority import knowledge_resolves_business_conflict
+from apps.knowledge_base.validation_policy import knowledge_review_allowed, EXECUTABLE_SQL_GUIDANCE
+from apps.datasource.crud.permission_errors import SqlPermissionScopeError
 from apps.knowledge_base.context import (
     KNOWLEDGE_CONTEXT_SYSTEM_RULES,
     KnowledgeContext,
@@ -634,7 +635,55 @@ def _required_sql_violations(
         sql_text
     ):
         missing_patterns.append("MAX(time) scoped by dashboard date range")
+    if rule.get('required_zero_fill') and not _sql_has_projected_zero_fill(sql_text):
+        missing_patterns.append('projected COALESCE(metric expression, 0)')
+    if rule.get('required_hour_sequence') and not _sql_has_complete_hour_sequence(sql_text):
+        missing_patterns.append('hour sequence independent of CTE aliases')
     return tuple(missing_contains), tuple(missing_patterns)
+
+
+def _sql_has_projected_zero_fill(sql_text: str) -> bool:
+    """Validate actual metric expressions, not strings, unused CTEs or COUNT(*)."""
+    for statement in _parse_sql_statements_for_validation(sql_text):
+        ctes = {cte.alias_or_name.casefold(): cte.this for cte in statement.find_all(exp.CTE)}
+        visited = set()
+
+        def projected_fill(select, projection):
+            key = (id(select), id(projection))
+            if key in visited:
+                return False
+            visited.add(key)
+            for expression in projection.find_all(exp.Coalesce):
+                defaults = expression.expressions
+                if len(defaults) != 1 or not isinstance(defaults[0], exp.Literal) or defaults[0].is_string:
+                    continue
+                try:
+                    if float(defaults[0].this) != 0:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                metric = expression.this
+                if metric is not None and any(metric.find_all(exp.Column)) and not any(metric.find_all(exp.Star)):
+                    return True
+            sources = _select_sources(select)
+            for column in projection.find_all(exp.Column):
+                candidates = [s for s in sources if column.table and s.alias_or_name.casefold() == column.table.casefold()]
+                if not column.table and len(sources) == 1:
+                    candidates = sources
+                for source in candidates:
+                    query = source.this if isinstance(source, exp.Subquery) else ctes.get(source.name.casefold()) if isinstance(source, exp.Table) else None
+                    if query is None:
+                        continue
+                    for nested in _query_root_selects(query):
+                        for output in nested.expressions:
+                            if output.alias_or_name.casefold() == column.name.casefold() and projected_fill(nested, output):
+                                return True
+            return False
+
+        for select in _query_root_selects(statement):
+            if any(projected_fill(select, projection) for projection in select.expressions):
+                return True
+    return False
 
 
 def _sql_select_segments(sql_text: str) -> list[str]:
@@ -686,6 +735,7 @@ def _data_skill_sql_validation_violation(
     data_skill: str = "",
     *,
     resolve_conflict=None,
+    before_business_validation=None,
 ) -> DataSkillSqlViolation | None:
     """
     按匹配到的 Data Skill 规则生成结构化 SQL 违规对象。
@@ -695,6 +745,7 @@ def _data_skill_sql_validation_violation(
 
     sql_text = str(sql)
     sql_lower = sql_text.lower()
+    business_violations = []
     for rule_index, rule in enumerate(_extract_data_skill_sql_validation_rules(data_skill)):
         if not _rule_matches_question(rule, question):
             continue
@@ -736,6 +787,13 @@ def _data_skill_sql_validation_violation(
             matched_forbidden_patterns=matched_forbidden_patterns,
             matched_forbidden_groups=matched_forbidden_groups,
         )
+        if knowledge_review_allowed(rule, surface='sql'):
+            business_violations.append((rule, violation))
+            continue
+        return violation
+    if before_business_validation is not None:
+        before_business_validation()
+    for rule, violation in business_violations:
         if resolve_conflict is not None and resolve_conflict(rule, sql_text):
             continue
         return violation
@@ -748,6 +806,21 @@ def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = 
     """
     violation = _data_skill_sql_validation_violation(question, sql, data_skill)
     return violation.message if violation is not None else None
+
+
+def _data_skill_sql_quality_warnings(question: str, sql: str, data_skill: str) -> list[str]:
+    """Inspect quality without asking an LLM or replacing an executable query."""
+    warnings = []
+    for rule in _extract_data_skill_sql_validation_rules(data_skill):
+        violation = _data_skill_sql_validation_violation(
+            question, sql, '<!-- data-skill-sql-validation: ' + orjson.dumps(rule).decode() + ' -->')
+        if violation is None:
+            continue
+        if rule.get('rule_type') == 'security':
+            raise SqlPermissionScopeError(violation.message, rule_type='data_skill_security')
+        if violation.message not in warnings:
+            warnings.append(violation.message)
+    return warnings
 
 
 def _decode_relaxed_json_string(value: str) -> str:
@@ -1672,6 +1745,7 @@ class LLMService:
             self.sql_message.append(
                 AIPromptMessage(content='我会以当前知识库为最高业务语义依据，覆盖冲突的 Data Skill 和字段元数据，并遵守权限和物理可执行性限制。')
             )
+        self.sql_message.append(SystemPromptMessage(content=EXECUTABLE_SQL_GUIDANCE))
         if not self.dashboard_date_filter_enabled:
             self.sql_message.append(HumanPromptMessage(content=DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE))
             self.sql_message.append(
@@ -2658,21 +2732,20 @@ class LLMService:
 
         validate_sql_for_generation(sql, getattr(getattr(self, "ds", None), "type", None))
 
-        violation = _data_skill_sql_validation_violation(
-            self.chat_question.question or "",
-            sql,
-            self.chat_question.data_skill,
-            resolve_conflict=lambda rule, output: knowledge_resolves_business_conflict(
-                self.llm,
-                getattr(self.chat_question, "knowledge_context", ""),
-                orjson.dumps(rule).decode(),
-                output,
-            ) if getattr(self.chat_question, "knowledge_context", "") else False,
+        self.sql_quality_warnings = _data_skill_sql_quality_warnings(
+            self.chat_question.question or "", sql, self.chat_question.data_skill,
         )
-        if violation is not None:
-            trigger_log_error(session, log)
-            raise DataSkillSqlValidationError(violation)
         return sql, data.get('tables')
+
+    def _knowledge_review_observer(self):
+        from apps.knowledge_base.review_audit import KnowledgeReviewAudit
+        if not getattr(self, '_review_audit', None):
+            self._review_audit = KnowledgeReviewAudit(
+                tenant_id=require_current_tenant_id(self.current_user),
+                datasource_id=getattr(self.ds, 'id', None), record_id=self.record.id,
+                model_id=self.config.model_id, model_name=self.config.model_name, surface='smart_qa',
+            )
+        return self._review_audit
 
     @staticmethod
     def get_chart_type_from_sql_answer(res: str) -> Optional[str]:

@@ -1892,7 +1892,8 @@
       "FILTER_CUSTOM_PROMPT": "匹配自定义 Agent",
       "EXECUTE_SQL": "执行 SQL",
       "GENERATE_PICTURE": "生成图片",
-      "FILTER_DATA_SKILL": "匹配 Skill"
+      "FILTER_DATA_SKILL": "匹配 Skill",
+      "KNOWLEDGE_REVIEW": "知识规则校验"
     },
     "log_system": "对话模板",
     "log_question": "本次提问",

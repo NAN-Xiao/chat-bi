@@ -14,42 +14,48 @@ BANKS = {
         "workspace": "gig",
         "tenant_id": "7493272549510352896",
         "datasource_id": 12,
-        "dashboard_count": 10,
+        "dashboard_count": 9,
+        "excluded_ids": list(range(91, 101)),
         "auditable": True,
     },
     "unicorn-ai-dashboard-100-questions-20260817.json": {
         "workspace": "unicorn",
         "tenant_id": "7493583885482070016",
         "datasource_id": 9,
-        "dashboard_count": 10,
+        "dashboard_count": 9,
+        "excluded_ids": list(range(91, 101)),
         "auditable": True,
     },
     "j2000-ai-dashboard-100-questions-20260817.json": {
         "workspace": "j2000",
         "tenant_id": "7493583991958671360",
         "datasource_id": 11,
-        "dashboard_count": 10,
+        "dashboard_count": 9,
+        "excluded_ids": list(range(91, 101)),
         "auditable": True,
     },
     "lds-ai-dashboard-100-questions-20260817.json": {
         "workspace": "lds",
         "tenant_id": "7493272675721154560",
         "datasource_id": 10,
-        "dashboard_count": 10,
+        "dashboard_count": 9,
+        "excluded_ids": list(range(91, 101)),
         "auditable": True,
     },
     "flam-ai-dashboard-100-questions-2026-08-02.json": {
         "workspace": "flam",
         "tenant_id": "7477202383789887488",
         "datasource_id": 3,
-        "dashboard_count": 14,
+        "dashboard_count": 13,
+        "excluded_ids": list(range(86, 91)),
         "auditable": False,
     },
     "xiuxian-ai-dashboard-100-questions-2026-08-02.json": {
         "workspace": "修仙",
         "tenant_id": "7482727237662281728",
         "datasource_id": 6,
-        "dashboard_count": 10,
+        "dashboard_count": 9,
+        "excluded_ids": list(range(76, 81)),
         "auditable": False,
     },
     "sample-workspace-ai-dashboard-100-questions-20260811.json": {
@@ -57,6 +63,7 @@ BANKS = {
         "tenant_id": "7473600346187632640",
         "datasource_id": 1,
         "dashboard_count": 13,
+        "excluded_ids": [21, 23],
         "auditable": False,
     },
 }
@@ -71,16 +78,24 @@ def validate_bank(filename: str, expected: dict[str, object]) -> dict[str, objec
     path = ROOT / filename
     items = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(items, list), f"{filename}: root must be a list")
-    require(len(items) == 100, f"{filename}: expected 100 questions, got {len(items)}")
+    expected_ids = [
+        question_id
+        for question_id in range(1, 101)
+        if question_id not in expected["excluded_ids"]
+    ]
     require(
-        [item.get("id") for item in items] == list(range(1, 101)),
-        f"{filename}: ids must be continuous from 1 to 100",
+        len(items) == len(expected_ids),
+        f"{filename}: expected {len(expected_ids)} questions, got {len(items)}",
+    )
+    require(
+        [item.get("id") for item in items] == expected_ids,
+        f"{filename}: ids must preserve the original order with excluded questions removed",
     )
 
     questions = [str(item.get("question", "")).strip() for item in items]
     require(all(questions), f"{filename}: question text must not be empty")
     require(
-        len(set(questions)) == 100,
+        len(set(questions)) == len(expected_ids),
         f"{filename}: question text must be unique within the bank",
     )
 
@@ -128,7 +143,7 @@ def validate_bank(filename: str, expected: dict[str, object]) -> dict[str, objec
                 f"{filename}#{question_id}: source_charts must not be empty",
             )
             selected_count += item.get("selected_for_test") is True
-        require(selected_count == 20, f"{filename}: expected 20 selected questions")
+        require(selected_count == 18, f"{filename}: expected 18 selected questions")
 
     return {
         "questions": len(items),

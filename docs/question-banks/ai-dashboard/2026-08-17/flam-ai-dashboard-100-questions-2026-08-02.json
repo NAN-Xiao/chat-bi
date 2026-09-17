@@ -1020,66 +1020,6 @@
     "independent": true
   },
   {
-    "id": 86,
-    "workspace": "flam",
-    "dashboard_id": "2b990d3821fa4c3d97f0dda519b644e8",
-    "dashboard_name": "ROI看板",
-    "datasource_id": 3,
-    "question": "最近90天投放批次的ROI随回收天数如何变化，只比较已达到对应回收天数的批次。",
-    "topic": "ROI总览",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "trend",
-    "independent": true
-  },
-  {
-    "id": 87,
-    "workspace": "flam",
-    "dashboard_id": "2b990d3821fa4c3d97f0dda519b644e8",
-    "dashboard_name": "ROI看板",
-    "datasource_id": 3,
-    "question": "最近60天各地区ROI排名如何，同时列出投入和回收金额。",
-    "topic": "地区ROI",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "ranking",
-    "independent": true
-  },
-  {
-    "id": 88,
-    "workspace": "flam",
-    "dashboard_id": "2b990d3821fa4c3d97f0dda519b644e8",
-    "dashboard_name": "ROI看板",
-    "datasource_id": 3,
-    "question": "最近60天不同广告与地区组合的ROI、投入金额和回收金额有何差异？",
-    "topic": "广告地区ROI",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 89,
-    "workspace": "flam",
-    "dashboard_id": "2b990d3821fa4c3d97f0dda519b644e8",
-    "dashboard_name": "ROI看板",
-    "datasource_id": 3,
-    "question": "最近30天安装量的投放趋势如何，哪些日期出现明显波动？",
-    "topic": "安装投放趋势",
-    "time_scope": "last_30_days",
-    "expected_answer_kind": "trend",
-    "independent": true
-  },
-  {
-    "id": 90,
-    "workspace": "flam",
-    "dashboard_id": "2b990d3821fa4c3d97f0dda519b644e8",
-    "dashboard_name": "ROI看板",
-    "datasource_id": 3,
-    "question": "识别默认统计窗口内ROI明显偏低的地区或广告组合，并列出投入与回收。",
-    "topic": "低ROI识别",
-    "time_scope": "default_28d",
-    "expected_answer_kind": "anomaly",
-    "independent": true
-  },
-  {
     "id": 91,
     "workspace": "flam",
     "dashboard_id": "e423819a72454bc9ab71646d41aa5fd6",

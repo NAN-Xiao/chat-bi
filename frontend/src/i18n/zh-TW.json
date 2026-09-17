@@ -1891,7 +1891,8 @@
       "FILTER_CUSTOM_PROMPT": "匹配自訂 Agent",
       "EXECUTE_SQL": "執行 SQL",
       "GENERATE_PICTURE": "產生圖片",
-      "FILTER_DATA_SKILL": "匹配數據 Skill"
+      "FILTER_DATA_SKILL": "匹配數據 Skill",
+      "KNOWLEDGE_REVIEW": "知識規則校驗"
     },
     "log_system": "對話範本",
     "log_question": "本次提問",

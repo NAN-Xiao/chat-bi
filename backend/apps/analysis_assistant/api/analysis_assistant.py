@@ -78,7 +78,8 @@ from apps.datasource.crud.sql_engine import (
 )
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
-from apps.knowledge_base.authority import knowledge_resolves_business_conflict
+from apps.knowledge_base.authority import KnowledgeOutputValidationError
+from apps.knowledge_base.validation_policy import knowledge_review_allowed, EXECUTABLE_SQL_GUIDANCE
 from apps.knowledge_base.context import (
     KNOWLEDGE_CONTEXT_SYSTEM_RULES,
     KnowledgeContext,
@@ -968,6 +969,9 @@ def _mark_query_error_block(block: dict[str, Any], query_error: Exception, curre
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：把分析助手里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    if isinstance(query_error, KnowledgeContextError):
+        block.update(error=query_error.message, error_type=query_error.code, summary='', status='failed')
+        return
     if is_normal_user(current_user) and looks_like_permission_scope_error(str(query_error)):
         _mark_permission_denied_block(block)
         return
@@ -996,7 +1000,7 @@ def _llm_text(llm, messages: list[BaseMessage]) -> str:
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：把分析助手里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    response = llm.invoke(messages)
+    response = llm.invoke([*messages[:-1], SystemMessage(content=EXECUTABLE_SQL_GUIDANCE), *messages[-1:]])
     return _chunk_text(getattr(response, "content", response)).strip()
 
 
@@ -1034,71 +1038,17 @@ def _data_skill_identifier_corrections(
     return corrections
 
 
-def _llm_text_with_data_skill_identifier_retry(
-    llm,
-    messages: list[BaseMessage],
-    data_skill: str,
-    *,
-    initial_text: str | None = None,
+def _llm_text_for_executable_sql(
+    llm, messages: list[BaseMessage], data_skill: str, *, initial_text: str | None = None,
 ) -> str:
-    text = initial_text if initial_text is not None else _llm_text(llm, messages)
-    corrections = _data_skill_identifier_corrections(text, data_skill)
-    knowledge_context = next((
-        str(message.content)[str(message.content).index('<knowledge-context'):str(message.content).index('</knowledge-context>') + len('</knowledge-context>')]
-        for message in messages
-        if '<knowledge-context' in str(message.content) and '</knowledge-context>' in str(message.content)
-    ), "")
-    if corrections and knowledge_resolves_business_conflict(
-        llm, knowledge_context, json.dumps(corrections, ensure_ascii=False), text,
-    ):
-        return text
-    if not corrections:
-        return text
-    required = "；".join(
-        f"`{invalid}` 必须改为 `{exact}`"
-        for invalid, exact in sorted(corrections.items())
-    )
-    retry = _llm_text(
-        llm,
-        messages
-        + [
-            AIMessage(content=text),
-            HumanMessage(
-                content=(
-                    "上一次输出改写了 Data Skill 的精确业务标识符。"
-                    f"请完整重新生成，并严格修正：{required}。"
-                    "不要把近似名称作为候选口径。"
-                )
-            ),
-        ],
-    )
-    retry_corrections = _data_skill_identifier_corrections(retry, data_skill)
-    if retry_corrections and not knowledge_resolves_business_conflict(
-        llm, knowledge_context, json.dumps(retry_corrections, ensure_ascii=False), retry,
-    ):
-        raise ValueError("模型未遵循 Data Skill 的精确业务标识符")
-    return retry
+    """Generate once; semantic identifier preferences never trigger adjudication."""
+    return initial_text if initial_text is not None else _llm_text(llm, messages)
 
 
-def _analysis_outline_with_identifier_fallback(
-    llm,
-    messages: list[BaseMessage],
-    data_skill: str,
-    *,
-    initial_text: str,
+def _analysis_outline_for_execution(
+    llm, messages: list[BaseMessage], data_skill: str, *, initial_text: str,
 ) -> str:
-    try:
-        return _llm_text_with_data_skill_identifier_retry(
-            llm,
-            messages,
-            data_skill,
-            initial_text=initial_text,
-        )
-    except ValueError:
-        return (
-            "我会严格按照当前 Data Skill 已配置的业务口径，"
-            "在指定时间范围内分析指标趋势、关键波动和可执行建议。"
-        )
+    return _llm_text_for_executable_sql(llm, messages, data_skill, initial_text=initial_text)
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
@@ -3632,25 +3582,43 @@ def _wide_funnel_validation_error(
 
 def _semantic_validation_error(
     query: dict[str, Any], result: dict[str, Any], data_skill: str = "", *, resolve_conflict=None,
+    before_business_validation=None,
 ) -> str | None:
     """
     是什么：_semantic_validation_error 是一个可以复用的小步骤，负责分析助手相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：把分析助手里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    try:
+        return _semantic_validation_with_knowledge(query, result, data_skill, resolve_conflict=resolve_conflict,
+                                                 before_business_validation=before_business_validation)
+    except KnowledgeOutputValidationError as error:
+        return error.repair_message
+
+
+def _semantic_validation_with_knowledge(query, result, data_skill='', *, resolve_conflict=None,
+                                      before_business_validation=None):
     rows = result.get("data") or []
     fields = [str(field) for field in result.get("fields") or []]
 
-    range_error = _value_range_error(fields, rows)
-    if range_error and not (resolve_conflict and resolve_conflict(range_error, query, result)):
-        return range_error
-
+    business_errors = []
     for rule in _extract_data_skill_validation_rules(data_skill):
         rule_text = json.dumps(rule, ensure_ascii=False)
         skill_error = _skill_declared_validation_error(
             query, fields, rows, f"<!-- data-skill-validation: {rule_text} -->",
         )
-        if skill_error and not (resolve_conflict and resolve_conflict(rule_text, query, result)):
+        if skill_error:
+            if not knowledge_review_allowed(rule, surface='result'):
+                return skill_error
+            business_errors.append((rule_text, skill_error))
+
+    if before_business_validation is not None:
+        before_business_validation()
+    range_error = _value_range_error(fields, rows)
+    if range_error and not (resolve_conflict and resolve_conflict(range_error, query, result)):
+        return range_error
+    for rule_text, skill_error in business_errors:
+        if not (resolve_conflict and resolve_conflict(rule_text, query, result)):
             return skill_error
 
     heuristic_error = _heuristic_semantic_validation_error(query, fields, rows)
@@ -3877,7 +3845,7 @@ def _repair_sql(
         ),
         HumanMessage(content=prompt),
     ]
-    text = _llm_text_with_data_skill_identifier_retry(
+    text = _llm_text_for_executable_sql(
         llm,
         repair_messages,
         data_skill,
@@ -4212,7 +4180,7 @@ def _build_plan(
     )
     system_prompt = SYSTEM_PROMPT + _knowledge_system_rules(knowledge_context)
     messages = [SystemMessage(content=system_prompt), HumanMessage(content=PLAN_PROMPT + "\n\n" + user_content)]
-    text = _llm_text_with_data_skill_identifier_retry(llm, messages, data_skill)
+    text = _llm_text_for_executable_sql(llm, messages, data_skill)
     try:
         plan = _extract_json_object(text)
     except Exception:
@@ -4275,7 +4243,7 @@ def _build_forecast_plan(
     )
     system_prompt = SYSTEM_PROMPT + _knowledge_system_rules(knowledge_context)
     messages = [SystemMessage(content=system_prompt), HumanMessage(content=FORECAST_PLAN_PROMPT + "\n\n" + user_content)]
-    text = _llm_text_with_data_skill_identifier_retry(llm, messages, data_skill)
+    text = _llm_text_for_executable_sql(llm, messages, data_skill)
     try:
         plan = _extract_json_object(text)
     except Exception:
@@ -4364,6 +4332,12 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         surface="analysis_assistant",
     )
     llm, llm_config = await _create_llm(custom_agent_model_id)
+    from apps.knowledge_base.review_audit import KnowledgeReviewAudit, ReviewedModel
+    llm = ReviewedModel(llm, json_mode=llm_config.knowledge_review_json_mode,
+                        extra_body=llm_config.knowledge_review_extra_body, observer=KnowledgeReviewAudit(
+        tenant_id=tenant_id, datasource_id=datasource.id, model_id=llm_config.model_id,
+        model_name=llm_config.model_name, surface='analysis_assistant',
+    ))
     time_resolution = await _resolve_chat_time_policy(
         session=session,
         current_user=current_user,
@@ -4420,7 +4394,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 content = _chunk_text(chunk.content)
                 if content:
                     outline_text += content
-            outline_text = _analysis_outline_with_identifier_fallback(
+            outline_text = _analysis_outline_for_execution(
                 llm,
                 outline_messages,
                 semantic_context,
@@ -4590,60 +4564,11 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             allowed_tables=allowed_tables,
                             origin_column=True,
                         ).result
-                    def resolve_business_conflict(rule, query, query_result):
-                        return knowledge_resolves_business_conflict(
-                            llm, knowledge_context.prompt, rule,
-                            json.dumps({"query": query, "result": query_result}, ensure_ascii=False, default=str),
-                        )
-
-                    semantic_error = _semantic_validation_error(
-                        raw_query, result, semantic_context, resolve_conflict=resolve_business_conflict,
-                    )
+                    semantic_error = _semantic_validation_error(raw_query, result, semantic_context)
                     if semantic_error:
-                        yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
-                        repaired_sql = _repair_sql(
-                            llm,
-                            question,
-                            raw_query,
-                            sql,
-                            ValueError(semantic_error),
-                            schema,
-                            sample_data,
-                            data_profile,
-                            custom_agent,
-                            tracking_context,
-                            data_skill,
-                            knowledge_context.prompt,
-                            time_resolution=time_resolution,
-                        )
-                        sql = _prepare_sql_for_execution(
-                            llm,
-                            session,
-                            current_user,
-                            datasource,
-                            repaired_sql,
-                            allowed_tables,
-                            time_resolution=time_resolution,
-                            schema_time_fields=schema_time_fields,
-                            declared_time_fields=raw_query.get("time_fields") or [],
-                            dialect=dialect,
-                            allow_time_rewrite=True,
-                        )
-                        block["sql"] = sql
-                        raw_query["sql"] = sql
-                        result = execute_user_analysis_query_or_raise(
-                            session=session,
-                            current_user=current_user,
-                            datasource=datasource,
-                            sql=sql,
-                            allowed_tables=allowed_tables,
-                            origin_column=True,
-                        ).result
-                        semantic_error = _semantic_validation_error(
-                            raw_query, result, semantic_context, resolve_conflict=resolve_business_conflict,
-                        )
-                        if semantic_error:
-                            raise ValueError(semantic_error)
+                        block["warning"] = "查询已执行，部分维度或业务口径未通过质量检查，请核对结果含义。"
+                        block["quality_warnings"] = [semantic_error]
+                        yield _trace(block["warning"], block_id=block_id)
                     block["fields"] = [str(field) for field in result.get("fields") or []]
                     block["data"] = result.get("data") or []
                     yield _trace("这个角度的数据已经整理好，正在提炼关键发现。", block_id=block_id)
@@ -4685,6 +4610,8 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             yield _sse({"type": "final", "content": final})
             success = True
             yield _sse({"type": "finish"})
+        except KnowledgeContextError as e:
+            yield _sse({"type": "error", "content": e.message, "error_type": e.code})
         except Exception as e:
             yield _sse({"type": "error", "content": str(e), "detail": traceback.format_exc()[-4000:]})
         finally:

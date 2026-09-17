@@ -63,9 +63,11 @@ from apps.chat.task.assistant_workflow import (
 from apps.chat.task.sql_repair import (
     SQL_REPAIR_MAX_ATTEMPTS,
     SqlRepairContext,
+    SqlRepairExhaustedError,
     SqlRepairReason,
     classify_execute_sql_error,
     classify_prepare_sql_error,
+    prepare_sql_failure_cause,
     sanitize_sql_repair_error,
     sql_repair_fingerprint,
     validate_sql_for_datasource,
@@ -1401,7 +1403,7 @@ def _queue_sql_repair(
         reason=reason,
         dialect=get_sqlglot_dialect(getattr(getattr(service, "ds", None), "type", None)),
         failed_sql=failed_sql,
-        error_message=sanitize_sql_repair_error(error),
+        error_message=sanitize_sql_repair_error(getattr(error, 'repair_message', error)),
         violation=getattr(error, "violation", None),
         attempt=state.get("sql_repair_count", 0),
         max_attempts=SQL_REPAIR_MAX_ATTEMPTS,
@@ -1409,7 +1411,7 @@ def _queue_sql_repair(
     fingerprint = sql_repair_fingerprint(context)
     fingerprints = list(state.get("sql_repair_fingerprints") or [])
     if context.attempt >= context.max_attempts or fingerprint in fingerprints:
-        raise error
+        raise SqlRepairExhaustedError(context, repeated=fingerprint in fingerprints) from error
     return {
         "sql_repair_pending": True,
         "sql_repair_context": context,
@@ -1738,6 +1740,48 @@ def _execute_saas_skill(state: SmartQAGraphState) -> dict[str, Any]:
     }
 
 
+def _handle_prepare_sql_failure(state, session, error, *, failed_sql: str, display_sql: str | None = None):
+    """Use one failure policy for generated SQL and the second datasource validation pass."""
+    from apps.chat.task.llm import DataSkillSqlValidationError, looks_like_data_skill_schema_unavailable_error
+
+    source = prepare_sql_failure_cause(error)
+    service = state["service"]
+    in_chat, stream, json_result = state["in_chat"], state["stream"], state["json_result"]
+    if isinstance(source, PermissionError) or looks_like_permission_scope_error(error):
+        audit_permission_denied(
+            current_user=service.current_user,
+            datasource_id=getattr(service.ds, "id", None),
+            record_id=getattr(service.record, "id", None),
+            operation="smart_qa.prepare_sql_permission", reason=str(source),
+            tables=service.table_name_list, fields=getattr(source, "fields", None),
+            json_paths=getattr(source, "json_paths", None), rule_type=getattr(source, "rule_type", None),
+        )
+        if display_sql is not None:
+            service.save_checked_sql(session=session, sql=display_sql)
+        failed_result = service.save_permission_denied_data(session=session)
+        emit_permission_denied_response(
+            in_chat=in_chat, stream=stream, json_result=json_result,
+            sql=display_sql, failed_result=failed_result,
+            formatted_sql=sqlparse.format(display_sql, reindent=True) if display_sql is not None else None,
+            emit_sql=display_sql is not None,
+        )
+        return {"json_result": json_result, "stop": True}
+    if isinstance(source, DataUnavailableError) or (
+        isinstance(source, DataSkillSqlValidationError) and looks_like_data_skill_schema_unavailable_error(str(source))
+    ):
+        message = user_data_unavailable_message(str(source))
+        _save_and_emit_plain_answer(service=service, session=session, message=message,
+                                   in_chat=in_chat, stream=stream, json_result=json_result, finish=True)
+        if not in_chat and not stream:
+            json_result.update(success=False, message=message)
+            _emit(json_result)
+        return {"json_result": json_result, "stop": True}
+    reason = classify_prepare_sql_error(error)
+    if reason is None:
+        raise source
+    return _queue_sql_repair(state, error=source, reason=reason, failed_sql=failed_sql)
+
+
 def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
     """
     是什么：校验、保存并准备最终用于执行的 SQL。
@@ -1746,16 +1790,11 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
     """
     from apps.chat.task.llm import (
         APP_TEMP_SQL_TEXT_KEY,
-        DataSkillSqlValidationError,
         _get_temp_sql_text,
         _remove_temp_sql_text,
         dynamic_ds_types,
         dynamic_subsql_prefix,
-        looks_like_data_skill_schema_unavailable_error,
     )
-    from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
-    from common.error import SingleMessageError
-
     service = state["service"]
     in_chat = state["in_chat"]
     stream = state["stream"]
@@ -1787,63 +1826,8 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
             template_sql, tables = service.check_sql(session=session, res=full_sql_text, operate=sql_operate)
             execution_sql = render_template_for_execution(template_sql)
             sql = template_sql
-        except DataSkillSqlValidationError as semantic_error:
-            if looks_like_data_skill_schema_unavailable_error(str(semantic_error)):
-                message = user_data_unavailable_message(str(semantic_error))
-                _save_and_emit_plain_answer(
-                    service=service,
-                    session=session,
-                    message=message,
-                    in_chat=in_chat,
-                    stream=stream,
-                    json_result=json_result,
-                    finish=True,
-                )
-                if not in_chat and not stream:
-                    json_result["success"] = False
-                    json_result["message"] = message
-                    _emit(json_result)
-                return {"json_result": json_result, "stop": True}
-            reason = classify_prepare_sql_error(semantic_error)
-            if reason is not SqlRepairReason.DATA_SKILL_VALIDATION:
-                raise
-            return _queue_sql_repair(
-                state,
-                error=semantic_error,
-                reason=reason,
-                failed_sql=full_sql_text,
-            )
-        except ChatDateFilterConfigurationError as date_contract_error:
-            return _queue_sql_repair(
-                state,
-                error=date_contract_error,
-                reason=SqlRepairReason.DATE_FILTER_CONFIGURATION,
-                failed_sql=full_sql_text,
-            )
-        except SingleMessageError as response_error:
-            reason = classify_prepare_sql_error(response_error)
-            if reason not in {
-                SqlRepairReason.SQL_RESPONSE_FORMAT,
-                SqlRepairReason.DATE_FILTER_CONFIGURATION,
-                SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
-            }:
-                raise
-            return _queue_sql_repair(
-                state,
-                error=response_error,
-                reason=reason,
-                failed_sql=full_sql_text,
-            )
-        except Exception as parse_error:
-            reason = classify_prepare_sql_error(parse_error)
-            if reason is not SqlRepairReason.SQL_PARSE:
-                raise
-            return _queue_sql_repair(
-                state,
-                error=parse_error,
-                reason=reason,
-                failed_sql=full_sql_text,
-            )
+        except Exception as prepare_error:
+            return _handle_prepare_sql_failure(state, session, prepare_error, failed_sql=full_sql_text)
 
         chart_type = service.get_chart_type_from_sql_answer(full_sql_text)
         sql_answer_user_message = _sql_answer_message(full_sql_text)
@@ -1891,132 +1875,14 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 rewrite = _rewrite_template_sql_for_missing_events(service, template_sql)
                 event_availability = rewrite.availability
                 if rewrite.missing_events:
-                    supported_removed_fields = rewrite.removed_fields if rewrite.executable else []
-                    missing_event_message = _missing_event_feedback(
-                        rewrite.missing_events,
-                        supported_removed_fields,
-                    )
-                    missing_event_notice = _missing_event_notice(
-                        rewrite.missing_events,
-                        supported_removed_fields,
-                    )
-                    if not rewrite.executable or not rewrite.sql:
-                        _save_and_emit_plain_answer(
-                            service=service,
-                            session=session,
-                            message=missing_event_message,
-                            in_chat=in_chat,
-                            stream=stream,
-                            json_result=json_result,
-                            finish=True,
-                            notice=missing_event_notice,
-                        )
-                        if not in_chat and not stream:
-                            json_result["success"] = False
-                            json_result["message"] = missing_event_message
-                            _emit(json_result)
-                        return {
-                            "json_result": json_result,
-                            "business_notice": missing_event_notice,
-                            "stop": True,
-                        }
-                    if rewrite.changed:
-                        template_sql = rewrite.sql
-                        execution_sql = render_template_for_execution(template_sql)
-                        checked_sql, _actual_tables = validate_user_query_sql_or_raise(
-                            session=session,
-                            current_user=service.current_user,
-                            datasource=service.ds,
-                            sql=execution_sql,
-                            allowed_tables=service.table_name_list,
-                        )
-                        tables = sorted(_actual_tables)
-                        AppLogUtil.info(
-                            "Smart Q&A missing event SQL rewrite: "
-                            f"record_id={getattr(getattr(service, 'record', None), 'id', None)} "
-                            f"datasource_id={getattr(getattr(service, 'ds', None), 'id', None)} "
-                            f"missing_events={rewrite.missing_events} "
-                            f"removed_ctes={rewrite.removed_ctes} "
-                            f"removed_fields={rewrite.removed_fields}"
-                        )
-                        event_availability = None
+                    missing_event_message = _missing_event_feedback(rewrite.missing_events, []) + "已保留查询，相关结果可能为零或为空。"
+                    missing_event_notice = _missing_event_notice(rewrite.missing_events, [])
                 elif rewrite.unknown_events:
                     unknown_event_message = _unknown_event_feedback(rewrite.unknown_events)
                     unknown_event_notice = _unknown_event_notice(rewrite.unknown_events)
                 sql = service.save_checked_sql(session=session, sql=template_sql)
         except Exception as prepare_error:
-            if isinstance(prepare_error, DataSkillSqlValidationError):
-                if looks_like_data_skill_schema_unavailable_error(str(prepare_error)):
-                    message = user_data_unavailable_message(str(prepare_error))
-                    _save_and_emit_plain_answer(
-                        service=service,
-                        session=session,
-                        message=message,
-                        in_chat=in_chat,
-                        stream=stream,
-                        json_result=json_result,
-                        finish=True,
-                    )
-                    if not in_chat and not stream:
-                        json_result["success"] = False
-                        json_result["message"] = message
-                        _emit(json_result)
-                    return {"json_result": json_result, "stop": True}
-                reason = classify_prepare_sql_error(prepare_error)
-                if reason is SqlRepairReason.DATA_SKILL_VALIDATION:
-                    return _queue_sql_repair(
-                        state,
-                        error=prepare_error,
-                        reason=reason,
-                        failed_sql=sql,
-                    )
-                raise
-            if not looks_like_permission_scope_error(str(prepare_error)):
-                reason = classify_prepare_sql_error(prepare_error)
-                if isinstance(prepare_error, SingleMessageError):
-                    if reason in {
-                        SqlRepairReason.SQL_RESPONSE_FORMAT,
-                        SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
-                        SqlRepairReason.DATE_FILTER_CONFIGURATION,
-                    }:
-                        return _queue_sql_repair(
-                            state,
-                            error=prepare_error,
-                            reason=reason,
-                            failed_sql=sql,
-                        )
-                elif reason is SqlRepairReason.SQL_PARSE:
-                    return _queue_sql_repair(
-                        state,
-                        error=prepare_error,
-                        reason=reason,
-                        failed_sql=sql,
-                    )
-                raise
-            audit_permission_denied(
-                current_user=service.current_user,
-                datasource_id=getattr(getattr(service, "ds", None), "id", None),
-                record_id=getattr(getattr(service, "record", None), "id", None),
-                operation="smart_qa.prepare_sql_permission",
-                reason=str(prepare_error),
-                tables=service.table_name_list,
-                fields=getattr(prepare_error, "fields", None),
-                json_paths=getattr(prepare_error, "json_paths", None),
-                rule_type=getattr(prepare_error, "rule_type", None),
-            )
-            sql = service.save_checked_sql(session=session, sql=sql)
-            failed_result = service.save_permission_denied_data(session=session)
-            format_sql = sqlparse.format(sql, reindent=True)
-            emit_permission_denied_response(
-                in_chat=in_chat,
-                stream=stream,
-                json_result=json_result,
-                sql=sql,
-                failed_result=failed_result,
-                formatted_sql=format_sql,
-                emit_sql=True,
-            )
-            return {"json_result": json_result, "stop": True}
+            return _handle_prepare_sql_failure(state, session, prepare_error, failed_sql=sql, display_sql=sql)
 
     if in_chat:
         json_str = extract_nested_json(full_sql_text)
@@ -2053,38 +1919,19 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
     elif stream:
         _emit(f"```sql\n{format_sql}\n```\n\n")
 
-    if sql_answer_user_message:
+    quality_warnings = list(getattr(service, "sql_quality_warnings", []) or [])
+    business_notice = _merge_business_notice(missing_event_notice, unknown_event_notice)
+    messages = [sql_answer_user_message, missing_event_message, unknown_event_message]
+    if quality_warnings:
+        messages.append("语义质量提示：部分维度或业务规则尚未满足，查询仍将执行，请核对结果的业务含义。")
+        business_notice = {**(business_notice or {"notice_type": "sql_quality_warning", "reason": "semantic_mismatch"}),
+                           "quality_warnings": quality_warnings, "severity": "warning"}
+    feedback = "\n\n".join(message for message in messages if message)
+    if feedback:
         with _session_scope() as session:
             _save_and_emit_plain_answer(
-                service=service,
-                session=session,
-                message=sql_answer_user_message,
-                in_chat=in_chat,
-                stream=stream,
-                json_result=json_result,
-            )
-
-    if missing_event_message and missing_event_notice:
-        with _session_scope() as session:
-            _save_and_emit_plain_answer(
-                service=service,
-                session=session,
-                message=missing_event_message,
-                in_chat=in_chat,
-                stream=stream,
-                json_result=json_result,
-                notice=missing_event_notice,
-            )
-    if unknown_event_message and unknown_event_notice:
-        with _session_scope() as session:
-            _save_and_emit_plain_answer(
-                service=service,
-                session=session,
-                message=unknown_event_message,
-                in_chat=in_chat,
-                stream=stream,
-                json_result=json_result,
-                notice=unknown_event_notice,
+                service=service, session=session, message=feedback, in_chat=in_chat,
+                stream=stream, json_result=json_result, notice=business_notice,
             )
 
     # Reuse the SQL that already passed permissions and dialect validation. Re-rendering
@@ -2135,7 +1982,7 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
             "execute_scope_sql": execute_scope_sql,
             "execute_allowed_tables": execute_allowed_tables,
             "event_availability": event_availability,
-            "business_notice": _merge_business_notice(missing_event_notice, unknown_event_notice),
+            "business_notice": business_notice,
             "stop": False,
         }
 
@@ -2247,52 +2094,27 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
         data = DataFormat.convert_large_numbers_in_object_array(result.get("data"))
         data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(data)
         result["data"] = data
-        notice_removed_fields = set()
-        if isinstance(business_notice, dict):
-            notice_removed_fields = {
-                str(field)
-                for field in business_notice.get("removed_fields") or []
-                if str(field).strip()
-            }
-        if notice_removed_fields:
-            result = _prune_result_fields(result, notice_removed_fields)
         cleanup = _cleanup_missing_event_result(service, real_execute_sql, result, event_availability)
-        result = cleanup.result
+        chart_dimension_warning = None
         try:
             validate_temporal_query_result(real_execute_sql, getattr(service.ds, 'type', None), result, state.get('chart_type', ''))
         except ChartResultValidationError as error:
-            trigger_log_error(
-                session, service.current_logs[OperationEnum.EXECUTE_SQL],
-                full_message={'error_type': 'invalid_chart_dimension', 'message': str(error)},
-            )
-            raise
+            chart_dimension_warning = str(error)
         execute_log_message: dict[str, Any] = {"sql": real_execute_sql, "count": len(result.get("data"))}
         if business_notice:
             execute_log_message["business_notice"] = business_notice
-        stop_after_missing_event_notice = False
-        if cleanup.missing_events:
-            stop_after_missing_event_notice = not _has_result_rows(result)
-            supported_removed_fields = [] if stop_after_missing_event_notice else cleanup.removed_fields
-            message = _missing_event_feedback(cleanup.missing_events, supported_removed_fields)
-            execute_log_message["business_notice"] = {
-                "notice_type": "data_scope_gap",
-                "reason": "missing_event",
-                "missing_events": cleanup.missing_events,
-                "removed_fields": supported_removed_fields,
-            }
+        if cleanup.missing_events and not business_notice:
+            message = _missing_event_feedback(cleanup.missing_events, []) + "SQL 已执行，相关结果可能为零或为空。"
+            execute_log_message["business_notice"] = _missing_event_notice(cleanup.missing_events, [])
             _save_and_emit_plain_answer(
-                service=service,
-                session=session,
-                message=message,
-                in_chat=in_chat,
-                stream=stream,
-                json_result=json_result,
-                notice=_missing_event_notice(cleanup.missing_events, supported_removed_fields),
+                service=service, session=session, message=message, in_chat=in_chat,
+                stream=stream, json_result=json_result,
+                notice=_missing_event_notice(cleanup.missing_events, []),
             )
 
         empty_result_message = None
         empty_result_notice = None
-        if not stop_after_missing_event_notice and not _has_result_rows(result):
+        if not _has_result_rows(result):
             empty_result_message = _empty_result_feedback()
             empty_result_notice = _empty_result_notice()
             execute_log_message["business_notice"] = empty_result_notice
@@ -2309,12 +2131,16 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
         if not stream:
             json_result["data"] = get_chat_chart_data(session, service.record.id)
 
-        if stop_after_missing_event_notice:
-            if in_chat:
-                _emit(_sse({"type": "finish"}))
-            elif not stream:
-                json_result["success"] = False
-                json_result["message"] = message
+        if chart_dimension_warning:
+            message = "SQL 已成功执行并保留结果；当前日期维度无法用于趋势图，请调整维度或查看查询结果。"
+            _save_and_emit_plain_answer(
+                service=service, session=session, message=message, in_chat=in_chat,
+                stream=stream, json_result=json_result, finish=True,
+                notice={"notice_type": "sql_quality_warning", "reason": "chart_dimension_unavailable",
+                        "quality_warnings": [chart_dimension_warning], "severity": "warning"},
+            )
+            if not in_chat and not stream:
+                json_result["success"] = True
                 _emit(json_result)
             return {"json_result": json_result, "result": result, "stop": True}
 

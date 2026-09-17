@@ -76,6 +76,26 @@ def test_public_models_preserve_structured_violation() -> None:
     assert str(DataSkillSqlValidationError("纯文本口径错误")) == "纯文本口径错误"
 
 
+@pytest.mark.parametrize('outer', [PermissionError('拒绝访问'), TimeoutError('请求超时')])
+def test_terminal_error_is_not_misclassified_by_earlier_sql_violation(outer):
+    outer.__cause__=DataSkillSqlValidationError('缺少补齐日期')
+    assert classify_prepare_sql_error(outer) is None
+
+
+def test_knowledge_service_failure_does_not_retry_sql_from_its_context():
+    from apps.knowledge_base.context import KnowledgeContextError
+    outer=KnowledgeContextError('knowledge_review_unavailable','校验服务不可用')
+    outer.__context__=DataSkillSqlValidationError('缺少补齐日期')
+    assert classify_prepare_sql_error(outer) is None
+
+
+def test_execute_permission_denial_dominates_prior_structure_error():
+    from apps.chat.task.sql_repair import SqlStructureValidationError
+    outer=PermissionError('权限不足')
+    outer.__cause__=SqlStructureValidationError('Invalid CAST')
+    assert classify_execute_sql_error(outer) is None
+
+
 @pytest.mark.parametrize(
     ("error", "expected"),
     [

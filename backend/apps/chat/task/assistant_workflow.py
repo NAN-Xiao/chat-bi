@@ -16,6 +16,7 @@ from sqlmodel import Session
 
 from apps.chat.task.assistant_output import emit, sse
 from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
+from apps.knowledge_base.context import KnowledgeContextError
 from common.error import AppDBConnectionError, AppDBError, DataUnavailableError, SingleMessageError
 from common.user_facing_errors import (
     DATA_UNAVAILABLE_ERROR_TYPE,
@@ -89,6 +90,11 @@ def classify_workflow_error(error: BaseException) -> str:
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    from apps.chat.task.sql_repair import SqlRepairExhaustedError
+    if isinstance(error, SqlRepairExhaustedError):
+        return error.error_type
+    if isinstance(error, KnowledgeContextError):
+        return error.code
     if isinstance(error, DataUnavailableError):
         return DATA_UNAVAILABLE_ERROR_TYPE
     if isinstance(error, SingleMessageError) and looks_like_data_unavailable_business_message(str(error)):
@@ -313,6 +319,13 @@ def format_workflow_error(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
+    from apps.chat.task.sql_repair import SqlRepairExhaustedError
+    if isinstance(error, SqlRepairExhaustedError):
+        AppLogUtil.warning(f"{log_prefix} repair exhausted record_id={record_id(service)} reason={error.context.reason.value} attempts={error.context.attempt} stop_reason={error.stop_reason} detail={error.context.error_message}")
+        return orjson.dumps(error.public_payload()).decode()
+    if isinstance(error, KnowledgeContextError):
+        AppLogUtil.error(f"{log_prefix} knowledge error record_id={record_id(service)} code={error.code}")
+        return orjson.dumps({'message': error.message, 'error_type': error.code}).decode()
     if isinstance(error, DataUnavailableError):
         error_msg = str(error)
         AppLogUtil.info(f"{log_prefix} data unavailable record_id={record_id(service)}: {error_msg}")

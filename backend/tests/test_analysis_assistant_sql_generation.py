@@ -1196,7 +1196,7 @@ def test_data_skill_block_requires_exact_business_identifiers() -> None:
     )
 
 
-def test_llm_text_retries_near_match_of_data_skill_identifier() -> None:
+def test_llm_text_keeps_near_match_without_semantic_retry() -> None:
     class SequenceLLM:
         def __init__(self) -> None:
             self.outputs = iter(
@@ -1212,30 +1212,29 @@ def test_llm_text_retries_near_match_of_data_skill_identifier() -> None:
             return SimpleNamespace(content=next(self.outputs))
 
     llm = SequenceLLM()
-    result = analysis_api._llm_text_with_data_skill_identifier_retry(
+    result = analysis_api._llm_text_for_executable_sql(
         llm,
         [HumanMessage(content="解释新增用户口径")],
         "新增用户必须使用 event='UserRegister'。",
     )
 
-    assert result == "新增用户使用 `UserRegister` 事件。"
-    assert llm.calls == 2
+    assert result == "新增用户使用 `Register` 事件。"
+    assert llm.calls == 1
 
 
-def test_outline_falls_back_without_invalid_near_match() -> None:
+def test_outline_is_not_replaced_for_semantic_near_match() -> None:
     class InvalidLLM:
         def invoke(self, _messages):
             return SimpleNamespace(content="新增用户使用 `Register` 事件。")
 
-    result = analysis_api._analysis_outline_with_identifier_fallback(
+    result = analysis_api._analysis_outline_for_execution(
         InvalidLLM(),
         [HumanMessage(content="解释新增用户口径")],
         "新增用户必须使用 event='UserRegister'。",
         initial_text="新增用户使用 `Register` 事件。",
     )
 
-    assert "`Register`" not in result
-    assert "当前 Data Skill" in result
+    assert result == "新增用户使用 `Register` 事件。"
 
 
 def test_prepare_time_safe_sql_repairs_before_ast_rewrite(

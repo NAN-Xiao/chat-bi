@@ -61,6 +61,7 @@ class OperationEnum(Enum):
     EXECUTE_SQL = '12'
     GENERATE_PICTURE = '13'
     FILTER_DATA_SKILL = '14'
+    KNOWLEDGE_REVIEW = '15'
 
 
 class ChatFinishStep(Enum):

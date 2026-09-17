@@ -56,6 +56,7 @@ CHAT_USAGE_METRICS = {
     OperationEnum.GENERATE_SQL_WITH_PERMISSIONS: "chat.generate_sql_with_permissions",
     OperationEnum.GENERATE_DYNAMIC_SQL: "chat.generate_dynamic_sql",
     OperationEnum.FILTER_DATA_SKILL: "chat.data_skill",
+    OperationEnum.KNOWLEDGE_REVIEW: "chat.knowledge_review",
 }
 
 

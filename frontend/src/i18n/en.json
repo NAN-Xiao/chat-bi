@@ -1891,7 +1891,8 @@
       "FILTER_CUSTOM_PROMPT": "Match Custom Agents",
       "EXECUTE_SQL": "Execute SQL",
       "GENERATE_PICTURE": "Generate Picture",
-      "FILTER_DATA_SKILL": "Match Data Skills"
+      "FILTER_DATA_SKILL": "Match Data Skills",
+      "KNOWLEDGE_REVIEW": "Knowledge Rule Review"
     },
     "log_system": "Conversation Template",
     "log_question": "Current Question",
