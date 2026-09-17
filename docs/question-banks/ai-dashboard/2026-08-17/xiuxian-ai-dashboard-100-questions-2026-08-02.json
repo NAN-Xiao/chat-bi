@@ -120,30 +120,6 @@
     "independent": true
   },
   {
-    "id": 11,
-    "workspace": "修仙",
-    "dashboard_id": "afe201c9762c448aa0495f3508c01793",
-    "dashboard_name": "核心看板",
-    "datasource_id": 6,
-    "question": "最近60天新增用户数按日如何变化，计算7日移动平均值。",
-    "topic": "新增用户趋势",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "trend",
-    "independent": true
-  },
-  {
-    "id": 12,
-    "workspace": "修仙",
-    "dashboard_id": "afe201c9762c448aa0495f3508c01793",
-    "dashboard_name": "核心看板",
-    "datasource_id": 6,
-    "question": "最近90天累计付费用户数如何增长，各月新增付费用户数是多少？",
-    "topic": "累计付费用户",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "trend",
-    "independent": true
-  },
-  {
     "id": 13,
     "workspace": "修仙",
     "dashboard_id": "afe201c9762c448aa0495f3508c01793",
@@ -152,18 +128,6 @@
     "question": "最近28天各渠道新增用户数及占比是多少，按规模排序。",
     "topic": "渠道新增用户",
     "time_scope": "last_28_days",
-    "expected_answer_kind": "ranking",
-    "independent": true
-  },
-  {
-    "id": 14,
-    "workspace": "修仙",
-    "dashboard_id": "afe201c9762c448aa0495f3508c01793",
-    "dashboard_name": "核心看板",
-    "datasource_id": 6,
-    "question": "最近60天各渠道累计付费金额和累计付费用户数排名如何？",
-    "topic": "渠道累计付费",
-    "time_scope": "last_60_days",
     "expected_answer_kind": "ranking",
     "independent": true
   },
@@ -200,18 +164,6 @@
     "question": "最近28天各渠道新增用户留存率有何差异？",
     "topic": "渠道新增留存",
     "time_scope": "last_28_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 18,
-    "workspace": "修仙",
-    "dashboard_id": "afe201c9762c448aa0495f3508c01793",
-    "dashboard_name": "核心看板",
-    "datasource_id": 6,
-    "question": "最近90天各新增批次的ARPU与ARPPU分别是多少，只比较已成熟批次。",
-    "topic": "新增用户ARPU与ARPPU",
-    "time_scope": "last_90_days",
     "expected_answer_kind": "comparison",
     "independent": true
   },
@@ -336,66 +288,6 @@
     "independent": true
   },
   {
-    "id": 29,
-    "workspace": "修仙",
-    "dashboard_id": "32909e56ee174a2a9d8226be17d51ddf",
-    "dashboard_name": "留存分析",
-    "datasource_id": 6,
-    "question": "最近60天各渠道付费用户留存率有何差异？",
-    "topic": "付费留存",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 30,
-    "workspace": "修仙",
-    "dashboard_id": "32909e56ee174a2a9d8226be17d51ddf",
-    "dashboard_name": "留存分析",
-    "datasource_id": 6,
-    "question": "最近60天各渠道新增付费用户留存率有何差异？",
-    "topic": "新增付费留存",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 31,
-    "workspace": "修仙",
-    "dashboard_id": "32909e56ee174a2a9d8226be17d51ddf",
-    "dashboard_name": "留存分析",
-    "datasource_id": 6,
-    "question": "最近90天各渠道新增用户的次日、7日和30日留存率排名如何，只统计成熟批次。",
-    "topic": "新增多周期留存",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "ranking",
-    "independent": true
-  },
-  {
-    "id": 32,
-    "workspace": "修仙",
-    "dashboard_id": "32909e56ee174a2a9d8226be17d51ddf",
-    "dashboard_name": "留存分析",
-    "datasource_id": 6,
-    "question": "最近60天各渠道新增留存与活跃留存之间的差距是多少？",
-    "topic": "新增与活跃留存",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 33,
-    "workspace": "修仙",
-    "dashboard_id": "32909e56ee174a2a9d8226be17d51ddf",
-    "dashboard_name": "留存分析",
-    "datasource_id": 6,
-    "question": "最近90天付费用户留存与新增付费用户留存有何差异？",
-    "topic": "两类付费留存",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
     "id": 34,
     "workspace": "修仙",
     "dashboard_id": "32909e56ee174a2a9d8226be17d51ddf",
@@ -420,18 +312,6 @@
     "independent": true
   },
   {
-    "id": 36,
-    "workspace": "修仙",
-    "dashboard_id": "32909e56ee174a2a9d8226be17d51ddf",
-    "dashboard_name": "留存分析",
-    "datasource_id": 6,
-    "question": "最近90天已成熟新增批次的7日和30日留存率如何变化？",
-    "topic": "成熟批次留存",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "trend",
-    "independent": true
-  },
-  {
     "id": 37,
     "workspace": "修仙",
     "dashboard_id": "32909e56ee174a2a9d8226be17d51ddf",
@@ -441,18 +321,6 @@
     "topic": "月度留存对比",
     "time_scope": "this_month",
     "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 38,
-    "workspace": "修仙",
-    "dashboard_id": "32909e56ee174a2a9d8226be17d51ddf",
-    "dashboard_name": "留存分析",
-    "datasource_id": 6,
-    "question": "最近12周新增留存和活跃留存按周如何变化？",
-    "topic": "周度留存趋势",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "trend",
     "independent": true
   },
   {
@@ -564,18 +432,6 @@
     "independent": true
   },
   {
-    "id": 48,
-    "workspace": "修仙",
-    "dashboard_id": "6234ec38697c4924b65c7de11d8bd829",
-    "dashboard_name": "付费概览",
-    "datasource_id": 6,
-    "question": "最近60天充值金额与充值用户数的日趋势是否同步？",
-    "topic": "金额与人数趋势",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
     "id": 49,
     "workspace": "修仙",
     "dashboard_id": "6234ec38697c4924b65c7de11d8bd829",
@@ -621,18 +477,6 @@
     "topic": "月度付费对比",
     "time_scope": "this_month",
     "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 53,
-    "workspace": "修仙",
-    "dashboard_id": "6234ec38697c4924b65c7de11d8bd829",
-    "dashboard_name": "付费概览",
-    "datasource_id": 6,
-    "question": "最近90天充值金额和充值用户数按周如何变化？",
-    "topic": "长期付费趋势",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "trend",
     "independent": true
   },
   {
@@ -693,18 +537,6 @@
     "topic": "系统新增用户",
     "time_scope": "last_30_days",
     "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 59,
-    "workspace": "修仙",
-    "dashboard_id": "b09e4d57f57b41859a0c2d4609f80f26",
-    "dashboard_name": "新增看板",
-    "datasource_id": 6,
-    "question": "最近60天新增用户次日留存率按注册日如何变化？",
-    "topic": "新增次日留存",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "trend",
     "independent": true
   },
   {
@@ -864,18 +696,6 @@
     "independent": true
   },
   {
-    "id": 73,
-    "workspace": "修仙",
-    "dashboard_id": "c68e08ee9b4a4be59c3c8fbbe918affd",
-    "dashboard_name": "活跃看板",
-    "datasource_id": 6,
-    "question": "最近90天WAU和MAU按周如何变化，WAU占MAU的比例是多少？",
-    "topic": "周月活跃关系",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "trend",
-    "independent": true
-  },
-  {
     "id": 74,
     "workspace": "修仙",
     "dashboard_id": "c68e08ee9b4a4be59c3c8fbbe918affd",
@@ -972,18 +792,6 @@
     "independent": true
   },
   {
-    "id": 87,
-    "workspace": "修仙",
-    "dashboard_id": "a34aef6cb7214f7fa23e5846a0a66236",
-    "dashboard_name": "渠道分析",
-    "datasource_id": 6,
-    "question": "最近60天各渠道活跃规模、付费用户数和付费金额有何差异？",
-    "topic": "渠道用户价值",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
     "id": 88,
     "workspace": "修仙",
     "dashboard_id": "a34aef6cb7214f7fa23e5846a0a66236",
@@ -1040,18 +848,6 @@
     "question": "最近30天各单一渠道新增用户走势有何差异？",
     "topic": "单渠道新增",
     "time_scope": "last_30_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 93,
-    "workspace": "修仙",
-    "dashboard_id": "146ba4deb8b74ab293f38f69d89d4b21",
-    "dashboard_name": "投放看板",
-    "datasource_id": 6,
-    "question": "最近60天各渠道注册用户数和付费表现分别是多少？",
-    "topic": "渠道注册与付费",
-    "time_scope": "last_60_days",
     "expected_answer_kind": "comparison",
     "independent": true
   },

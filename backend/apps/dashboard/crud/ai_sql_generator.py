@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import inspect
 import json
 import re
@@ -386,8 +385,6 @@ class DashboardManualChartGraphState(TypedDict, total=False):
     sql_plan: dict[str, Any]
     response: DashboardAiSqlGenerateResponse
     sql_repair_attempts: int
-    sql_validation_fingerprints: list[str]
-    sql_repair_stalled: bool
     output_binding_issues: list[str]
     graph_trace: list[dict[str, Any]]
     last_node: str
@@ -5535,26 +5532,13 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
 
 
 def _sql_validation_result(state: DashboardManualChartGraphState, response: DashboardAiSqlGenerateResponse) -> dict[str, Any]:
-    history = list(state.get("sql_validation_fingerprints") or [])
-    canonical_sql = response.sql.strip()
-    parsed = _sqlglot_statements_for_generation_validation(response.sql, state.get("sql_dialect"))
-    if parsed:
-        canonical_sql = ";".join(statement.sql(comments=False) for statement in parsed)
-    fingerprint = hashlib.sha256(_safe_json([canonical_sql, sorted(response.issues)]).encode("utf-8")).hexdigest()
-    stalled = not response.success and fingerprint in history
-    if stalled:
-        response.advice = "自动修复重复返回相同 SQL 和错误，已停止无效重试。请查看具体校验错误。"
-    if not response.success:
-        history.append(fingerprint)
     AppLogUtil.info(
         f"Dashboard SQL validation: request_id={current_generation_run().request_id if current_generation_run() else '-'}, "
         f"success={response.success}, repair_attempts={state.get('sql_repair_attempts', 0)}, "
-        f"stalled={stalled}, fingerprint={fingerprint}, issues={_safe_json(response.issues)}"
+        f"issues={_safe_json(response.issues)}"
     )
     return {
         "response": response,
-        "sql_validation_fingerprints": history,
-        "sql_repair_stalled": stalled,
         "graph_trace": _append_trace(state, "validate_sql", "passed" if response.success else "failed"),
         "last_node": "validate_sql",
     }
@@ -5568,7 +5552,6 @@ def _route_after_sql_validate(state: DashboardManualChartGraphState) -> str:
         and response.success is False
         and bool(str(response.sql or "").strip())
         and bool(response.issues)
-        and not state.get("sql_repair_stalled")
         and int(state.get("sql_repair_attempts") or 0) < settings.DASHBOARD_SQL_MAX_REPAIR_ATTEMPTS
     ):
         if analysis_model in ANALYSIS_MODEL_LABELS:

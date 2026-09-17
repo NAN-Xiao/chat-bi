@@ -21,6 +21,7 @@ import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import router from '@/router'
 import { buildOrdinaryDashboardQuery } from '@/views/dashboard/utils/dashboardRouteMode'
+import { showDismissibleSuccess } from '@/utils/dismissibleMessage'
 const fullScreeRef = ref(null)
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -78,10 +79,7 @@ const saveCanvasWithCheck = () => {
           name: dashboardInfo.value.name,
         },
         function () {
-          ElMessage({
-            type: 'success',
-            message: t('common.save_success'),
-          })
+          showDismissibleSuccess(t('common.save_success'))
         }
       )
       return
@@ -95,10 +93,7 @@ const saveCanvasWithCheck = () => {
       pid: 'root',
     }
     saveDashboardResource(updateParams, function () {
-      ElMessage({
-        type: 'success',
-        message: t('common.save_success'),
-      })
+      showDismissibleSuccess(t('common.save_success'))
     })
   }
 }

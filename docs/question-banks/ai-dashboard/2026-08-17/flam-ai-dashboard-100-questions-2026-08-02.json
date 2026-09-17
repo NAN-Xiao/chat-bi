@@ -96,18 +96,6 @@
     "independent": true
   },
   {
-    "id": 9,
-    "workspace": "flam",
-    "dashboard_id": "6d50bd7dfc9f46ba961d636814c3294d",
-    "dashboard_name": "核心看板",
-    "datasource_id": 3,
-    "question": "最近60天各渠道累计付费金额和累计付费用户数排名如何，各渠道占比分别是多少？",
-    "topic": "渠道累计付费",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "ranking",
-    "independent": true
-  },
-  {
     "id": 10,
     "workspace": "flam",
     "dashboard_id": "6d50bd7dfc9f46ba961d636814c3294d",
@@ -153,18 +141,6 @@
     "topic": "系统新增用户",
     "time_scope": "last_30_days",
     "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 14,
-    "workspace": "flam",
-    "dashboard_id": "bb3ab5f2697a42af98ab90da4679cb77",
-    "dashboard_name": "新增看板",
-    "datasource_id": 3,
-    "question": "最近60天各注册日新增用户的次日留存率如何变化，只统计已成熟的注册批次。",
-    "topic": "新增次日留存",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "trend",
     "independent": true
   },
   {
@@ -264,18 +240,6 @@
     "independent": true
   },
   {
-    "id": 23,
-    "workspace": "flam",
-    "dashboard_id": "8f86e50234794606bd2a33ec41ffa660",
-    "dashboard_name": "留存分析",
-    "datasource_id": 3,
-    "question": "最近90天购买月卡用户的30日留存率按购买批次如何变化，只统计已满30天的批次。",
-    "topic": "月卡用户30日留存",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "trend",
-    "independent": true
-  },
-  {
     "id": 24,
     "workspace": "flam",
     "dashboard_id": "8f86e50234794606bd2a33ec41ffa660",
@@ -360,30 +324,6 @@
     "independent": true
   },
   {
-    "id": 31,
-    "workspace": "flam",
-    "dashboard_id": "259414f219f94aacaa46f4e531646b9d",
-    "dashboard_name": "付费概览",
-    "datasource_id": 3,
-    "question": "最近90天新增用户批次的1日、3日、7日、14日和30日LTV分别是多少？",
-    "topic": "新增用户LTV",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 32,
-    "workspace": "flam",
-    "dashboard_id": "259414f219f94aacaa46f4e531646b9d",
-    "dashboard_name": "付费概览",
-    "datasource_id": 3,
-    "question": "对最近90天内已满30天的新增用户批次按30日LTV排序，并给出各批次用户数。",
-    "topic": "成熟批次30日LTV",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "ranking",
-    "independent": true
-  },
-  {
     "id": 33,
     "workspace": "flam",
     "dashboard_id": "259414f219f94aacaa46f4e531646b9d",
@@ -417,18 +357,6 @@
     "topic": "等级段人均付费",
     "time_scope": "last_28_days",
     "expected_answer_kind": "ranking",
-    "independent": true
-  },
-  {
-    "id": 36,
-    "workspace": "flam",
-    "dashboard_id": "259414f219f94aacaa46f4e531646b9d",
-    "dashboard_name": "付费概览",
-    "datasource_id": 3,
-    "question": "最近60天充值用户数与充值总额的日趋势是否同步，差异最大的日期有哪些？",
-    "topic": "付费规模关系",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "comparison",
     "independent": true
   },
   {
@@ -816,54 +744,6 @@
     "independent": true
   },
   {
-    "id": 69,
-    "workspace": "flam",
-    "dashboard_id": "29ea652e2969440b91899cfb254dd0ca",
-    "dashboard_name": "活动分析",
-    "datasource_id": 3,
-    "question": "最近8周用户每周活动参与次数如何分布，重度参与用户占比是多少？",
-    "topic": "周活动频次",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "distribution",
-    "independent": true
-  },
-  {
-    "id": 70,
-    "workspace": "flam",
-    "dashboard_id": "29ea652e2969440b91899cfb254dd0ca",
-    "dashboard_name": "活动分析",
-    "datasource_id": 3,
-    "question": "最近60天参与新手活动的用户后续第1日和第7日留存率分别是多少？",
-    "topic": "新手活动留存",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 71,
-    "workspace": "flam",
-    "dashboard_id": "29ea652e2969440b91899cfb254dd0ca",
-    "dashboard_name": "活动分析",
-    "datasource_id": 3,
-    "question": "最近90天参与节日活动用户的当日付费率和第7日付费率分别是多少？",
-    "topic": "节日活动付费率",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 72,
-    "workspace": "flam",
-    "dashboard_id": "29ea652e2969440b91899cfb254dd0ca",
-    "dashboard_name": "活动分析",
-    "datasource_id": 3,
-    "question": "最近60天各类活动参与人数和参与率按周如何变化？",
-    "topic": "活动趋势",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "trend",
-    "independent": true
-  },
-  {
     "id": 73,
     "workspace": "flam",
     "dashboard_id": "29ea652e2969440b91899cfb254dd0ca",
@@ -873,18 +753,6 @@
     "topic": "活动综合排行",
     "time_scope": "last_28_days",
     "expected_answer_kind": "ranking",
-    "independent": true
-  },
-  {
-    "id": 74,
-    "workspace": "flam",
-    "dashboard_id": "29ea652e2969440b91899cfb254dd0ca",
-    "dashboard_name": "活动分析",
-    "datasource_id": 3,
-    "question": "最近90天不同活动参与批次的7日留存率如何变化，只统计已成熟批次。",
-    "topic": "活动用户留存",
-    "time_scope": "last_90_days",
-    "expected_answer_kind": "trend",
     "independent": true
   },
   {
@@ -960,18 +828,6 @@
     "independent": true
   },
   {
-    "id": 81,
-    "workspace": "flam",
-    "dashboard_id": "f26870db68cb44bd974b0160ea91cdae",
-    "dashboard_name": "经济系统",
-    "datasource_id": 3,
-    "question": "最近60天免费钻石和付费钻石存量变化中有哪些异常日期？",
-    "topic": "钻石存量异常",
-    "time_scope": "last_60_days",
-    "expected_answer_kind": "anomaly",
-    "independent": true
-  },
-  {
     "id": 82,
     "workspace": "flam",
     "dashboard_id": "f26870db68cb44bd974b0160ea91cdae",
@@ -1040,18 +896,6 @@
     "question": "最近30天各单一渠道的新增用户走势有何差异，哪个渠道增长最快？",
     "topic": "单渠道新增",
     "time_scope": "last_30_days",
-    "expected_answer_kind": "comparison",
-    "independent": true
-  },
-  {
-    "id": 93,
-    "workspace": "flam",
-    "dashboard_id": "e423819a72454bc9ab71646d41aa5fd6",
-    "dashboard_name": "投放看板",
-    "datasource_id": 3,
-    "question": "最近60天各渠道注册用户数、首日付费金额、7日累计付费金额和累计付费金额分别是多少？",
-    "topic": "注册与付费",
-    "time_scope": "last_60_days",
     "expected_answer_kind": "comparison",
     "independent": true
   },

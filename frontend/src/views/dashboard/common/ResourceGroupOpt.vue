@@ -11,6 +11,7 @@ import { useI18n } from 'vue-i18n'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useUserStore } from '@/stores/user'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
+import { showDismissibleSuccess } from '@/utils/dismissibleMessage'
 
 const { t } = useI18n()
 const datasourceContext = useDatasourceContextStore()
@@ -318,11 +319,7 @@ const saveResource = () => {
         ? (callback: (rsp: any) => void) => saveDashboardResourceTarget(params, commonParams, callback)
         : (callback: (rsp: any) => void) => saveDashboardResource(params, callback)
       saveRequest(function (rsp: any) {
-        const messageTips = t('common.save_success')
-        ElMessage({
-          type: 'success',
-          message: messageTips,
-        })
+        showDismissibleSuccess(t('common.save_success'))
         emits('finish', {
           opt: state.opt,
           resourceId: rsp.id,

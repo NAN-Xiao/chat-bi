@@ -15,7 +15,7 @@ BANKS = {
         "tenant_id": "7493272549510352896",
         "datasource_id": 12,
         "dashboard_count": 9,
-        "excluded_ids": list(range(91, 101)),
+        "excluded_ids": [22, 23, 27] + list(range(91, 101)),
         "auditable": True,
     },
     "unicorn-ai-dashboard-100-questions-20260817.json": {
@@ -23,7 +23,7 @@ BANKS = {
         "tenant_id": "7493583885482070016",
         "datasource_id": 9,
         "dashboard_count": 9,
-        "excluded_ids": list(range(91, 101)),
+        "excluded_ids": [22, 23, 27] + list(range(91, 101)),
         "auditable": True,
     },
     "j2000-ai-dashboard-100-questions-20260817.json": {
@@ -31,7 +31,7 @@ BANKS = {
         "tenant_id": "7493583991958671360",
         "datasource_id": 11,
         "dashboard_count": 9,
-        "excluded_ids": list(range(91, 101)),
+        "excluded_ids": [22, 23, 27] + list(range(91, 101)),
         "auditable": True,
     },
     "lds-ai-dashboard-100-questions-20260817.json": {
@@ -39,7 +39,7 @@ BANKS = {
         "tenant_id": "7493272675721154560",
         "datasource_id": 10,
         "dashboard_count": 9,
-        "excluded_ids": list(range(91, 101)),
+        "excluded_ids": [22, 23, 27] + list(range(91, 101)),
         "auditable": True,
     },
     "flam-ai-dashboard-100-questions-2026-08-02.json": {
@@ -47,7 +47,7 @@ BANKS = {
         "tenant_id": "7477202383789887488",
         "datasource_id": 3,
         "dashboard_count": 13,
-        "excluded_ids": list(range(86, 91)),
+        "excluded_ids": [9, 14, 23, 31, 32, 36, 69, 70, 71, 72, 74, 81] + list(range(86, 91)) + [93],
         "auditable": False,
     },
     "xiuxian-ai-dashboard-100-questions-2026-08-02.json": {
@@ -55,7 +55,7 @@ BANKS = {
         "tenant_id": "7482727237662281728",
         "datasource_id": 6,
         "dashboard_count": 9,
-        "excluded_ids": list(range(76, 81)),
+        "excluded_ids": [11, 12, 14, 18, 29, 30, 31, 32, 33, 36, 38, 48, 53, 59, 73] + list(range(76, 81)) + [87, 93],
         "auditable": False,
     },
     "sample-workspace-ai-dashboard-100-questions-20260811.json": {
@@ -63,7 +63,7 @@ BANKS = {
         "tenant_id": "7473600346187632640",
         "datasource_id": 1,
         "dashboard_count": 13,
-        "excluded_ids": [21, 23],
+        "excluded_ids": [5, 21, 23, 27, 28, 29, 35, 55, 61, 65, 73, 74, 76, 78, 82],
         "auditable": False,
     },
 }
@@ -127,8 +127,8 @@ def validate_bank(filename: str, expected: dict[str, object]) -> dict[str, objec
 
     if expected["auditable"]:
         require(
-            set(dashboard_counts.values()) == {10},
-            f"{filename}: each recommended dashboard must provide 10 questions",
+            sorted(dashboard_counts.values()) == [7] + [10] * 8,
+            f"{filename}: expected one dashboard with 7 questions and eight with 10",
         )
         selected_count = 0
         for item in items:

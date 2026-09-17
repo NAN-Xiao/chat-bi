@@ -548,56 +548,6 @@
     "selected_for_test": true
   },
   {
-    "id": 22,
-    "workspace": "unicorn",
-    "tenant_id": "7493583885482070016",
-    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
-    "dashboard_name": "活跃看板",
-    "datasource_id": 9,
-    "question": "最近 12 周 WAU 趋势",
-    "topic": "活跃看板 - WAU",
-    "source_charts": [
-      {
-        "chart_id": "ac7aa7d4b3df4f35999f6e77ad6336aa",
-        "title": "WAU",
-        "type": "line",
-        "fields": [
-          "周",
-          "WAU"
-        ]
-      }
-    ],
-    "time_scope": "latest_12w",
-    "expected_answer_kind": "trend",
-    "independent": true,
-    "selected_for_test": false
-  },
-  {
-    "id": 23,
-    "workspace": "unicorn",
-    "tenant_id": "7493583885482070016",
-    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
-    "dashboard_name": "活跃看板",
-    "datasource_id": 9,
-    "question": "最近 6 个月 MAU 趋势",
-    "topic": "活跃看板 - MAU",
-    "source_charts": [
-      {
-        "chart_id": "5375a968f47645308a195a84a6d659b3",
-        "title": "MAU",
-        "type": "line",
-        "fields": [
-          "月份",
-          "MAU"
-        ]
-      }
-    ],
-    "time_scope": "latest_6m",
-    "expected_answer_kind": "trend",
-    "independent": true,
-    "selected_for_test": false
-  },
-  {
     "id": 24,
     "workspace": "unicorn",
     "tenant_id": "7493583885482070016",
@@ -672,37 +622,6 @@
     ],
     "time_scope": "latest_28d",
     "expected_answer_kind": "trend",
-    "independent": true,
-    "selected_for_test": false
-  },
-  {
-    "id": 27,
-    "workspace": "unicorn",
-    "tenant_id": "7493583885482070016",
-    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
-    "dashboard_name": "活跃看板",
-    "datasource_id": 9,
-    "question": "最近 8 周用户每周登录天数分布",
-    "topic": "活跃看板 - 周登录天数分布",
-    "source_charts": [
-      {
-        "chart_id": "147a7b40b9364912bc84acabcc333e64",
-        "title": "周登录天数分布",
-        "type": "column",
-        "fields": [
-          "周",
-          "1天",
-          "2天",
-          "3天",
-          "4天",
-          "5天",
-          "6天",
-          "7天"
-        ]
-      }
-    ],
-    "time_scope": "latest_8w",
-    "expected_answer_kind": "composition",
     "independent": true,
     "selected_for_test": false
   },

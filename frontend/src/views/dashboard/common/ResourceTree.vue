@@ -19,6 +19,7 @@ import icon_tree_list from '@/assets/svg/icon_tree_list.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import { onMounted, reactive, ref, watch, nextTick, computed } from 'vue'
 import { ElIcon, ElMessage, ElMessageBox, ElScrollbar } from 'element-plus-secondary'
+import { showDismissibleSuccess } from '@/utils/dismissibleMessage'
 import { Icon } from '@/components/icon-custom'
 import { type SQTreeNode } from '@/views/dashboard/utils/treeNode'
 import _ from 'lodash'
@@ -1224,7 +1225,7 @@ const toggleTreeEditing = async () => {
   if (!canEditDashboardTree.value) return
   if (isTreeEditing.value) {
     await saveTreeOrder()
-    ElMessage.success(t('common.save_success'))
+    showDismissibleSuccess(t('common.save_success'))
     isTreeEditing.value = false
     return
   }

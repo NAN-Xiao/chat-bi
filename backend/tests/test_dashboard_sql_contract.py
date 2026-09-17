@@ -73,13 +73,43 @@ def test_global_filter_cannot_be_omitted_or_weakened_by_or():
     assert generator._node_validate_sql(state)["response"].success
 
 
-def test_same_sql_and_validation_error_stops_repair_loop():
+def test_same_sql_and_validation_error_retries_until_limit(monkeypatch):
+    monkeypatch.setattr(generator.settings, "DASHBOARD_SQL_MAX_REPAIR_ATTEMPTS", 3)
+    state = event_state("SELECT COUNT(*) AS n FROM activity WHERE action='Open'")
+    for attempt in range(4):
+        state["response"] = DashboardAiSqlGenerateResponse(success=True, sql=state["response"].sql)
+        state["sql_repair_attempts"] = attempt
+        state.update(generator._node_validate_sql(state))
+        assert not state["response"].success
+        expected = "repair_sql" if attempt < 3 else "explain_advice"
+        assert generator._route_after_sql_validate(state) == expected
+        assert "停止无效重试" not in state["response"].advice
+
+
+@pytest.mark.parametrize("analysis_model", generator.ANALYSIS_MODEL_LABELS)
+def test_repeated_validation_failure_does_not_stop_any_model_early(monkeypatch, analysis_model):
+    monkeypatch.setattr(generator.settings, "DASHBOARD_SQL_MAX_REPAIR_ATTEMPTS", 3)
+    state = {"normalized_config": {"analysis_model": analysis_model}, "sql_dialect": "mysql"}
+    for attempt in range(4):
+        response = DashboardAiSqlGenerateResponse(
+            success=False, sql="SELECT 1", issues=["SQL 未通过结果契约。"], advice="请修复 SQL。",
+        )
+        state["sql_repair_attempts"] = attempt
+        state.update(generator._sql_validation_result(state, response))
+        assert generator._route_after_sql_validate(state) == ("repair_sql" if attempt < 3 else "explain_advice")
+        assert response.advice == "请修复 SQL。"
+
+
+def test_successful_repair_stops_before_limit(monkeypatch):
+    monkeypatch.setattr(generator.settings, "DASHBOARD_SQL_MAX_REPAIR_ATTEMPTS", 3)
     state = event_state("SELECT COUNT(*) AS n FROM activity WHERE action='Open'")
     state.update(generator._node_validate_sql(state))
-    assert generator._route_after_sql_validate(state) == "repair_sql"
-    state["response"] = DashboardAiSqlGenerateResponse(success=True, sql=state["response"].sql)
     state["sql_repair_attempts"] = 1
+    state["response"] = DashboardAiSqlGenerateResponse(
+        success=True, sql="SELECT COUNT(*) AS `指标 1` FROM activity WHERE action='Open'",
+    )
     state.update(generator._node_validate_sql(state))
+    assert state["response"].success
     assert generator._route_after_sql_validate(state) == "explain_advice"
 
 
