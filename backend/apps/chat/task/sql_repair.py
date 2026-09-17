@@ -120,7 +120,7 @@ _PREPARE_DATE_FILTER_CONFIGURATION_PATTERN = re.compile(
     r"invalid_parameter_type|mixed_parameter_families|parameter_type_mismatch|"
     r"incomplete_parameters|missing_date_expression|invalid_date_expression|"
     r"missing_time_scope|missing_time_range|invalid_time_range|"
-    r"time_range_exceeds_business_date|invalid_default_time_range|invalid_current_day_time_range|"
+    r"time_range_exceeds_business_date|invalid_current_day_time_range|"
     r"time_range_mismatch|"
     r"sql_time_range_mismatch"
     r")",

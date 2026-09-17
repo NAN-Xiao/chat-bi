@@ -122,11 +122,8 @@ def normalize_chat_date_filter_contract(
     if requires_current_business_day:
         if time_scope != "explicit" or (start, end) != (anchor, anchor):
             raise ChatDateFilterConfigurationError("invalid_current_day_time_range")
-    elif time_scope == "unspecified":
-        expected_start = anchor - timedelta(days=7)
-        expected_end = anchor - timedelta(days=1)
-        if (start, end) != (expected_start, expected_end):
-            raise ChatDateFilterConfigurationError("invalid_default_time_range")
+
+    # 默认七天是生成建议，不因范围天数偏差拒绝合法且可渲染的日期参数。
 
     if not isinstance(payload, dict):
         raise ChatDateFilterConfigurationError("missing_date_filter")

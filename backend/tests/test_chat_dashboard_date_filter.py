@@ -287,7 +287,7 @@ def test_concrete_time_contract_rejects_range_after_business_date():
         )
 
 
-def test_concrete_time_contract_requires_exact_default_seven_complete_days():
+def test_concrete_time_contract_accepts_default_seven_complete_days():
     default_filter = {
         **STATIC_DATE_FILTER,
         "date_expression": {
@@ -308,6 +308,36 @@ def test_concrete_time_contract_requires_exact_default_seven_complete_days():
     )
 
     assert pivot == {"enabled": False, **default_filter}
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "expected_bounds"),
+    [
+        ("2026-09-09", "2026-09-16", "BETWEEN 20260909 AND 20260916"),
+        ("2026-08-20", "2026-09-16", "BETWEEN 20260820 AND 20260916"),
+        ("2026-09-15", "2026-09-15", "BETWEEN 20260915 AND 20260915"),
+    ],
+)
+def test_unspecified_range_is_rendered_without_forcing_seven_days(start, end, expected_bounds):
+    date_filter = {
+        "time_field": "dt",
+        "date_parameter_type": "yyyymmdd_number",
+        "date_expression": {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "static", "date": start},
+            "end": {"mode": "static", "date": end},
+        },
+    }
+    pivot = normalize_chat_date_filter_contract(
+        date_filter, DATE_TEMPLATE_SQL, "line", time_scope="unspecified",
+        time_range={"start_date": start, "end_date": end}, business_date=date(2026, 9, 17),
+    )
+    rendered_sql = render_chat_date_filter_sql(
+        DATE_TEMPLATE_SQL, "mysql", pivot, today=date(2026, 9, 17),
+    )
+    assert rendered_sql.endswith(expected_bounds)
+    assert "{{" not in rendered_sql
 
 
 def test_concrete_time_contract_requires_current_business_day_for_realtime():
