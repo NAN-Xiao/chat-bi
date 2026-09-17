@@ -1,3 +1,5 @@
+import { restoreQueryResultTable } from './queryResultTable'
+
 export function applyChartDataResponseToRecord(record: any, response: any) {
   record.data = response
 
@@ -20,5 +22,6 @@ export function applyChartDataResponseToRecord(record: any, response: any) {
     return
   }
 
+  restoreQueryResultTable(record)
   record.analysis_notice = undefined
 }

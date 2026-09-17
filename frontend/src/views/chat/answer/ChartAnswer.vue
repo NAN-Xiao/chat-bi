@@ -17,6 +17,7 @@ import {
 } from './taskRestore'
 import { buildSmartQaTaskKey, smartQaTaskStore } from './smartQaTaskStore'
 import { applyChartDataResponseToRecord } from './chartDataResponse'
+import { needsQueryResultTable, restoreQueryResultTable } from './queryResultTable'
 import {
   partitionTerminalRecordUpdate,
   shouldShowFinalAnswer,
@@ -155,9 +156,11 @@ function findVisibleRecord(record: ChatRecord) {
 
 function updateOwnedRecord(record: ChatRecord, values: Partial<ChatRecord>) {
   Object.assign(record, values)
+  restoreQueryResultTable(record)
   const visibleRecord = findVisibleRecord(record)
   if (visibleRecord && visibleRecord !== record) {
     Object.assign(visibleRecord, values)
+    restoreQueryResultTable(visibleRecord)
   }
   return visibleRecord || record
 }
@@ -644,7 +647,8 @@ async function restoreRecordTask() {
     return
   }
   if (hasStoredFinalAnswer(record)) {
-    if (!props.deferDataLoading && record.id && record.chart && !hasRecordData(record)) {
+    restoreQueryResultTable(record)
+    if (!props.deferDataLoading && record.id && (record.chart || needsQueryResultTable(record)) && !hasRecordData(record)) {
       getChatData(record.id, record)
     }
     return

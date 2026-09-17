@@ -1919,13 +1919,8 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
     elif stream:
         _emit(f"```sql\n{format_sql}\n```\n\n")
 
-    quality_warnings = list(getattr(service, "sql_quality_warnings", []) or [])
     business_notice = _merge_business_notice(missing_event_notice, unknown_event_notice)
     messages = [sql_answer_user_message, missing_event_message, unknown_event_message]
-    if quality_warnings:
-        messages.append("语义质量提示：部分维度或业务规则尚未满足，查询仍将执行，请核对结果的业务含义。")
-        business_notice = {**(business_notice or {"notice_type": "sql_quality_warning", "reason": "semantic_mismatch"}),
-                           "quality_warnings": quality_warnings, "severity": "warning"}
     feedback = "\n\n".join(message for message in messages if message)
     if feedback:
         with _session_scope() as session:
@@ -2131,18 +2126,10 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
         if not stream:
             json_result["data"] = get_chat_chart_data(session, service.record.id)
 
-        if chart_dimension_warning:
-            message = "SQL 已成功执行并保留结果；当前日期维度无法用于趋势图，请调整维度或查看查询结果。"
-            _save_and_emit_plain_answer(
-                service=service, session=session, message=message, in_chat=in_chat,
-                stream=stream, json_result=json_result, finish=True,
-                notice={"notice_type": "sql_quality_warning", "reason": "chart_dimension_unavailable",
-                        "quality_warnings": [chart_dimension_warning], "severity": "warning"},
-            )
-            if not in_chat and not stream:
-                json_result["success"] = True
-                _emit(json_result)
-            return {"json_result": json_result, "result": result, "stop": True}
+        if chart_dimension_warning and finish_step == ChatFinishStep.GENERATE_CHART:
+            chart = _save_query_result_table(service, session, result)
+            delivered = _deliver_chart_result(state, session, chart, result)
+            return {**delivered, "result": result, "stop": True}
 
         if empty_result_message and empty_result_notice:
             _save_and_emit_plain_answer(
@@ -2181,6 +2168,42 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
         return {"json_result": json_result, "result": result, "stop": True}
 
     return {"json_result": json_result, "result": result, "stop": False}
+
+
+def _save_query_result_table(service, session, result):
+    from apps.chat.task.llm import _build_complete_table_chart
+
+    chart = _build_complete_table_chart(result.get("fields") or [], title="查询结果")
+    return service.check_save_chart(session=session, res=orjson.dumps(chart).decode(), result=result)
+
+
+def _deliver_chart_result(state, session, chart, result):
+    """Deliver generated charts and raw result tables through the same response contract."""
+    service = state["service"]
+    in_chat, stream = state["in_chat"], state["stream"]
+    json_result = state["json_result"]
+    if not stream:
+        json_result["chart"] = chart
+    if in_chat:
+        _emit(_sse({"content": orjson.dumps(chart).decode(), "type": "chart"}))
+        _emit(_sse({"type": "finish"}))
+    elif stream:
+        md_data, fields_list = DataFormat.convert_data_fields_for_pandas(
+            chart, result.get("fields"), result.get("data"),
+        )
+        emit_markdown_table(md_data, fields_list, empty_message="The SQL execution result is empty.")
+    else:
+        emit_chart_image(
+            session=session, service=service, chart=chart, data=format_json_data(result),
+            return_img=state["return_img"], json_result=json_result, log_operation=True,
+        )
+        _emit(json_result)
+    if not in_chat and stream:
+        emit_chart_image(
+            session=session, service=service, chart=chart, data=format_json_data(result),
+            return_img=state["return_img"], emit_markdown=True, log_operation=True,
+        )
+    return {"json_result": json_result, "chart": chart}
 
 
 def _generate_chart(state: SmartQAGraphState) -> dict[str, Any]:
@@ -2234,50 +2257,12 @@ def _generate_chart(state: SmartQAGraphState) -> dict[str, Any]:
             _emit(_sse({"type": "info", "msg": "chart generated"}))
 
         AppLogUtil.info(full_chart_text)
-        chart = service.check_save_chart(session=session, res=full_chart_text, result=result)
+        try:
+            chart = service.check_save_chart(session=session, res=full_chart_text, result=result)
+        except ChartResultValidationError:
+            chart = _save_query_result_table(service, session, result)
         AppLogUtil.info(chart)
-
-        if not stream:
-            json_result["chart"] = chart
-
-        if in_chat:
-            _emit(_sse({"content": orjson.dumps(chart).decode(), "type": "chart"}))
-            _emit(_sse({"type": "finish"}))
-        elif stream:
-            md_data, fields_list = DataFormat.convert_data_fields_for_pandas(
-                chart,
-                result.get("fields"),
-                result.get("data"),
-            )
-            emit_markdown_table(
-                md_data,
-                fields_list,
-                empty_message="The SQL execution result is empty.",
-            )
-        else:
-            emit_chart_image(
-                session=session,
-                service=service,
-                chart=chart,
-                data=format_json_data(result),
-                return_img=return_img,
-                json_result=json_result,
-                log_operation=True,
-            )
-            _emit(json_result)
-
-        if not in_chat and stream:
-            emit_chart_image(
-                session=session,
-                service=service,
-                chart=chart,
-                data=format_json_data(result),
-                return_img=return_img,
-                emit_markdown=True,
-                log_operation=True,
-            )
-
-    return {"json_result": json_result, "chart": chart}
+        return _deliver_chart_result(state, session, chart, result)
 
 
 def _should_continue_after_sql(state: SmartQAGraphState) -> str:

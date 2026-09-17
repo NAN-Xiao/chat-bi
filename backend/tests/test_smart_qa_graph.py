@@ -24,11 +24,18 @@ from common.error import AppDBConnectionError, DataUnavailableError, SingleMessa
 
 
 @pytest.mark.parametrize('finish_step', [ChatFinishStep.QUERY_DATA, ChatFinishStep.GENERATE_CHART])
-def test_null_time_projection_preserves_successful_sql_with_chart_warning(monkeypatch, finish_step):
+def test_null_time_projection_displays_query_result_table(monkeypatch, finish_step):
     service = FakeSmartQAService(sql_answer=_sql_answer("SELECT STR_TO_DATE(raw_day, '%Y%m%d') AS day, value FROM orders"))
     service.ds.type = 'mysql'
     service.get_chart_type_from_sql_answer = lambda *args, **kwargs: 'line'
     service.execute_sql = lambda **kwargs: {'fields': ['day', 'value'], 'data': [{'day': None, 'value': 56}]}
+    saved_charts = []
+    def save_result_chart(**kwargs):
+        chart = json.loads(kwargs['res'])
+        saved_charts.append(chart)
+        assert kwargs['result']['data'] == [{'day': None, 'value': 56}]
+        return chart
+    service.check_save_chart = save_result_chart
     monkeypatch.setattr(graph, 'validate_user_query_sql_or_raise', lambda **kwargs: (kwargs['sql'], {'orders'}))
     chunks = list(graph.run_smart_qa_graph(service, in_chat=True, stream=True, finish_step=finish_step))
     assert service.saved_data[0]['data'] == [{'day': None, 'value': 56}]
@@ -36,24 +43,53 @@ def test_null_time_projection_preserves_successful_sql_with_chart_warning(monkey
     assert not service.repair_contexts
     assert not any(event['type'] == 'error' for event in _events(chunks))
     assert any(event.get('content') == 'execute-success' for event in _events(chunks))
-    assert any(event.get('notice', {}).get('reason') == 'chart_dimension_unavailable' for event in _events(chunks))
+    assert not any(event.get('notice', {}).get('reason') == 'chart_dimension_unavailable' for event in _events(chunks))
+    if finish_step == ChatFinishStep.GENERATE_CHART:
+        chart = next(json.loads(event['content']) for event in _events(chunks) if event['type'] == 'chart')
+        assert chart['type'] == 'table'
+        assert chart['columns'] == [{'value': 'day'}, {'value': 'value'}]
+        assert saved_charts == [chart]
 
 
-def test_quality_warnings_are_visible_without_sql_retry(monkeypatch):
+def test_quality_warnings_do_not_emit_user_notice_or_retry_sql(monkeypatch):
     sql = 'SELECT amount FROM orders'
     service = FakeSmartQAService(sql_answer=_sql_answer(sql))
     service.sql_quality_warnings = ['配置期望净额，当前返回原始金额']
     monkeypatch.setattr(graph, 'validate_user_query_sql_or_raise', lambda **kwargs: (kwargs['sql'], {'orders'}))
     chunks = list(graph.run_smart_qa_graph(service, in_chat=True, stream=True, finish_step=ChatFinishStep.GENERATE_CHART))
     events = _events(chunks)
-    warning = next(e for e in events if e.get('notice', {}).get('reason') == 'semantic_mismatch')
-    assert warning['notice']['quality_warnings'] == service.sql_quality_warnings
+    assert not any(e.get('notice', {}).get('reason') == 'semantic_mismatch' for e in events)
+    assert not any('语义质量提示' in str(e.get('content', '')) for e in events)
     assert len(service.executed) == 1
     assert service.saved_sql == [sql]
     assert not service.repair_contexts
     assert service.chart_generated
     assert not any(e['type'] == 'error' for e in events)
     assert any(event.get('content') == 'execute-success' for event in _events(chunks))
+
+
+def test_invalid_generated_trend_binding_uses_raw_result_table(monkeypatch):
+    from common.utils.chart_result_validation import validate_trend_dimensions
+    service = FakeSmartQAService(sql_answer=_sql_answer('SELECT amount FROM orders'))
+    service.chart_chunks = [{'content': json.dumps({'type': 'line', 'axis': {'x': {'value': 'missing'}}}),
+                             'reasoning_content': ''}]
+    saved_charts = []
+    def check_save_chart(**kwargs):
+        chart = json.loads(kwargs['res'])
+        validate_trend_dimensions(chart, kwargs['result'])
+        saved_charts.append(chart)
+        return chart
+    service.check_save_chart = check_save_chart
+    monkeypatch.setattr(graph, 'validate_user_query_sql_or_raise', lambda **kwargs: (kwargs['sql'], {'orders'}))
+    chunks = list(graph.run_smart_qa_graph(service, in_chat=True, stream=True, finish_step=ChatFinishStep.GENERATE_CHART))
+    chart = next(json.loads(e['content']) for e in _events(chunks) if e['type'] == 'chart')
+    assert chart['type'] == 'table'
+    assert chart['columns'] == [{'value': 'value'}]
+    assert saved_charts == [chart]
+    assert service.saved_data[0]['data'] == [{'value': 1}]
+    assert len(service.executed) == 1
+    assert not service.repair_contexts
+    assert not any(e['type'] == 'error' for e in _events(chunks))
 
 
 def test_date_format_conflict_repairs_before_execution(monkeypatch):

@@ -534,6 +534,7 @@ import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { workspaceContextState } from '@/utils/workspaceContext'
 import { createChatLoadScheduler } from './answer/chatLoadScheduler'
+import { needsQueryResultTable } from './answer/queryResultTable'
 import { isRestorableAnswerRecord, shouldMarkChatTypingOnRestore } from './answer/taskRestore'
 import { shouldMarkRecordTyping } from './chatTypingState'
 import {
@@ -1185,7 +1186,7 @@ function recordHasChartData(record?: ChatRecord) {
 }
 
 function shouldScheduleChartData(record?: ChatRecord) {
-  return !!record?.id && !!record.chart && !recordHasChartData(record)
+  return !!record?.id && (!!record.chart || needsQueryResultTable(record)) && !recordHasChartData(record)
 }
 
 function findChartAnswerByRecordIndex(recordIndex: number) {

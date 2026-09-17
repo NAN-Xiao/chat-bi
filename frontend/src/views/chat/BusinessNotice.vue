@@ -25,7 +25,11 @@ const isWarning = computed(() => severity.value !== 'info')
 </script>
 
 <template>
-  <div class="business-notice" :class="{ warning: isWarning }">
+  <div
+    v-if="notice?.reason !== 'semantic_mismatch'"
+    class="business-notice"
+    :class="{ warning: isWarning }"
+  >
     <el-icon class="notice-icon" :size="16">
       <WarningFilled v-if="isWarning" />
       <InfoFilled v-else />
