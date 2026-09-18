@@ -2977,6 +2977,27 @@ def test_ranking_prompt_plan_and_result_contract_keep_rank_semantics() -> None:
     assert invalid
     assert any("rank" in issue or "属性" in issue for issue in invalid)
 
+
+def test_ranking_default_accepts_row_number_window_function() -> None:
+    request = _ranking_request(tieHandling="default")
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    sql = (
+        "WITH entity_values AS ("
+        "SELECT user_id AS ranking_entity, country AS ranking_property_1, COUNT(*) AS ranking_value "
+        "FROM event GROUP BY user_id, country), "
+        "ranked AS ("
+        "SELECT ROW_NUMBER() OVER (ORDER BY ranking_value DESC, ranking_entity) AS rank, "
+        "ranking_entity, ranking_value, COUNT(*) AS simultaneous_metric_1, "
+        "ranking_property_1 FROM entity_values) "
+        "SELECT rank, ranking_entity, ranking_value, simultaneous_metric_1, ranking_property_1 "
+        "FROM ranked ORDER BY rank"
+    )
+
+    issues = ai_sql_generator._ranking_sql_result_issues(sql, normalized)
+
+    assert issues == []
+
+
 def test_funnel_config_migrates_legacy_window_days() -> None:
     request = _funnel_request(window=None, windowDays=7)
     normalized = ai_sql_generator._normalize_manual_config(request)
