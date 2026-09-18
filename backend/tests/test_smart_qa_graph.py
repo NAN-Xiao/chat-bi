@@ -1947,7 +1947,11 @@ def test_empty_sql_result_finishes_without_chart(monkeypatch: pytest.MonkeyPatch
         ),
     )
     events = _events(chunks)
-    feedback_event = next(event for event in events if event["type"] == "analysis-result")
+    feedback_event = next(
+        event
+        for event in events
+        if event["type"] == "analysis-result" and event.get("notice")
+    )
     event_types = [event["type"] for event in events]
 
     assert len(service.executed) == 1
@@ -1955,9 +1959,9 @@ def test_empty_sql_result_finishes_without_chart(monkeypatch: pytest.MonkeyPatch
     assert service.chart_generated is False
     assert "chart" not in event_types
     assert event_types[-1] == "finish"
-    assert feedback_event["notice"]["reason"] == "data_unavailable"
-    assert "没有可展示的数据" in feedback_event["content"]
-    assert captured_log_message["business_notice"]["reason"] == "data_unavailable"
+    assert feedback_event["notice"]["reason"] == "no_data"
+    assert "查询结果为空" in feedback_event["content"]
+    assert captured_log_message["business_notice"]["reason"] == "no_data"
     assert service.finished is True
 
 
