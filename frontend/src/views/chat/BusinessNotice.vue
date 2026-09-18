@@ -12,6 +12,7 @@ const reasonText: Record<string, string> = {
   missing_schema: '缺少字段/表',
   permission_denied: '权限限制',
   data_unavailable: '数据不可用',
+  no_data: '查询结果为空',
   event_existence_unknown: '埋点待确认',
 }
 

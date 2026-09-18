@@ -189,7 +189,7 @@ def _empty_result_notice() -> dict[str, Any]:
     """
     return {
         "notice_type": "data_scope_gap",
-        "reason": "data_unavailable",
+        "reason": "no_data",
         "severity": "info",
     }
 
@@ -200,7 +200,7 @@ def _empty_result_feedback() -> str:
     谁调用：SQL 正常执行但没有可展示数据时调用。
     做了什么：避免前端出现空图表/空表，让用户明确知道查询范围内没有结果。
     """
-    return "当前查询条件下没有可展示的数据，已保存本次执行记录。"
+    return "查询结果为空，当前查询条件下没有可展示的数据。"
 
 
 @dataclass
