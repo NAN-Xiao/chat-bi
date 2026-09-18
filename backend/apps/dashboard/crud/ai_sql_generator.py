@@ -4377,7 +4377,7 @@ def _ranking_sql_result_issues(
     issues = [f"排行榜 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
     if not re.search(r"\bcount\s*\(", normalized_sql) and not re.search(r"\b(?:sum|avg|max|min)\s*\(", normalized_sql):
         issues.append("排行榜 SQL 必须按排行主体聚合主指标。")
-    if not re.search(r"\b(?:rank|dense_rank)\s*\(", normalized_sql):
+    if not re.search(r"\b(?:row_number|rank|dense_rank)\s*\(", normalized_sql):
         issues.append("排行榜 SQL 必须使用窗口函数生成名次。")
     if not re.search(r"\bover\s*\(", normalized_sql):
         issues.append("排行榜 SQL 的名次计算必须使用 OVER 窗口。")
