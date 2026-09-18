@@ -220,7 +220,6 @@ function removeSplitItem(event: string) {
       trigger="manual"
       placement="bottom-start"
       popper-class="path-event-picker-popper"
-      :popper-style="{ zIndex: 5001 }"
     >
       <template #reference>
         <button

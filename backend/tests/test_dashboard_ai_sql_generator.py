@@ -2220,6 +2220,7 @@ def test_interval_prompt_and_result_contract_enforce_pairing_semantics() -> None
         "MIN(interval_seconds) AS min_interval_seconds, AVG(interval_seconds) AS avg_interval_seconds "
         "FROM valid_intervals GROUP BY interval_date"
     )
+
     valid_sql = interval_sql().split("SELECT interval_date,COUNT", 1)[0] + valid_sql
 
     assert "只能使用 interval 配置" in prompt
@@ -2234,6 +2235,93 @@ def test_interval_prompt_and_result_contract_enforce_pairing_semantics() -> None
     )
     assert any("entity_count" in issue for issue in invalid_issues)
     assert any("分位数" in issue for issue in invalid_issues)
+
+
+def test_funnel_prompt_passes_platform_sql_reference_only_to_funnel() -> None:
+    platform_skill = """<Data-Skills>
+---
+## 平台通用 Data Skill：window_funnel 漏斗 SQL 规范
+<!-- data-skill-analysis-models: ["funnel"] -->
+<!-- platform-foundation-skill:funnel-window-funnel:v1 -->
+物理表参考：event；事件时间参考：event.time；分区参考：event.dt；产品参考：event.prod。
+window_funnel(CAST(<window_seconds> AS INTEGER), 'default', event_time, ...)
+</Data-Skills>"""
+    funnel_prompt = ai_sql_generator._dashboard_config_prompt(
+        _funnel_request(),
+        datasource=SimpleNamespace(name="AnalyticDB 数据源", type="mysql", type_name="AnalyticDB for MySQL"),
+        data_skill=platform_skill,
+        tracking_config="",
+        sql_dialect="mysql",
+    )
+    event_prompt = ai_sql_generator._dashboard_config_prompt(
+        DashboardAiSqlGenerateRequest(
+            datasource=1,
+            chart_type="table",
+            context={"analysisModel": "event", "chart": {"type": "table"}},
+        ),
+        datasource=SimpleNamespace(name="AnalyticDB 数据源", type="mysql", type_name="AnalyticDB for MySQL"),
+        data_skill=platform_skill,
+        tracking_config="",
+        sql_dialect="mysql",
+    )
+
+    assert "platform-foundation-skill:funnel-window-funnel:v1" in funnel_prompt
+    assert "event.time" in funnel_prompt
+    assert "window_funnel" in funnel_prompt
+    assert "platform-foundation-skill:funnel-window-funnel:v1" not in event_prompt
+    assert "window_funnel" not in event_prompt
+
+
+def test_funnel_prompt_preserves_full_model_skill_while_budgeting_generic_skills() -> None:
+    generic_section = (
+        "---\n## Generic\n作用域：平台通用（所有项目）\n约束：通用规则\nGENERIC_START\n"
+        + "generic-padding-" * 900
+        + "\nGENERIC_END\n"
+    )
+    funnel_section = (
+        "---\n## Funnel\n<!-- data-skill-analysis-models: [\"funnel\"] -->\nFUNNEL_START\n"
+        + "funnel-padding-" * 900
+        + "\nFUNNEL_END\n"
+    )
+    data_skill = f"<Data-Skills>\n{generic_section}{funnel_section}</Data-Skills>"
+
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        _funnel_request(),
+        datasource=SimpleNamespace(name="AnalyticDB 数据源", type="mysql", type_name="AnalyticDB for MySQL"),
+        data_skill=data_skill,
+        tracking_config="",
+        sql_dialect="mysql",
+    )
+
+    assert "GENERIC_START" in prompt
+    assert "GENERIC_END" not in prompt
+    assert "FUNNEL_START" in prompt
+    assert "FUNNEL_END" in prompt
+
+
+def test_funnel_prompt_requires_event_time_partition_and_dashboard_parameters() -> None:
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        _funnel_request(),
+        datasource=SimpleNamespace(name="AnalyticDB 数据源", type="mysql", type_name="AnalyticDB for MySQL"),
+        data_skill="",
+        tracking_config="",
+        sql_dialect="mysql",
+    )
+
+    assert "role=event_time" in prompt
+    assert "分区字段" in prompt
+    assert "dashboard_start_yyyymmdd" in prompt
+    assert "dashboard_end_yyyymmdd" in prompt
+    assert "BIGINT 秒值" in prompt
+    assert "第一步人数为 0" in prompt
+    assert "不得使用原生 window_funnel" in prompt
+    assert "主体最大深度聚合层" in prompt
+    assert "HAVING、QUALIFY、LIMIT 或 OFFSET" in prompt
+    assert "step_counts 必须使用 UNION ALL" in prompt
+    assert "每个候选首步" in prompt
+    assert "禁止在 step_counts 聚合结果上使用 MAX/LAG 窗口函数" in prompt
+    assert "正向结构" in prompt
+    assert "反向错误" in prompt
 
 
 def test_interval_percentile_functions_follow_mysql_compatible_dialect() -> None:
@@ -4164,6 +4252,7 @@ def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.M
     assert calls[0]["tenant_id"] == 2001
     assert calls[0]["datasource_id"] == 1
     assert calls[0]["target_scope"] == ai_sql_generator.CustomPromptTargetScopeEnum.SMART_QA
+    assert calls[0]["analysis_model"] == "event"
     assert calls[0]["table_list"] is None
     assert result["event_scope"]["mode"] == "general"
 

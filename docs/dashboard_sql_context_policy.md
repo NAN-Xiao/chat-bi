@@ -10,13 +10,15 @@
 
 平台级 Data Skill 仍受原有启用状态、可见性、用户停用偏好、工作空间排除列表、数据源范围、所需表权限和使用场景限制。“仅平台级”不表示无条件加载所有平台 Skill。
 
+平台 Skill 可以通过 `<!-- data-skill-analysis-models: ["funnel"] -->` 声明适用的分析模型。检索服务在相关性排序、显式 Skill 选择和 Schema 构建之前完成模型过滤：完全未出现保留元数据名的 Skill 仍为通用 Skill；出现保留名时必须且只能有一个完整、合法的 JSON 数组声明，否则关闭该 Skill 并记录告警；合法数组只对命中的模型可见；缺少当前模型时不加载。显式 `data_skill_id` 不能绕过模型范围。已组装提示词进入模型前还会执行一次相同过滤，防止调用方漏传模型上下文；命中当前模型的专用 Skill 会完整保留，通用 Skill 单独使用提示词字符预算。
+
 作用域过滤在相关性排序和同名 Skill 覆盖处理之前执行，避免工作空间或个人规则替换平台规则。调用方传入非平台 Skill ID 时，该条目不会进入上下文，也不会自动替换成其他 Skill。没有匹配的平台 Skill 时，继续依据显式图表配置和授权元数据处理，不回退到知识库或其他作用域 Skill。
 
 ## 维护入口
 
 - `backend/apps/chat/curd/custom_prompt.py`：`find_data_skills(..., platform_only=True)` 在召回前限定条目作用域。
-- `backend/apps/datasource/crud/sql_engine.py`：`BusinessSqlContextService.build(..., platform_data_skills_only=True)` 将该策略传给共享 Skill 服务。
-- `backend/apps/dashboard/crud/ai_sql_generator.py`：图表配置入口固定启用平台级限制。
+- `backend/apps/datasource/crud/sql_engine.py`：`BusinessSqlContextService.build(..., platform_data_skills_only=True, analysis_model=...)` 将平台作用域与模型范围传给共享 Skill 服务。
+- `backend/apps/dashboard/crud/ai_sql_generator.py`：图表配置入口固定启用平台级限制，并传入当前 `analysisModel`。
 
 共享服务的默认策略仍允许当前用户可用的其他作用域 Skill。智能问数、分析助手等入口的知识库及 Data Skill 策略保持原有行为。
 
@@ -40,6 +42,7 @@
 - 留存、收入的 `day_N` 必须以看板结束参数判断成熟窗口。未成熟返回 NULL，已成熟且没有行为或金额时才返回真实零。
 - 同期群在关联后续事件前，按同期群日期、主体及配置分组/关联属性形成唯一粒度。收入不能用支付明细去重或 `SUM(DISTINCT 金额)` 掩盖关联放大。
 - 漏斗以配置的真实事件时间和主体逐步匹配，时长窗口始终锚定首步；当天窗口使用同一自然日，不能用分区日期代替滚动时长。
+- 漏斗模型会收到平台级 AnalyticDB `window_funnel` 参考 Skill。只有数据源明确支持该函数且未启用关联属性时才使用原生实现；其他情况继续生成等价逐步 CTE。原生实现按配置主体的精确粒度计算最大完成深度，真实事件时间、主体、步骤事件和分区范围必须来自同一次事件扫描；事件步骤必须是正向等值条件。逐步 CTE 必须为每个候选首步保留独立窗口，不能先按主体 `MIN(event_time)` 压缩为唯一最早首步，再在后续步骤按 `entity_id + first_step_time` 匹配并按主体取最大深度。主体最大深度聚合层不得通过 `HAVING`、`QUALIFY`、`LIMIT` 或 `OFFSET` 裁剪主体。第 N 步人数必须由最终 `step_count` 血缘中的 `COUNT(CASE WHEN max_depth >= N THEN 1 END)` 产生；`step_counts` 必须使用 `UNION ALL` 完整保留每个配置步骤，集合节点、计数分支和后续投影不得通过额外连接、筛选、限行或分组改变主体或步骤粒度。MySQL/AnalyticDB 不在该聚合结果上使用 `MAX/LAG ... OVER` 值窗口函数，而以 `step_counts` 标量子查询或等价单行关联取得第一步与上一步人数。窗口秒数来自当前配置；timestamp 必须解析到 Schema 的 `role=event_time` 字段并提供 BIGINT 秒值，毫秒字段除以 1000 后显式转为整数，TIMESTAMP/DATETIME 转换必须使用全体事件共享的固定起点。YYYYMMDD 日期字段必须在同一事件扫描上同时受起止看板参数约束，条件可位于 WHERE 或必然生效的 INNER JOIN ON 中，不能由旁路扫描或无关 CTE 代为满足。最外层 SELECT 必须按固定顺序输出六列，步骤编号与计数保持同一血缘；第一步人数为 0 时三个比率均返回 NULL。Skill 同时提供正向可执行模板和反向错误示例；其中 `event.uid/event.event/event.time/event.dt/event.prod`、产品值和事件名只是可替换示例，不是平台硬编码口径。
 - 路径在会话内按完整事件时间生成一次步骤序号，后续相邻边复用该序号，防止并列时间记录被重新排列。名称排序、倒序或常量排序不满足事件顺序协议。只有第1步匹配配置初始事件的会话才能参与结果，筛选必须按完整主体、会话及配置分组键连接到实际边数据，不能仅在无关CTE或事件集合中出现配置事件。
 - 间隔日期沿实际时差起点的事件行传递，跨午夜配对仍归到起点日。相邻自连接、LAG/LEAD 和不同事件配对均检查日期与起点的来源一致性。
 - 日期来源校验区分数值来源与排序/条件依赖。按日期排序得到的行号、日期计数和条件聚合值是数值；原始 YYYYMMDD 经别名、窗口或 CASE 返回后，仍禁止直接进行日期加减。

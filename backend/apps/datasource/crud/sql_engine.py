@@ -123,6 +123,7 @@ class BusinessSqlContextService:
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
         platform_data_skills_only: bool = False,
+        analysis_model: str | None = None,
     ) -> BusinessSqlContext:
         """
         是什么：构建 Agent 生成 SQL 需要的唯一业务库上下文。
@@ -150,6 +151,7 @@ class BusinessSqlContextService:
             can_manage_platform_public=can_manage_platform_public,
             current_user=current_user,
             platform_only=platform_data_skills_only,
+            analysis_model=analysis_model,
         )
         schema, allowed_tables = get_ai_table_schema(
             session=session,

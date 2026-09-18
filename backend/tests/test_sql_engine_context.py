@@ -47,6 +47,7 @@ def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monk
 
     def _skills(*args, **kwargs):
         assert kwargs.get("platform_only", False) is platform_only
+        assert kwargs.get("analysis_model") == "funnel"
         calls.append(("skills", args[1], args[2], kwargs.get("question")))
         return "<Data-Skills>口径</Data-Skills>", ["口径"], 99
 
@@ -75,6 +76,7 @@ def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monk
         data_skill_id=None,
         embedding=False,
         platform_data_skills_only=platform_only,
+        analysis_model="funnel",
     )
 
     assert context.datasource_id == 1

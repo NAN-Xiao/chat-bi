@@ -22,7 +22,10 @@ from sqlglot import exp
 from sqlglot.lineage import lineage as build_sql_lineage
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
-from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
+from apps.chat.curd.custom_prompt import (
+    CustomPromptTargetScopeEnum,
+    prepare_data_skill_for_analysis_model,
+)
 from apps.chat.task.sql_repair import (
     SqlStructureValidationError,
     validate_sql_for_generation,
@@ -43,7 +46,12 @@ from apps.dashboard.crud.sql_generation_validation import (
     same_select_alias_reference_issues,
 )
 from apps.dashboard.crud.event_sql_contract import event_result_contract_issues
-from apps.dashboard.crud.funnel_sql_validation import FUNNEL_TIMING_RULE, funnel_timing_issues
+from apps.dashboard.crud.funnel_sql_validation import (
+    FUNNEL_TIMING_RULE,
+    funnel_sql_compatibility_issues,
+    funnel_timing_issues,
+    native_window_funnel_issues,
+)
 from apps.dashboard.crud.path_sql_validation import PATH_SEQUENCE_RULE, path_sequence_issues
 from apps.dashboard.crud.interval_sql_validation import INTERVAL_START_DATE_RULE, interval_start_date_issues
 from apps.dashboard.crud.cohort_sql_validation import COHORT_MATURITY_RULE, cohort_maturity_contract, cohort_maturity_issues
@@ -3063,6 +3071,15 @@ def _dashboard_sql_dialect_text(sql_dialect: str | None, datasource: CoreDatasou
     ]).lower()
 
 
+def _is_analyticdb_for_mysql(sql_dialect: str | None, datasource: CoreDatasource | None) -> bool:
+    dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
+    return (
+        "analyticdb" in dialect_text
+        and "mysql" in dialect_text
+        and "postgres" not in dialect_text
+    )
+
+
 def _dashboard_sql_dialect_rules(sql_dialect: str | None, datasource: CoreDatasource | None) -> list[str]:
     dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
     if any(name in dialect_text for name in ("mysql", "mariadb", "doris", "starrocks", "analyticdb")):
@@ -3182,6 +3199,9 @@ def _dashboard_config_prompt(
                 "PostgreSQL/Redshift/Kingbase：YYYYMMDD 转 DATE 必须使用 TO_DATE(CAST(<time_field> AS TEXT), 'YYYYMMDD')。"
             )
     analysis_model = str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower()
+    if analysis_model not in ANALYSIS_MODEL_LABELS:
+        analysis_model = "event"
+    data_skill = prepare_data_skill_for_analysis_model(data_skill, analysis_model)
     property_rules: list[str] = []
     if analysis_model == "property":
         property_rules = [
@@ -3266,10 +3286,18 @@ def _dashboard_config_prompt(
             "当前 analysisModel=funnel，必须严格按 funnel.entityField、funnel.steps 的顺序生成用户漏斗查询。",
             "每个 steps[i].event 都必须使用字段对象中的 eventTable、eventNameField 和 eventName 定位事件，不得猜测事件名或用步骤序号替代事件条件。",
             "漏斗按同一分析主体去重计数：步骤 1 是样本基数，后续步骤必须在前一步完成后发生，并且整个步骤链必须满足 funnel.window。",
+            "物理表和字段必须以当前 Schema 与配置为准；漏斗顺序时间必须使用 Schema 声明 role=event_time 的真实事件时间，配置的日期或分区字段只用于看板范围过滤，不能代替事件时间。",
+            "当日期参数类型为 yyyymmdd_number 或 yyyymmdd_text 时，必须使用 {{dashboard_start_yyyymmdd}} 和 {{dashboard_end_yyyymmdd}} 对配置的分区字段做包含首尾日期的范围过滤；不得使用固定日期或数据库当前日期。",
+            "当前数据源确认是 AnalyticDB for MySQL 且支持 window_funnel 时，优先参考平台漏斗 Data Skill 中的 window_funnel 示例；示例中的表名、prod、事件名、步骤数量和窗口秒数只能在当前 Schema 与配置明确匹配时复用。",
+            "AnalyticDB window_funnel 的 timestamp 参数必须是 BIGINT 秒值：epoch_seconds 可直接使用，epoch_milliseconds 必须除以 1000 后显式转换为整数，TIMESTAMP/DATETIME 必须用 TIMESTAMPDIFF(SECOND, 固定起点, 事件时间) 转换。",
             "funnel.window.mode=same_day 时，按步骤 1 时间所在自然日约束全部步骤，禁止改写成滚动 24 小时；mode=duration 时，最后一步与步骤 1 的精确经过时长不得超过 value 和 unit 指定的时长，天固定表示 24 小时。",
             "每个步骤的 filters.rules 只应用于该步骤事件明细；全局 filters 仍按全局配置应用，不得把步骤筛选互换或合并。",
-            "funnel.relatedPropertyEnabled=true 时，必须使用 funnel.relatedProperty 指定的统一关联属性值与前一步相等进行关联，不得根据字段名猜测关联属性；仅对未提供根级字段的旧配置读取步骤级 relatedProperty。",
+            "funnel.relatedPropertyEnabled=true 时，不得使用原生 window_funnel，必须使用逐步 CTE，并使用 funnel.relatedProperty 指定的统一关联属性值与前一步相等进行关联；不得根据字段名猜测关联属性，仅对未提供根级字段的旧配置读取步骤级 relatedProperty。",
+            "window_funnel 主体最大深度聚合层只能按配置主体分组，不能使用 HAVING、QUALIFY、LIMIT 或 OFFSET 裁剪主体；业务筛选必须在事件明细进入聚合前应用。step_counts 必须使用 UNION ALL 为每个配置步骤保留一行，集合节点和后续投影不能筛选、限行或通过额外 JOIN 放大步骤行。",
+            "逐步 CTE 正向结构：step_1 必须为每个候选首步直接保留 entity_id、first_step_time、step_time；后续步骤才按 entity_id + first_step_time 聚合最早匹配事件，最后按主体取最大深度。反向错误：在 step_1 按 entity_id 分组并用 MIN(event_time) 只保留主体最早首步。",
+            "MySQL/AnalyticDB 禁止在 step_counts 聚合结果上使用 MAX/LAG 窗口函数计算比率；正向结构使用 step_counts 标量子查询或等价单行关联取得 first_step_count 和 previous_step_count。反向错误会触发 AnalyticDB SemanticError。",
             "最终结果必须是一行一个漏斗步骤，并固定输出 step_order、step_name、step_count、step_rate、step_conversion_rate、step_dropoff_rate 六列；step_rate 以第一步为分母，step_conversion_rate 以相邻上一步为分母。",
+            "当第一步人数为 0 时，step_rate、step_conversion_rate、step_dropoff_rate 均返回 NULL，不能把无样本写成 100% 转化或 0% 流失。",
             "step_order 必须按 steps 配置顺序为 1、2、3...，不能按用户数据量重新排序；step_name 使用步骤 alias（没有 alias 时使用事件展示名称）。",
             f"当前配置的漏斗步骤数量：{len(steps)}，窗口期：{funnel_window_text}。",
             "最终返回 chart_type 必须保持请求指定的图表类型。",
@@ -3398,7 +3426,7 @@ def _dashboard_config_prompt(
         "</manual-dashboard-context>",
         "",
         "<data-skill>",
-        _trim_text(data_skill, 10000),
+        data_skill,
         "</data-skill>",
         "",
         "<tracking-config>",
@@ -3824,6 +3852,7 @@ def _funnel_sql_result_issues(
         *,
         schema: str = "",
         sql_dialect: str | None = None,
+        datasource: CoreDatasource | None = None,
 ) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "funnel":
         return []
@@ -3835,11 +3864,32 @@ def _funnel_sql_result_issues(
         "step_conversion_rate",
         "step_dropoff_rate",
     ]
+    statements = _sqlglot_statements_for_generation_validation(sql, sql_dialect)
+    issues: list[str] = []
+    if len(statements) != 1:
+        issues.append("漏斗 SQL 无法按当前数据源方言解析为单个最终查询。")
+    else:
+        actual_aliases = [str(item.alias_or_name or "").lower() for item in statements[0].selects]
+        if actual_aliases != required_aliases:
+            issues.append(
+                "漏斗 SQL 最终 SELECT 必须按固定顺序输出且仅输出："
+                f"{'、'.join(required_aliases)}。"
+            )
     normalized_sql = str(sql or "").lower()
-    missing = [alias for alias in required_aliases if not re.search(rf"\b{re.escape(alias)}\b", normalized_sql)]
-    issues = [f"漏斗 SQL 缺少固定结果列：{'、'.join(missing)}。"] if missing else []
     funnel = dict(normalized_config.get("funnel") or {})
     funnel["window"] = _normalized_funnel_window(funnel)
+    issues.extend(funnel_sql_compatibility_issues(sql, sql_dialect or "mysql"))
+    if re.search(r"\bwindow_funnel\s*\(", normalized_sql):
+        if not _is_analyticdb_for_mysql(sql_dialect, datasource):
+            issues.append("只有明确识别为 AnalyticDB for MySQL 的数据源才允许使用 window_funnel。")
+        issues.extend(native_window_funnel_issues(
+            sql,
+            funnel,
+            normalized_config.get("time") or {},
+            schema,
+            sql_dialect or "mysql",
+        ))
+        return _unique_text_items(issues)
     issues.extend(funnel_timing_issues(sql, funnel, normalized_config.get("time") or {}, schema, sql_dialect or "mysql"))
     return _unique_text_items(issues)
 
@@ -4494,21 +4544,19 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
     elif str(analysis_model or "event") == "funnel":
         structure_prompt = (
             FUNNEL_TIMING_RULE + "\n"
-            "当前 SQL plan 的 analysis_model=funnel，必须使用漏斗专用的逐步匹配结构；禁止改写为彼此独立的事件人数统计。\n"
-            "漏斗 SQL 结构范式：\n"
-            "WITH bounds AS (...仅一行时间边界...),\n"
-            "scoped_steps AS (...仅保留配置步骤事件，输出 entity_id、step_order、event_time、关联属性和步骤筛选结果；通过显式 JOIN/CROSS JOIN bounds 应用日期边界...),\n"
-            "step_1 AS (...按 entity_id 选择步骤 1 的 MIN(event_time) AS first_step_time、MIN(event_time) AS step_time...),\n"
-            "step_2 AS (...显式 JOIN step_1 p 与步骤 2 明细 e，要求 e.event_time >= p.step_time，窗口相对 p.first_step_time；输出 p.entity_id、p.first_step_time、MIN(e.event_time) AS step_time...),\n"
-            "...按 funnel.steps 配置顺序继续建立 step_N，每一步都必须发生在前一步之后，并满足相对步骤 1 的 funnel.window...,\n"
-            "step_counts AS (...按配置顺序输出每一步完成主体数...),\n"
+            "当前 SQL plan 的 analysis_model=funnel，禁止改写为彼此独立的事件人数统计。\n"
+            "当当前数据源明确为支持 window_funnel 的 AnalyticDB for MySQL 时，优先使用平台 Data Skill 中的原生结构：dashboard_params -> scoped_event（先应用配置的业务筛选和分区范围） -> user_depth（window_funnel 使用 role=event_time 字段） -> step_counts -> step_metrics。window_funnel 返回每个主体的最大完成深度，步骤人数使用 max_depth >= step_order。\n"
+            "user_depth 主体最大深度聚合层不能使用 HAVING、QUALIFY、LIMIT 或 OFFSET 裁剪主体；step_counts 必须使用 UNION ALL 为每个配置步骤完整保留一行，集合节点和后续投影不能筛选、限行或通过额外 JOIN 放大步骤行。\n"
+            "其他数据库或未确认支持 window_funnel 时，使用漏斗专用的逐步匹配结构：WITH bounds、scoped_steps、step_1、step_2……step_N、step_counts；步骤 N 必须建立在步骤 N-1 已完成的主体集合上。\n"
+            "原生或等价 SQL 都必须按配置步骤顺序匹配，窗口相对每个候选首步计算，并最终输出每个主体的最大完成深度。逐步 CTE 的 step_1 直接保留每个候选首步，禁止 GROUP BY entity_id 后 MIN(event_time)。\n"
+            "MySQL/AnalyticDB 的 step_metrics 禁止使用 MAX(...) OVER (...) 或 LAG(...) OVER (...)；使用 step_counts 标量子查询或等价单行关联读取第一步和上一步人数。\n"
+            "最终结果结构：\n"
             "SELECT step_order, step_name, step_count,\n"
             "       <step_count / first_step_count> AS step_rate,\n"
             "       <step_count / previous_step_count> AS step_conversion_rate,\n"
             "       <(previous_step_count - step_count) / previous_step_count> AS step_dropoff_rate\n"
-            "FROM step_counts ORDER BY step_order。\n"
+            "FROM step_metrics ORDER BY step_order。\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，一行只能对应一个配置步骤。\n"
-            "禁止让后续步骤只与步骤 1 独立关联；步骤 N 必须建立在步骤 N-1 已完成的主体集合上。\n"
             "MySQL/AnalyticDB 下禁止在 JOIN ON 中使用标量子查询读取 bounds 或上一步聚合值；先显式 JOIN/CROSS JOIN 对应 CTE，再用来源别名限定字段。\n"
         )
     elif str(analysis_model or "event") == "interval":
@@ -5030,6 +5078,11 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         target_scope=CustomPromptTargetScopeEnum.SMART_QA,
         data_skill_id=request.data_skill_id,
         platform_data_skills_only=True,
+        analysis_model=(
+            str((request.context or {}).get("analysisModel") or (request.context or {}).get("analysis_model") or "event")
+            .strip()
+            .lower()
+        ),
         embedding=False,
         table_list=event_scope["table_list"],
         can_manage_all=is_system_admin(current_user),
@@ -5256,7 +5309,13 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
                 datasource=state.get("datasource"),
             )
         if analysis_model == "funnel":
-            return _funnel_sql_result_issues(sql, normalized, schema=str(state.get("schema") or ""), sql_dialect=state.get("sql_dialect"))
+            return _funnel_sql_result_issues(
+                sql,
+                normalized,
+                schema=str(state.get("schema") or ""),
+                sql_dialect=state.get("sql_dialect"),
+                datasource=state.get("datasource"),
+            )
         if analysis_model == "distribution":
             return _distribution_sql_result_issues(
                 sql,
@@ -5398,6 +5457,7 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         state.get("normalized_config") or {},
         schema=str(state.get("schema") or ""),
         sql_dialect=state.get("sql_dialect"),
+        datasource=state.get("datasource"),
     ):
         response.success = False
         response.message = "生成 SQL 未满足漏斗分析生成要求。"

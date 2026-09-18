@@ -57,6 +57,104 @@ _DASHBOARD_DATE_FILTER_SKILL_NAMES = {
     "平台通用 Data Skill：时间字段、观察窗口与日期边界",
     "平台通用 SQL 日期与分组规范",
 }
+_DATA_SKILL_ANALYSIS_MODELS_NAME_RE = re.compile(r"data-skill-analysis-models", flags=re.IGNORECASE)
+_DATA_SKILL_ANALYSIS_MODELS_RE = re.compile(
+    r"<!--\s*data-skill-analysis-models\s*:\s*(.*?)\s*-->",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+_DATA_SKILL_SECTION_RE = re.compile(r"(?m)(?=^\s*---\s*$\r?\n^\s*##\s+)")
+_DATA_SKILLS_CLOSING_RE = re.compile(r"</Data-Skills>\s*$", flags=re.IGNORECASE)
+
+
+def _data_skill_analysis_models(prompt: str | None) -> frozenset[str] | None:
+    """读取 Data Skill 的分析模型范围；缺失表示通用，格式错误明确拒绝。"""
+    source = str(prompt or "")
+    reserved_names = _DATA_SKILL_ANALYSIS_MODELS_NAME_RE.findall(source)
+    if not reserved_names:
+        return None
+    matches = _DATA_SKILL_ANALYSIS_MODELS_RE.findall(source)
+    if len(reserved_names) != 1 or len(matches) != 1:
+        raise ValueError("Data Skill analysis models 必须且只能声明一次")
+    try:
+        raw_models = json.loads(matches[0])
+    except json.JSONDecodeError as exc:
+        raise ValueError("Data Skill analysis models 不是有效 JSON") from exc
+    if not isinstance(raw_models, list) or not raw_models:
+        raise ValueError("Data Skill analysis models 必须是非空数组")
+    if any(not isinstance(model, str) or not model.strip() for model in raw_models):
+        raise ValueError("Data Skill analysis models 只能包含非空字符串")
+    return frozenset(model.strip().lower() for model in raw_models)
+
+
+def _data_skill_matches_analysis_model(prompt: str | None, analysis_model: str | None) -> bool:
+    models = _data_skill_analysis_models(prompt)
+    if models is None:
+        return True
+    return str(analysis_model or "").strip().lower() in models
+
+
+def filter_data_skill_for_analysis_model(
+    data_skill: str,
+    analysis_model: str | None,
+) -> str:
+    """按分析模型过滤已组装的 Data Skill，并保留外层 XML 闭合标签。"""
+    if not data_skill:
+        return data_skill
+    closing_match = _DATA_SKILLS_CLOSING_RE.search(data_skill)
+    body = data_skill[:closing_match.start()] if closing_match else data_skill
+    closing = data_skill[closing_match.start():] if closing_match else ""
+    kept: list[str] = []
+    keep_section = True
+    for index, section in enumerate(_DATA_SKILL_SECTION_RE.split(body)):
+        if index == 0 or ("作用域：" in section and "约束：" in section):
+            keep_section = True
+        try:
+            models = _data_skill_analysis_models(section)
+            if models is not None:
+                keep_section = str(analysis_model or "").strip().lower() in models
+        except ValueError:
+            keep_section = False
+        if keep_section:
+            kept.append(section)
+    filtered = "".join(kept).rstrip()
+    if closing:
+        return f"{filtered}\n{closing.lstrip()}" if filtered else closing.lstrip()
+    return filtered
+
+
+def prepare_data_skill_for_analysis_model(
+        data_skill: str,
+        analysis_model: str | None,
+        *,
+        generic_limit: int = 10000,
+) -> str:
+    """完整保留命中模型的 Skill，仅对通用 Skill 使用提示词预算。"""
+    filtered = filter_data_skill_for_analysis_model(data_skill, analysis_model)
+    if not filtered:
+        return filtered
+    closing_match = _DATA_SKILLS_CLOSING_RE.search(filtered)
+    body = filtered[:closing_match.start()] if closing_match else filtered
+    closing = filtered[closing_match.start():] if closing_match else ""
+    remaining_generic = max(int(generic_limit), 0)
+    kept: list[str] = []
+    model_scoped = False
+    for index, section in enumerate(_DATA_SKILL_SECTION_RE.split(body)):
+        if index == 0 or ("作用域：" in section and "约束：" in section):
+            model_scoped = False
+        models = _data_skill_analysis_models(section)
+        if models is not None:
+            model_scoped = str(analysis_model or "").strip().lower() in models
+        if model_scoped:
+            kept.append(section)
+            continue
+        if remaining_generic <= 0:
+            continue
+        kept.append(section[:remaining_generic])
+        remaining_generic -= len(section)
+    prepared = "".join(kept).rstrip()
+    if closing:
+        return f"{prepared}\n{closing.lstrip()}" if prepared else closing.lstrip()
+    return prepared
 
 
 def _excluded_tenant_id_values(value: Any) -> set[int]:
@@ -938,6 +1036,7 @@ def find_data_skills(
         can_manage_platform_public: bool = False,
         current_user: Any | None = None,
         platform_only: bool = False,
+        analysis_model: str | None = None,
 ) -> tuple[str, list[str], Optional[int]]:
     """
     是什么：find_data_skills 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -1029,6 +1128,14 @@ def find_data_skills(
 
         prompt = row.get("prompt")
         if not prompt:
+            continue
+        try:
+            if not _data_skill_matches_analysis_model(prompt, analysis_model):
+                continue
+        except ValueError as exc:
+            AppLogUtil.warning(
+                f"Skipped malformed Data Skill analysis models: id={row.get('id')}; error={exc}"
+            )
             continue
         try:
             required_tables = _required_data_skill_tables(prompt)
