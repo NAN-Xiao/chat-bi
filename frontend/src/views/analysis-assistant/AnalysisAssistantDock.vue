@@ -664,6 +664,7 @@ const getChartTypeLabel = (type?: ChartTypes) => {
     funnel: '漏斗图',
     heatmap: '热力图',
     scatter: '散点图',
+    boxplot: '箱型图',
     sankey: '桑基图',
     treemap: '矩形树图',
   }

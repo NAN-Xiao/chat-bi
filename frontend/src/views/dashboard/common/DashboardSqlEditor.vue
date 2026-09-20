@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { prepareBoxplotData } from '@/views/chat/component/charts/boxplotData.ts'
+import { isChartValidationError } from '@/views/chat/component/chartValidation.ts'
 import { WarningFilled } from '@element-plus/icons-vue'
 import { datasourceApi } from '@/api/datasource'
 import { dashboardApi } from '@/api/dashboard.ts'
@@ -95,6 +97,7 @@ import type {
   ChartTypes,
 } from '@/views/chat/component/BaseChart.ts'
 import { isRadialPartitionChartType } from '@/views/chat/component/chartTypes.ts'
+import { supportsAnalysisChartType } from './analysisModelChartTypes'
 import { isAverageAxis, isPercentAxis } from '@/views/chat/component/charts/utils.ts'
 import {
   defaultPivotAggregationForAxes,
@@ -897,9 +900,19 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: 'funnel', value: 'funnel' },
   { label: 'heatmap', value: 'heatmap' },
   { label: 'scatter', value: 'scatter' },
+  { label: 'boxplot', value: 'boxplot' },
   { label: 'sankey', value: 'sankey' },
   { label: 'treemap', value: 'treemap' },
 ]
+
+const availableChartTypes = computed(() => {
+  const config = chartSourceConfig(props.viewInfo)
+  const builder = config.sql?.builder || config.builder
+  if (!hasSqlSource.value || (sqlBuilder.activeTab !== 'builder' && !builder?.analysisModel)) {
+    return chartTypes
+  }
+  return chartTypes.filter((item) => supportsAnalysisChartType(sqlBuilder.analysisModel, item.value))
+})
 
 const builderTimeGrainOptions = [
   { label: '按天', value: 'day' },
@@ -7709,7 +7722,12 @@ function resetFieldSelections() {
   } else if (form.columns.length === 0) {
     form.columns = fields.slice(0, 8)
   }
-  if (form.chartType !== 'donut') {
+  if (form.chartType === 'boxplot') {
+    form.y = form.y.filter((field) => fields.includes(field))
+    if (!fields.includes(form.x)) form.x = ''
+    if (!fields.includes(form.series)) form.series = ''
+    sanitizeSeriesSelection()
+  } else if (form.chartType !== 'donut') {
     form.y = form.y.filter((field) => fields.includes(field))
     if (!fields.includes(form.x)) form.x = fields[0] || ''
     if (!fields.includes(form.series)) form.series = ''
@@ -8378,6 +8396,22 @@ function validateBeforeApply() {
   }
   if (form.chartType === 'table') {
     return true
+  }
+  if (form.chartType === 'boxplot') {
+    try {
+      prepareBoxplotData(
+        [
+          ...toAxes(form.x ? [form.x] : []).map((axis) => ({ ...axis, type: 'x' as const })),
+          ...toAxes(form.y).map((axis) => ({ ...axis, type: 'y' as const })),
+          ...toAxes(form.series ? [form.series] : []).map((axis) => ({ ...axis, type: 'series' as const })),
+        ],
+        sourcePreview.data
+      )
+    } catch (error) {
+      if (!isChartValidationError(error)) throw error
+      ElMessage.warning(t(`chat.chart_validation.${error.code}`))
+      return false
+    }
   }
   if (!form.y.length) {
     ElMessage.warning(t('dashboard.sql_editor_select_y'))
@@ -9062,9 +9096,9 @@ const analysisModelFormContext = {
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
             <el-select v-model="form.chartType" :disabled="isHeatmapAnalysis" @change="handleChartTypeChange">
               <el-option
-                v-for="item in chartTypes"
+                v-for="item in availableChartTypes"
                 :key="item.value"
-                :label="t(`chat.chart_type.${item.label}`)"
+                :label="isDistributionAnalysis && item.value === 'area' ? '堆叠面积图' : t(`chat.chart_type.${item.label}`)"
                 :value="item.value"
               />
             </el-select>
@@ -9081,6 +9115,14 @@ const analysisModelFormContext = {
           </el-select>
         </el-form-item>
         <div v-else-if="form.chartType !== 'table'" class="config-grid">
+          <el-alert
+            v-if="form.chartType === 'boxplot'"
+            class="editor-alert"
+            type="info"
+            :closable="false"
+            :title="t('chat.boxplot.hint')"
+            style="grid-column: 1 / -1"
+          />
           <el-form-item v-if="showXAxis" :label="t('dashboard.sql_editor_x')">
             <el-select v-model="form.x" filterable clearable>
               <el-option
@@ -9092,7 +9134,7 @@ const analysisModelFormContext = {
             </el-select>
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_y')">
-            <el-select v-model="form.y" multiple filterable>
+            <el-select v-model="form.y" multiple filterable :multiple-limit="form.chartType === 'boxplot' ? 1 : 0">
               <el-option
                 v-for="field in fieldOptions"
                 :key="field.value"

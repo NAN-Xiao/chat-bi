@@ -1755,10 +1755,12 @@
       "funnel": "퍼널 차트",
       "heatmap": "히트맵",
       "scatter": "산점도",
+      "boxplot": "상자 그림",
       "sankey": "샌키 차트",
       "treemap": "트리맵"
     },
     "chart_validation": {
+      "invalid_boxplot_series": "상자 그림은 비어 있지 않은 값의 계열 필드를 하나만 지원합니다",
       "missing_category_field": "이 차트의 분류 필드를 선택하세요",
       "multiple_category_fields": "이 차트에는 분류 필드를 하나만 선택하세요",
       "missing_value_field": "이 차트의 값 필드를 선택하세요",
@@ -1770,6 +1772,16 @@
       "zero_total": "값의 합계는 0보다 커야 합니다",
       "too_many_categories": "분류는 최대 12개까지 사용할 수 있습니다",
       "invalid_data": "데이터가 현재 차트 요구사항을 충족하지 않습니다"
+    },
+    "boxplot": {
+      "low": "아래쪽 수염",
+      "q1": "제1사분위수 (Q1)",
+      "median": "중앙값",
+      "q3": "제3사분위수 (Q3)",
+      "high": "위쪽 수염",
+      "count": "표본 수",
+      "outlier": "이상치",
+      "hint": "범주 필드와 숫자 필드를 하나씩 선택하고 선택적으로 계열을 지정하세요. 각 행은 현재 쿼리 결과의 표본입니다. 수염은 사분위 범위의 1.5배를 기준으로 하며 범위 밖의 표본은 이상치로 표시됩니다."
     },
     "hide_label": "라벨 숨기기",
     "show_label": "라벨 표시",

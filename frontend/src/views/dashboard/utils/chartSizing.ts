@@ -55,7 +55,7 @@ export const getRecommendedDashboardChartFrame = (viewInfo?: any, chartCount = 1
     }
   }
 
-  if (['line', 'area', 'bar', 'column', 'grouped_column', 'scatter'].includes(chartType)) {
+  if (['line', 'area', 'bar', 'column', 'grouped_column', 'scatter', 'boxplot'].includes(chartType)) {
     return {
       sizeX: chartCount <= 2 ? DEFAULT_DASHBOARD_GRID_COLUMNS : 48,
       sizeY: 18,

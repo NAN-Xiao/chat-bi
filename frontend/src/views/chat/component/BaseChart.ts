@@ -57,6 +57,7 @@ export type ChartTypes =
   | 'funnel'
   | 'heatmap'
   | 'scatter'
+  | 'boxplot'
   | 'sankey'
   | 'treemap'
 

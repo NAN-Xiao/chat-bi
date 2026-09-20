@@ -1105,6 +1105,8 @@ function buildRankedStats(includeTotal = true): Array<StatItem> {
 }
 
 const stats = computed<Array<StatItem>>(() => {
+  // Box plots summarize samples in the chart tooltip; latest-row totals are not distribution statistics.
+  if (props.chartType === 'boxplot') return []
   if (trendDimensionError(props.chartType, props.x.map((axis) => ({ ...axis, type: 'x' })), rows.value)) {
     return []
   }

@@ -1787,10 +1787,12 @@
       "funnel": "Funnel",
       "heatmap": "Heatmap",
       "scatter": "Scatter",
+      "boxplot": "Box Plot",
       "sankey": "Sankey",
       "treemap": "Treemap"
     },
     "chart_validation": {
+      "invalid_boxplot_series": "Box plots support at most one series field, with non-empty values",
       "invalid_trend_dimension": "Trend dimension values are missing. Check the query results or date configuration.",
       "missing_category_field": "Select a category field for this chart",
       "multiple_category_fields": "Select only one category field for this chart",
@@ -1803,6 +1805,16 @@
       "zero_total": "The value total must be greater than zero",
       "too_many_categories": "Use no more than 12 categories",
       "invalid_data": "The data does not meet this chart's requirements"
+    },
+    "boxplot": {
+      "low": "Lower whisker",
+      "q1": "Lower quartile (Q1)",
+      "median": "Median",
+      "q3": "Upper quartile (Q3)",
+      "high": "Upper whisker",
+      "count": "Sample count",
+      "outlier": "Outlier",
+      "hint": "Select one category and one numeric field, with an optional series. Each row is a sample from the current query result. Whiskers use 1.5 times the interquartile range; samples beyond them appear as outliers."
     },
     "hide_label": "Hide Label",
     "show_label": "Show Label",

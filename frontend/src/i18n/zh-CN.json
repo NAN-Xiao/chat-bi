@@ -1788,10 +1788,12 @@
       "funnel": "漏斗图",
       "heatmap": "热力图",
       "scatter": "散点图",
+      "boxplot": "箱型图",
       "sankey": "桑基图",
       "treemap": "矩形树图"
     },
     "chart_validation": {
+      "invalid_boxplot_series": "箱型图最多支持一个系列字段，系列值不能为空",
       "invalid_trend_dimension": "横轴数据缺失，无法展示完整趋势，请检查查询结果或日期配置",
       "missing_category_field": "缺少分类字段，请重新选择分类字段",
       "multiple_category_fields": "只能选择一个分类字段",
@@ -1804,6 +1806,16 @@
       "zero_total": "数值合计必须大于零，请检查图表数据",
       "too_many_categories": "分类数量不能超过 12 个，请缩小查询范围",
       "invalid_data": "图表数据不符合当前图表要求"
+    },
+    "boxplot": {
+      "low": "下须",
+      "q1": "下四分位数 (Q1)",
+      "median": "中位数",
+      "q3": "上四分位数 (Q3)",
+      "high": "上须",
+      "count": "样本数",
+      "outlier": "异常值",
+      "hint": "选择一个分类字段和一个数值字段，可按系列分组。每行代表一个样本，箱型图展示当前查询结果的分布；须线采用 1.5 倍四分位距，超出范围的样本显示为异常点。"
     },
     "hide_label": "隐藏标签",
     "show_label": "显示标签",

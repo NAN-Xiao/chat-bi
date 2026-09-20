@@ -2075,6 +2075,9 @@ const chartTypeList = computed(() => {
       case 'scatter':
         pushChartType('scatter', ICON_LINE)
         break
+      case 'boxplot':
+        pushChartType('boxplot', ICON_COLUMN)
+        break
       case 'sankey':
         pushChartType('sankey', ICON_COLUMN)
         break

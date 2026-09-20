@@ -17,6 +17,7 @@ CHART_TYPES = {
     "funnel",
     "heatmap",
     "scatter",
+    "boxplot",
     "sankey",
     "treemap",
 }

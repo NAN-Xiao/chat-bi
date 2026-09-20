@@ -1,0 +1,183 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - button "返回星通数智首页" [ref=e5] [cursor=pointer]:
+      - generic [ref=e7]:
+        - strong [ref=e8]: 星通数智
+        - generic [ref=e9]: 智能 BI 与数据分析工作台
+    - navigation "产品导航" [ref=e10]:
+      - button "产品" [ref=e11] [cursor=pointer]
+      - button "解决方案" [ref=e12] [cursor=pointer]
+      - button "能力" [ref=e13] [cursor=pointer]
+      - button "资源" [ref=e14] [cursor=pointer]
+    - generic [ref=e15]:
+      - button "登录" [ref=e16] [cursor=pointer]
+      - button "免费试用" [ref=e17] [cursor=pointer]
+  - region "星通数智首页" [ref=e22]:
+    - generic [ref=e23]:
+      - generic [ref=e24]: 星通数智 3.0 已发布
+      - heading "让数据从噪音，变成你的决策力" [level=1] [ref=e26]
+      - paragraph [ref=e27]: 把分散在业务系统里的数据汇聚成统一分析工作台，自动建模、实时看板、智能洞察，帮助团队在几分钟内从数据走向决策。
+      - generic [ref=e28]:
+        - button "免费开始使用" [ref=e29] [cursor=pointer]
+        - button "观看演示" [ref=e34] [cursor=pointer]
+      - strong [ref=e44]: 数据源、语义层、问答与看板在同一个工作台协同
+    - generic "星通数智看板预览" [ref=e45]:
+      - generic [ref=e46]:
+        - generic [ref=e47]: 星通数智 · 智能分析看板
+        - generic [ref=e52]:
+          - generic [ref=e53]:
+            - article [ref=e54]:
+              - generic [ref=e55]: 总营收
+              - strong [ref=e56]: ¥1,284,560
+              - emphasis [ref=e57]: +12.5% 较上周
+            - article [ref=e58]:
+              - generic [ref=e59]: 活跃用户
+              - strong [ref=e60]: 48,295
+              - emphasis [ref=e61]: +8.2% 较上周
+            - article [ref=e62]:
+              - generic [ref=e63]: 转化率
+              - strong [ref=e64]: 7.84%
+              - emphasis [ref=e65]: "-1.3% 较上周"
+          - generic [ref=e66]:
+            - generic [ref=e67]:
+              - generic [ref=e68]: 营收趋势
+              - generic [ref=e69]: 本周
+            - img "营收趋势折线图" [ref=e70]
+          - generic [ref=e74]:
+            - generic [ref=e75]: 渠道占比
+            - generic [ref=e76]: 总计100%
+            - generic [ref=e78]:
+              - generic [ref=e79]: 自然搜索 48%
+              - generic [ref=e81]: 付费投放 32%
+  - region "为什么选择星通数智" [ref=e83]:
+    - generic [ref=e84]:
+      - generic [ref=e85]: 为什么选择 星通数智
+      - heading "从数据混乱，到决策清晰" [level=2] [ref=e86]
+      - paragraph [ref=e87]: 多数团队的数据散落在系统、报表和手工口径里。星通数智 用三步打通从原始数据到可执行洞察的链路。
+    - generic [ref=e88]:
+      - article [ref=e89]:
+        - emphasis [ref=e94]: "01"
+        - generic [ref=e95]: 一键连接数据源
+        - paragraph [ref=e96]: 接入数据库、Excel、SaaS 工具和业务系统，统一管理字段、权限与数据上下文。
+      - article [ref=e97]:
+        - emphasis [ref=e103]: "02"
+        - generic [ref=e104]: 自动建模与看板
+        - paragraph [ref=e105]: AI 自动识别字段关系、生成数据模型，并将高频问题沉淀为可复用的看板资产。
+      - article [ref=e106]:
+        - emphasis [ref=e112]: "03"
+        - generic [ref=e113]: 智能洞察与预警
+        - paragraph [ref=e114]: 异常自动识别、归因下钻、关键指标波动实时推送，让决策系统快人一步。
+  - region "分析全链路" [ref=e115]:
+    - generic [ref=e116]:
+      - generic [ref=e117]: 核心能力
+      - heading "一个平台，覆盖分析全链路" [level=2] [ref=e118]
+      - paragraph [ref=e119]: 从数据接入到智能问数、异常归因和团队协作，星通数智把分析流程装进同一个工作台。
+    - generic [ref=e120]:
+      - generic [ref=e121]:
+        - text: 01 实时看板
+        - heading "用拖拽搭建任何你想要的看板" [level=3] [ref=e122]
+        - paragraph [ref=e123]: 业务指标、自由图表和问答结果可以沉淀为持续运营的看板，让团队成员围绕同一份事实沟通。
+        - list [ref=e124]:
+          - listitem [ref=e125]:
+            - generic [ref=e129]: 40+ 可组合图表组件，自由拖拽排版
+          - listitem [ref=e130]:
+            - generic [ref=e134]: 秒级数据刷新，团队共享同一份数据真相
+      - generic [aria-hidden] [ref=e135]:
+        - generic [ref=e136]: 实时看板编辑器
+        - generic [ref=e141]:
+          - generic [ref=e142]:
+            - text: 今日活跃
+            - strong [ref=e143]: 12,840
+          - generic [ref=e144]: 渠道分布
+          - generic [ref=e152]: 访问趋势
+    - generic [ref=e159]:
+      - generic [ref=e160]:
+        - text: 02 智能归因
+        - heading "让异常无处可藏，归因一钻到底" [level=3] [ref=e161]
+        - paragraph [ref=e162]: 指标波动自动捕捉，AI 结合维度拆解和业务语义提示，让问题定位从经验猜测走向可复核路径。
+        - list [ref=e163]:
+          - listitem [ref=e164]:
+            - generic [ref=e168]: 异常波动秒级识别，自动推送归因报告
+          - listitem [ref=e169]:
+            - generic [ref=e173]: 多维下钻，定位到具体人群与渠道
+      - generic [aria-hidden] [ref=e174]:
+        - generic [ref=e175]: 智能归因下钻
+        - generic [ref=e180]:
+          - generic [ref=e181]:
+            - strong [ref=e187]: 订单量较昨日下降 18.2%
+            - generic [ref=e188]: 2 分钟前
+          - generic [ref=e189]:
+            - generic [ref=e190]:
+              - generic [ref=e191]: 渠道 · 付费搜索
+              - strong [ref=e193]: 贡献 -12.4%
+            - generic [ref=e194]:
+              - generic [ref=e195]: 地域 · 华东区
+              - strong [ref=e197]: 贡献 -4.1%
+    - generic [ref=e198]:
+      - generic [ref=e199]:
+        - text: 03 协同分析
+        - heading "让分析成为团队的共同语言" [level=3] [ref=e200]
+        - paragraph [ref=e201]: 看板评论、指标订阅和问数记录可以沉淀为团队知识，让每一次决策都有上下文、有过程、可追溯。
+        - list [ref=e202]:
+          - listitem [ref=e203]:
+            - generic [ref=e207]: 看板内评论与订阅，分析讨论就地沉淀
+          - listitem [ref=e208]:
+            - generic [ref=e212]: 报表定时推送邮件和 IM，决策不等人
+      - generic [aria-hidden] [ref=e213]:
+        - generic [ref=e214]: 看板协同评论
+        - generic [ref=e226]:
+          - generic [ref=e227]: 评论 (3)
+          - paragraph [ref=e228]: 增长放缓来自新客转化
+          - paragraph [ref=e230]: 建议同步检查渠道预算
+  - region "解决方案" [ref=e232]:
+    - generic [ref=e233]:
+      - generic [ref=e234]: 解决方案
+      - heading "让不同角色都能在同一套可信数据上工作" [level=2] [ref=e235]
+    - generic [ref=e236]:
+      - article [ref=e237]:
+        - generic [ref=e241]: 业务团队
+        - paragraph [ref=e242]: 直接用自然语言提出问题，快速获得图表、解释和可继续追问的上下文。
+      - article [ref=e243]:
+        - generic [ref=e247]: 数据团队
+        - paragraph [ref=e248]: 把反复沟通的指标口径、查询范式和推荐问题沉淀到语义层。
+      - article [ref=e249]:
+        - generic [ref=e254]: 管理团队
+        - paragraph [ref=e255]: 通过看板和权限体系组织跨部门指标，让经营复盘建立在一致事实上。
+      - article [ref=e256]:
+        - generic [ref=e260]: 运营团队
+        - paragraph [ref=e261]: 围绕渠道、活动、用户行为或业务流程快速探索波动原因。
+      - article [ref=e262]:
+        - generic [ref=e266]: 增长团队
+        - paragraph [ref=e267]: 持续跟踪漏斗、留存和转化趋势，发现机会并验证策略效果。
+      - article [ref=e268]:
+        - generic [ref=e272]: 合规协作
+        - paragraph [ref=e273]: 保留问题、SQL、图表和解释过程，让关键分析结果可追溯、可复核。
+  - region "开始使用" [ref=e274]:
+    - generic [ref=e275]:
+      - text: 开始使用
+      - heading "进入 星通数智，把业务问题直接连接到可信数据" [level=2] [ref=e276]
+      - paragraph [ref=e277]: 从自然语言问数开始，逐步沉淀语义层、推荐问题和数据看板。
+    - button "申请试用" [ref=e278] [cursor=pointer]
+  - generic [ref=e283]:
+    - generic [ref=e284]:
+      - strong [ref=e286]: 星通数智
+      - paragraph [ref=e287]: 让每个团队都能从数据走向决策。统一的实时分析工作台，服务企业的数据协同与 AI 问数。
+    - generic [ref=e288]:
+      - generic [ref=e289]:
+        - generic [ref=e290]: 产品
+        - generic [ref=e291]: 功能特性
+        - generic [ref=e292]: 定价方案
+        - generic [ref=e293]: 数据源
+        - generic [ref=e294]: 更新日志
+      - generic [ref=e295]:
+        - generic [ref=e296]: 公司
+        - generic [ref=e297]: 关于我们
+        - generic [ref=e298]: 客户案例
+        - generic [ref=e299]: 加入我们
+        - generic [ref=e300]: 联系我们
+      - generic [ref=e301]:
+        - generic [ref=e302]: 资源
+        - generic [ref=e303]: 帮助中心
+        - generic [ref=e304]: 开发者文档
+        - generic [ref=e305]: 数据博客
+        - generic [ref=e306]: API 参考

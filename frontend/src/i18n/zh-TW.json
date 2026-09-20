@@ -1787,10 +1787,12 @@
       "funnel": "漏斗圖",
       "heatmap": "熱力圖",
       "scatter": "散點圖",
+      "boxplot": "箱型圖",
       "sankey": "桑基圖",
       "treemap": "矩形樹圖"
     },
     "chart_validation": {
+      "invalid_boxplot_series": "箱型圖最多支援一個系列欄位，系列值不能為空",
       "invalid_trend_dimension": "橫軸資料缺失，無法展示完整趨勢，請檢查查詢結果或日期設定",
       "missing_category_field": "缺少分類欄位，請重新選擇分類欄位",
       "multiple_category_fields": "只能選擇一個分類欄位",
@@ -1803,6 +1805,16 @@
       "zero_total": "數值合計必須大於零，請檢查圖表資料",
       "too_many_categories": "分類數量不能超過 12 個，請縮小查詢範圍",
       "invalid_data": "圖表資料不符合目前圖表要求"
+    },
+    "boxplot": {
+      "low": "下鬚",
+      "q1": "下四分位數 (Q1)",
+      "median": "中位數",
+      "q3": "上四分位數 (Q3)",
+      "high": "上鬚",
+      "count": "樣本數",
+      "outlier": "異常值",
+      "hint": "選擇一個分類欄位與一個數值欄位，可按系列分組。每列代表一個樣本，箱型圖顯示目前查詢結果的分布；鬚線採用 1.5 倍四分位距，超出範圍的樣本顯示為異常點。"
     },
     "hide_label": "隱藏標籤",
     "show_label": "顯示標籤",
