@@ -58,7 +58,7 @@ Scope: entire repository.
   `MCP_IMAGE_PATH=<repo-root>/.codex-runtime/images`, `EXCEL_PATH=<repo-root>/.codex-runtime/excel`.
 - MCP tools are disabled by default in this workspace. Set `MCP_ENABLED=false` for local backend/MCP startup unless you are explicitly testing MCP access controls.
 - In this local workspace, embedding uses the remote OpenAI-compatible `text-embedding-v4` model from the repo root `.env`; do not set `EMBEDDING_ENABLED=false` or `TABLE_EMBEDDING_ENABLED=false` unless you are intentionally disabling semantic retrieval.
-- 本地大模型配置必须固定解析为 `LLM_REQUEST_TIMEOUT=120`、`LLM_TASK_MAX_WAIT_SECONDS=900`、`LLM_MAX_RETRIES=1`；启动或重启后的验证必须输出并核对这三个值。
+- 本地大模型配置必须固定解析为 `LLM_REQUEST_TIMEOUT=180`、`LLM_TASK_MAX_WAIT_SECONDS=900`、`LLM_MAX_RETRIES=1`；启动或重启后的验证必须输出并核对这三个值。
 - 在本仓库中，无修饰的“启动”“重启”“重新启动”均指当前任务正在使用的本地 Git 工作树。启动或重启前必须拉取该工作树当前分支；不得切换到固定目录或其他工作树。除非用户明确指定生产、远程、Jenkins 或具体服务器，否则不得操作生产环境、SSH、Docker 或远程容器。
 - 本地重启时，先解析并输出 `5173`、`8000`、`8001` 的监听 PID，再停止这些端口的本地占用进程并确认端口释放；不得扩展到其他端口、远程服务、数据库、Redis 或生产进程。
 - 默认本地启动必须包含前端 `5173`、API `8000`、MCP `8001` 和一个本地任务 Worker；API 与 Worker 必须使用 `tools/stack-local.ps1` 生成的同一本地独立队列，不得使用生产 `default` 队列。标准命令分别为 `.\tools\stack-local.ps1 -Action start -BackendPorts 8000 -StartMcp -SkipDatabase -SkipRedis -SkipNginx`、`.\tools\stack-local.ps1 -Action restart -BackendPorts 8000 -StartMcp -SkipDatabase -SkipRedis -SkipNginx` 和 `.\tools\stack-local.ps1 -Action status -BackendPorts 8000 -StartMcp -SkipDatabase -SkipRedis -SkipNginx`；前端仍通过 `frontend` 目录的 `npm run dev` 单独管理。这些参数确保无修饰的“启动”“重启”“查看状态”只编排当前工作区的前端、API、MCP 和一个 Worker，不启动或停止远程 PostgreSQL、远程 Redis 或本地 Nginx。

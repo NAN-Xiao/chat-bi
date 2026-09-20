@@ -4,6 +4,18 @@ import test from 'node:test'
 import vm from 'node:vm'
 import ts from 'typescript'
 
+const dismissibleHelperSource = readFileSync(
+  new URL('../../../utils/dismissibleMessage.ts', import.meta.url),
+  'utf8'
+)
+
+test('dismissible messages use the application message component library', () => {
+  assert.match(
+    dismissibleHelperSource,
+    /import \{ ElMessage \} from 'element-plus-secondary'/
+  )
+})
+
 // Execute the production handlers. Only persistence and the message renderer
 // are replaced; the outside-click lifecycle is the real shared implementation.
 function loadHandler(relativePath, name, context) {

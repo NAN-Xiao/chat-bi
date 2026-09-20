@@ -41,11 +41,10 @@ test('消息提示默认展示时长由根配置统一为 3000ms', () => {
 
   for (const name of ['ProjectSelector.vue', 'Person.vue']) {
     const source = callsiteSources.find(([callsiteName]) => callsiteName === name)[1]
-    assert.match(
-      source,
-      /ElMessage\.success\(t\('common\.switch_success'\)\)/,
-      `${name} should use the globally configured message duration`
-    )
+    assert.match(source, /import \{ showDismissibleSuccess \} from '@\/utils\/dismissibleMessage'/)
+    assert.match(source, /showDismissibleSuccess\(t\('common\.switch_success'\)\)/,
+      `${name} should dismiss the workspace switch message when clicking elsewhere`)
+    assert.doesNotMatch(source, /ElMessage\.success\(t\('common\.switch_success'\)\)/)
     assert.doesNotMatch(source, /duration\s*:/)
   }
 

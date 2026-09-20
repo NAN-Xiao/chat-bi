@@ -21,7 +21,7 @@ import { userApi } from '@/api/auth'
 import { tenantApi, type TenantInfo } from '@/api/tenant'
 import { toLoginPage } from '@/utils/utils'
 import { useCache } from '@/utils/useCache'
-import { ElMessage } from 'element-plus-secondary'
+import { showDismissibleSuccess } from '@/utils/dismissibleMessage'
 import { resolveManagementHome } from '@/utils/navigation'
 import { rememberBusinessTenantBeforeAdmin } from '@/utils/workspaceAdminContext'
 import { canManageWorkspaceRole } from '@/utils/workspacePermission'
@@ -165,7 +165,7 @@ const enterTenantAdmin = async (tenant?: TenantInfo) => {
       const switched = await userStore.switchTenant(tenantId)
       if (!switched) return
       dashboardStore.canvasDataInit()
-      ElMessage.success(t('common.switch_success'))
+      showDismissibleSuccess(t('common.switch_success'))
     }
     popoverRef.value?.hide?.()
     router.push(resolveManagementHome(userStore))

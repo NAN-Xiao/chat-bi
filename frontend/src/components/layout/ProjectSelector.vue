@@ -5,7 +5,7 @@ import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_workspace_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
-import { ElMessage } from 'element-plus-secondary'
+import { showDismissibleSuccess } from '@/utils/dismissibleMessage'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { highlightKeyword } from '@/utils/xss'
@@ -87,7 +87,7 @@ const handleWorkspaceChange = async (tenant: TenantInfo) => {
     if (!switched) return
     dashboardStore.canvasDataInit()
     emit('selectProject', null)
-    ElMessage.success(t('common.switch_success'))
+    showDismissibleSuccess(t('common.switch_success'))
     popoverRef.value?.hide?.()
   } finally {
     workspaceSwitchingId.value = ''

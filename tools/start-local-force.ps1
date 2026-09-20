@@ -81,7 +81,7 @@ try {
     $queueName = "local-$computerSlug-$workspaceSlug" -replace '[^A-Za-z0-9_.-]', '-'
     Write-Host "Local queue: $queueName"
     $env:TASK_QUEUE_NAME = $queueName
-    $env:LLM_REQUEST_TIMEOUT = '120'
+    $env:LLM_REQUEST_TIMEOUT = '180'
     $env:LLM_TASK_MAX_WAIT_SECONDS = '900'
     $env:LLM_MAX_RETRIES = '1'
 
@@ -114,7 +114,7 @@ try {
     Write-Host "Worker running: PID=$workerId queue=$queueName"
     Push-Location (Join-Path $workspaceRoot 'backend')
     try {
-        & $pythonExe -c "from common.core.config import settings; values = (settings.LLM_REQUEST_TIMEOUT, settings.LLM_TASK_MAX_WAIT_SECONDS, settings.LLM_MAX_RETRIES); print('LLM_REQUEST_TIMEOUT=%s LLM_TASK_MAX_WAIT_SECONDS=%s LLM_MAX_RETRIES=%s' % values); assert values == (120, 900, 1), values"
+        & $pythonExe -c "from common.core.config import settings; values = (settings.LLM_REQUEST_TIMEOUT, settings.LLM_TASK_MAX_WAIT_SECONDS, settings.LLM_MAX_RETRIES); print('LLM_REQUEST_TIMEOUT=%s LLM_TASK_MAX_WAIT_SECONDS=%s LLM_MAX_RETRIES=%s' % values); assert values == (180, 900, 1), values"
         if ($LASTEXITCODE -ne 0) { throw 'LLM configuration verification failed.' }
     } finally { Pop-Location }
     Write-Host 'Local startup completed: http://localhost:5173/' -ForegroundColor Green

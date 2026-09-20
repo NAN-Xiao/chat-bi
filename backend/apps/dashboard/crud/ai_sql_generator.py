@@ -57,6 +57,7 @@ from apps.dashboard.crud.interval_sql_validation import INTERVAL_START_DATE_RULE
 from apps.dashboard.crud.cohort_sql_validation import COHORT_MATURITY_RULE, cohort_maturity_contract, cohort_maturity_issues
 from apps.dashboard.crud.cohort_input_grain import COHORT_INPUT_RULE, cohort_input_contract, cohort_input_grain_issues
 from apps.dashboard.crud.event_grain_validation import event_grain_issues
+from apps.dashboard.crud.distribution_population import POPULATION_RULE, population_issues
 from apps.dashboard.crud.sql_generation_rules import build_date_scaffold, date_scaffold_issues, generation_sql_rules
 from apps.dashboard.crud.sql_generation_lifecycle import current_generation_run, run_sql_generation, SqlGenerationTimeout
 from apps.dashboard.crud.sql_generation_telemetry import check_generation_deadline, llm_invocation
@@ -2850,6 +2851,18 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
             ],
             "interval_mode": str((distribution.get("interval") or {}).get("mode") or "auto"),
         }
+        partition_columns = list(dict.fromkeys(result_contract["final_grain"][:-2]))
+        result_contract["required_columns"] = list(dict.fromkeys([
+            *partition_columns, *required_columns,
+        ]))
+        result_contract["population"] = {
+            "partition_columns": partition_columns,
+            "unique_columns": list(dict.fromkeys([*partition_columns, "entity_id"])),
+            "preferred_method": "count_rows_over_full_partition",
+            "exclude_null_entity": True,
+            "output_aggregate": "MAX(total_entities)",
+            "rule": POPULATION_RULE,
+        }
     elif analysis_model == "ranking":
         ranking = normalized_config.get("ranking") if isinstance(normalized_config.get("ranking"), dict) else {}
         simultaneous_metrics = _list_dict_items(
@@ -4052,18 +4065,14 @@ def _distribution_sql_result_issues(
                 issues.append("分布 SQL 未将 YYYYMMDD 通过 TO_DATE 转换为 DATE。")
     if not re.search(r"\bcount\s*\(\s*distinct\b", normalized_sql):
         issues.append("分布 SQL 必须按分析主体去重统计 entity_count。")
-    # total_entities is the denominator for every interval row. It must be
-    # materialized from the date/group population before bucket aggregation;
-    # accepting an arbitrary expression here lets interval-local counts leak
-    # into the denominator and produces inconsistent totals for one group.
-    if not re.search(
-        r"\bcount\s*\(\s*distinct\s+(?:[a-z_][\w]*\.)?entity_id\s*\)\s*as\s+total_entities\b",
-        normalized_sql,
-    ):
-        issues.append(
-            "分布 SQL 必须在日期和全部分组键粒度先计算 COUNT(DISTINCT entity_id) AS total_entities，"
-            "再关联到各区间；不能按区间分别计算分母。"
-        )
+    partition_columns = ["distribution_date"]
+    entity_name = _distribution_entity_result_name(distribution)
+    if entity_name:
+        partition_columns.append(entity_name)
+    partition_columns.extend(f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or []))
+    issues.extend(population_issues(
+        _sqlglot_statements_for_generation_validation(sql, sql_dialect), partition_columns,
+    ))
     if not re.search(r"\bnullif\s*\(", normalized_sql):
         issues.append("分布 SQL 的 entity_rate 必须使用 NULLIF 保护分母。")
     if _has_placeholder_distribution_interval_label(sql, sql_dialect):
@@ -4602,20 +4611,21 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "    FROM base_events\n"
             "    GROUP BY distribution_date, entity_id, <groups>\n"
             "),\n"
-            "bucketed AS (...按 distribution.interval 生成互斥且完整的 interval_order 与 interval_label；自动 12 桶必须把最大值归入第 12 桶，interval_order 不得出现 13；interval_label 必须展示实际值或区间上下界，不得使用 Range + 桶序号占位...),\n"
-            "totals AS (SELECT distribution_date, <groups>, COUNT(DISTINCT entity_id) AS total_entities FROM entity_values GROUP BY distribution_date, <groups>),\n"
-            "simultaneous_entity_values AS (...启用同时展示时，按 distribution_date、entity_id 与 groups 聚合 simultaneous_entity_value...),\n"
-            "bucketed_metrics AS (...bucketed 通过 distribution_date、entity_id 与全部 groups 显式 LEFT JOIN simultaneous_entity_values...)\n"
-            "SELECT b.distribution_date, <b.groups>, t.total_entities, b.interval_order, b.interval_label,\n"
+            "population AS (SELECT entity_values.*, COUNT(*) OVER (PARTITION BY distribution_date, <全部配置分组键>) AS total_entities FROM entity_values),\n"
+            "bucketed AS (...从 population 按 distribution.interval 生成互斥且完整的 interval_order 与 interval_label，并传递 total_entities；自动 12 桶必须把最大值归入第 12 桶，interval_order 不得出现 13；interval_label 必须展示实际值或区间上下界，不得使用 Range + 桶序号占位...),\n"
+            "simultaneous_entity_values AS (...启用同时展示时，按 distribution_date、entity_id 与全部分组键聚合 simultaneous_entity_value...),\n"
+            "bucketed_metrics AS (...启用同时展示时，bucketed 通过日期、主体与全部分组键 NULL 安全显式 LEFT JOIN simultaneous_entity_values，关联右侧在这些键上必须唯一；未启用时直接使用 bucketed...)\n"
+            "SELECT b.distribution_date, <b.groups>, MAX(b.total_entities) AS total_entities, b.interval_order, b.interval_label,\n"
             "       COUNT(DISTINCT b.entity_id) AS entity_count,\n"
-            "       ROUND(COUNT(DISTINCT b.entity_id) * 100.0 / NULLIF(t.total_entities, 0), 2) AS entity_rate\n"
+            "       ROUND(COUNT(DISTINCT b.entity_id) * 100.0 / NULLIF(MAX(b.total_entities), 0), 2) AS entity_rate\n"
             "       <启用时输出 simultaneous_value>\n"
-            "FROM bucketed_metrics b JOIN totals t ON b.distribution_date = t.distribution_date AND <全部分组键的 NULL 安全等值关联>\n"
-            "GROUP BY b.distribution_date, <b.groups>, b.interval_order, b.interval_label, t.total_entities\n"
+            "FROM bucketed_metrics b\n"
+            "GROUP BY b.distribution_date, <b.groups>, b.interval_order, b.interval_label\n"
             "ORDER BY b.distribution_date, <b.groups>, b.interval_order。\n"
+            + POPULATION_RULE + "\n"
             "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns；interval_order 只负责稳定排序，interval_label 是展示文本。\n"
-            "最终 SELECT 还必须输出参与 entity_values、totals、bucketed_metrics 分组或 JOIN 键的全部业务分组字段；"
-            "任何用于 totals 分母粒度的字段都不能只存在于 CTE 而在最终结果中省略，否则不同分组会被错误合并。\n"
+            "最终 SELECT 还必须输出参与 entity_values、population、bucketed_metrics 分组或 JOIN 键的全部配置分组字段；"
+            "任何用于窗口分区或 totals 分母粒度的字段都不能只存在于 CTE 而在最终结果中省略，否则不同分组会被错误合并。\n"
             "当 sql-plan.result_contract.required_columns 中包含 distribution.entityField 的主体结果字段时，"
             "最终 SELECT 必须按该契约的精确标识符输出该字段（包括字段别名）；不能自行改写成近似别名。\n"
             "主体必须先聚合再分桶，禁止直接按事件明细行分桶；entity_rate 分母只包含当期参与配置事件的主体。\n"
@@ -4633,31 +4643,27 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "    WHERE entity_id IS NOT NULL\n"
             "    GROUP BY distribution_date, entity_id, group_1\n"
             "),\n"
-            "totals AS (\n"
-            "    SELECT distribution_date, group_1,\n"
-            "           COUNT(DISTINCT entity_id) AS total_entities\n"
+            "population AS (\n"
+            "    SELECT distribution_date, group_1, entity_id, distribution_value,\n"
+            "           COUNT(*) OVER (PARTITION BY distribution_date, group_1) AS total_entities\n"
             "    FROM entity_values\n"
-            "    GROUP BY distribution_date, group_1\n"
             "),\n"
             "bucketed AS (\n"
-            "    SELECT distribution_date, entity_id, group_1,\n"
+            "    SELECT distribution_date, entity_id, group_1, total_entities,\n"
             "           distribution_value AS interval_order,\n"
             "           TRIM(CAST(distribution_value AS CHAR(64))) AS interval_label\n"
-            "    FROM entity_values\n"
+            "    FROM population\n"
             ")\n"
-            "SELECT b.distribution_date, b.group_1, t.total_entities,\n"
+            "SELECT b.distribution_date, b.group_1, MAX(b.total_entities) AS total_entities,\n"
             "       b.interval_order, b.interval_label,\n"
             "       COUNT(DISTINCT b.entity_id) AS entity_count,\n"
-            "       ROUND(COUNT(DISTINCT b.entity_id) * 100.0 / NULLIF(t.total_entities, 0), 2) AS entity_rate\n"
+            "       ROUND(COUNT(DISTINCT b.entity_id) * 100.0 / NULLIF(MAX(b.total_entities), 0), 2) AS entity_rate\n"
             "FROM bucketed b\n"
-            "JOIN totals t\n"
-            "  ON b.distribution_date = t.distribution_date\n"
-            " AND (b.group_1 = t.group_1 OR (b.group_1 IS NULL AND t.group_1 IS NULL))\n"
-            "GROUP BY b.distribution_date, b.group_1, t.total_entities, b.interval_order, b.interval_label\n"
+            "GROUP BY b.distribution_date, b.group_1, b.interval_order, b.interval_label\n"
             "ORDER BY b.distribution_date, b.group_1, b.interval_order;\n"
             "```\n"
-            "按当前配置改写示例：无分组时同步删除 group_1 的投影、GROUP BY、JOIN 和 ORDER BY；"
-            "多个分组时每层同步保留全部分组键。主体字段同时作为结果分组维度参与分母计算时，"
+            "按当前配置改写示例：无分组时同步删除 group_1 的投影、GROUP BY、PARTITION BY 和 ORDER BY；"
+            "多个分组时每层同步保留全部分组键，严格使用 result_contract.population.partition_columns；NULL 分组值保留为同一分区，不得过滤或替换。主体字段同时作为结果分组维度参与分母计算时，"
             "必须在各层保留并以配置要求的字段名输出，不能只在内部改名为 entity_id 后丢失；"
             "仅用于主体计数的 entity_id 不能为了补列而擅自加入最终 GROUP BY、改变分布粒度。\n"
             "days、hours、property 必须替换主体聚合表达式；custom、auto 必须按当前区间配置替换 bucketed，"

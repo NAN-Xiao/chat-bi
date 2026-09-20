@@ -1700,8 +1700,8 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
     assert "同一个 SELECT 的输出列之间不能互相引用刚定义的别名" in prompt
     assert "必须先在子查询或 CTE 中生成被依赖字段" in prompt
     assert "分布 SQL 参考示例（首次生成和修复均参考）" in prompt
-    assert "COUNT(DISTINCT entity_id) AS total_entities" in prompt
-    assert "group_1 IS NULL" in prompt
+    assert "COUNT(*) OVER (PARTITION BY distribution_date, group_1) AS total_entities" in prompt
+    assert "NULL 分组值保留为同一分区" in prompt
     assert "无分组时同步删除 group_1" in prompt
     assert normalized["analysis_model"] == "distribution"
     assert normalized["chart"]["type"] == "table"
@@ -1816,6 +1816,16 @@ def test_sql_validation_allows_qualified_source_columns_with_same_names() -> Non
     sql = (
         "SELECT e.interval_order AS interval_order, "
         "e.interval_order + 1 AS interval_label FROM event e"
+    )
+
+    assert ai_sql_generator._same_select_alias_reference_issues(sql, "mysql") == []
+
+
+def test_sql_validation_allows_unqualified_existing_source_column_shadowed_by_output_alias() -> None:
+    sql = (
+        "SELECT MAX(total_entities) AS total_entities, "
+        "ROUND(COUNT(DISTINCT entity_id) * 100.0 / NULLIF(MAX(total_entities), 0), 2) AS entity_rate "
+        "FROM bucketed"
     )
 
     assert ai_sql_generator._same_select_alias_reference_issues(sql, "mysql") == []

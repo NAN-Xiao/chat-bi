@@ -60,7 +60,7 @@ function Set-WorkerEnvironment {
     $env:SHUZHI_REDIS_PORT = [string]$RedisPort
     $env:AUTO_RUN_MIGRATIONS = "false"
     $env:TASK_QUEUE_NAME = $QueueName
-    $env:LLM_REQUEST_TIMEOUT = "120"
+    $env:LLM_REQUEST_TIMEOUT = "180"
     $env:LLM_TASK_MAX_WAIT_SECONDS = "900"
     $env:LLM_MAX_RETRIES = "1"
 

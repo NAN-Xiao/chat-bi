@@ -18,7 +18,7 @@ def test_llm_timeout_defaults_are_decoupled(monkeypatch):
 
     timeout_settings = Settings(_env_file=None)
 
-    assert timeout_settings.LLM_REQUEST_TIMEOUT == 120
+    assert timeout_settings.LLM_REQUEST_TIMEOUT == 180
     assert timeout_settings.LLM_TASK_MAX_WAIT_SECONDS == 900
 
 

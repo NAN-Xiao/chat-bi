@@ -79,6 +79,28 @@ def _normalized_alias(value: object) -> str:
     return str(value or "").strip().strip('"`[]').lower()
 
 
+def _contains_same_aggregate_expression(
+        expression: exp.Expression | None,
+        alias_expression: exp.Expression,
+) -> bool:
+    """Return whether a projection repeats the alias's source aggregate.
+
+    ``MAX(total_entities) AS total_entities`` followed by another
+    ``MAX(total_entities)`` is a legal re-evaluation of the input column. It
+    is different from referring to the output alias as a bare column. Keep
+    this exception narrow: only aggregate expressions with the same AST SQL
+    are treated as source-backed.
+    """
+    if not isinstance(alias_expression, exp.AggFunc):
+        return False
+    target = alias_expression.sql(normalize=True, comments=False)
+    return any(
+        isinstance(node, exp.AggFunc)
+        and node.sql(normalize=True, comments=False) == target
+        for node in (expression or exp.Null()).walk()
+    )
+
+
 def same_select_alias_reference_issues(
         statements: Iterable[exp.Expression],
         *,
@@ -131,6 +153,9 @@ def same_select_alias_reference_issues(
                         column.table
                         or column_name not in aliases
                         or column_name == projection_alias
+                        or _contains_same_aggregate_expression(
+                            projection.args.get("this"), aliases[column_name]
+                        )
                     ):
                         continue
                     issues.append(
