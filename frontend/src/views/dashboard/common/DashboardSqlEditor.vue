@@ -770,6 +770,8 @@ const activeFormulaAtomicMetricKey = ref('')
 const previewVersion = ref(0)
 const lastPreviewSql = ref('')
 const lastPreviewSignature = ref('')
+const lastPreviewPivotConfig = ref<Record<string, any> | null>(null)
+const lastPreviewPivotSettingsSignature = ref('')
 const initialChartTitle = ref('')
 const initialEditorSignature = ref('')
 const initializedPivotGroupValueField = ref('')
@@ -1433,9 +1435,11 @@ const chartPreviewYFields = computed(() => {
   }
   return form.y
 })
-const activePivotGroupValueField = computed(() =>
-  form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
-)
+const activePivotGroupValueField = computed(() => {
+  const executedPivot = reusablePreviewPivotConfig()
+  if (executedPivot?.enabled) return String(executedPivot.group_field || '')
+  return form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
+})
 const previewHasPivotGroupField = computed(() => {
   const field = activePivotGroupValueField.value
   return Boolean(field && visiblePreviewFields([field], preview.data).includes(field))
@@ -1479,7 +1483,7 @@ const previewDisplayData = computed(() => {
   if (!previewHasSeriesField && visiblePreviewFields([seriesField], sourcePreview.data).includes(seriesField)) {
     rows = sourcePreview.data
   }
-  if (!showPivotGroupValueConfig.value || !previewHasPivotGroupField.value) {
+  if (!previewPivotPayload()?.enabled || !previewHasPivotGroupField.value) {
     return rows
   }
   if (form.pivotGroupValueMode === 'all') {
@@ -6561,9 +6565,10 @@ function sanitizeSeriesSelection() {
   if (form.chartType === 'donut') {
     return
   }
-  const nextSeries = normalizeSeriesField(form.series)
-  if (form.series !== nextSeries) {
-    form.series = nextSeries
+  // Keep valid mappings when a chart temporarily cannot display a series or
+  // uses it as its x category. effectiveSeriesField controls rendering only.
+  if (form.series && (!sourcePreview.fields.includes(form.series) || form.y.includes(form.series))) {
+    form.series = ''
   }
 }
 
@@ -6783,6 +6788,12 @@ function initPivotConfig(pivot?: any) {
   form.pivotGroupValueMode = normalizePivotGroupValueMode(pivot)
   initializedPivotGroupValueField.value = ''
   normalizePivotSelections()
+  if (!pivot?.granularity) {
+    form.pivotGranularity = defaultPivotGranularity()
+  }
+  // Restore the query's grouping before resolving group-value selections. A
+  // saved table has no displayed series, but still owns its executed pivot.
+  rememberPreviewPivotConfig(form.pivotEnabled && pivot ? pivot : { enabled: false })
   if (!form.pivotEnabled) {
     form.pivotGroupValues = []
     form.pivotGroupValueMode = 'all'
@@ -6794,12 +6805,57 @@ function initPivotConfig(pivot?: any) {
     : pivotGroupValueOptions.value.map((item) => item.value)
   initializedPivotGroupValueField.value = activePivotGroupValueField.value
   syncPivotGroupValues()
-  if (!pivot?.granularity) {
-    form.pivotGranularity = defaultPivotGranularity()
-  }
+}
+
+function currentPivotQuerySettingsSignature() {
+  // Chart type only changes presentation. Track explicit query controls rather
+  // than the chart-dependent visibility and normalized series used by the UI.
+  if (!form.pivotEnabled) return JSON.stringify({ enabled: false })
+  return JSON.stringify({
+    enabled: form.pivotEnabled,
+    timeField: form.pivotTimeField,
+    groupField: form.pivotGroupField,
+    groupEnabled: form.pivotGroupEnabled,
+    granularity: form.pivotGranularity,
+    rangeEnabled: form.pivotRangeEnabled,
+    range: form.pivotRange,
+    customStart: form.pivotCustomStart,
+    customEnd: form.pivotCustomEnd,
+    x: form.x,
+    metrics: form.y,
+    series: form.series,
+  })
+}
+
+function rememberPreviewPivotConfig(config: Record<string, any>) {
+  const { group_values: _values, group_value_mode: _mode, ...queryConfig } = config
+  lastPreviewPivotConfig.value = JSON.parse(JSON.stringify(queryConfig))
+  lastPreviewPivotSettingsSignature.value = currentPivotQuerySettingsSignature()
+}
+
+function reusablePreviewPivotConfig() {
+  return hasSqlSource.value && !hasMcpSource.value && !isDistributionAnalysis.value
+    && currentPivotQuerySettingsSignature() === lastPreviewPivotSettingsSignature.value
+    ? lastPreviewPivotConfig.value
+    : null
 }
 
 function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
+  if (!hasSqlSource.value || hasMcpSource.value || isDistributionAnalysis.value) {
+    return { enabled: false }
+  }
+  const executedPivot = reusablePreviewPivotConfig()
+  if (executedPivot) {
+    // Reuse the exact transformation that produced the displayed rows. Hiding
+    // pivot controls for a table must not change that query or relabel its data.
+    const config = { ...executedPivot }
+    if (config.enabled && options.includeGroupValues !== false) {
+      Object.assign(config, buildPersistedPivotGroupValueSelection(
+        form.pivotGroupValueMode, unique(form.pivotGroupValues.map(normalizePivotGroupValue))
+      ))
+    }
+    return config
+  }
   if (!supportsPivotConfig.value || !form.pivotEnabled) {
     return { enabled: false }
   }
@@ -6838,10 +6894,8 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
 }
 
 function previewPivotPayload() {
-  if (!supportsPivotConfig.value || !form.pivotEnabled) {
-    return undefined
-  }
-  return buildPivotConfig({ includeGroupValues: false })
+  const config = buildPivotConfig({ includeGroupValues: false })
+  return config.enabled ? config : undefined
 }
 
 function sourcePreviewPivotPayload() {
@@ -6943,6 +6997,7 @@ function currentPreviewSignature() {
           datasource: selectedExecutionDatasourceId.value,
           sql: form.sql.trim(),
           pivot: previewPivotPayload() || { enabled: false },
+          pivotSettings: currentPivotQuerySettingsSignature(),
           dateFilter: dashboardDateFilterRequestPayload(),
         }
       : null,
@@ -7820,6 +7875,8 @@ function initEditor() {
   resetFieldSelections()
   initInsightConfig(chart.insight)
   initForecastConfig(chart.forecast)
+  lastPreviewPivotConfig.value = null
+  lastPreviewPivotSettingsSignature.value = ''
   initPivotConfig(normalizedConfig.pivot)
   form.pivotDateParameterType = SQL_EDITOR_DATE_PARAMETER_TYPE
   lastPreviewSignature.value = currentPreviewSignature()
@@ -7927,6 +7984,8 @@ function resetExecutionDatasourceDependentState() {
   lastPreviewSql.value = ''
   lastPreviewSignature.value = ''
   initialChartTitle.value = ''
+  lastPreviewPivotConfig.value = null
+  lastPreviewPivotSettingsSignature.value = ''
   initialEditorSignature.value = ''
   previewVersion.value += 1
 }
@@ -8073,7 +8132,7 @@ async function previewSqlSource(execution: EditorExecution) {
     ElMessage.warning(t(dateParameterValidationError))
     return null
   }
-  const shouldPreviewPivot = supportsPivotConfig.value && form.pivotEnabled
+  const shouldPreviewPivot = Boolean(previewPivotPayload()?.enabled)
   if (shouldPreviewPivot) {
     const sourceResult = await dashboardApi.preview_sql({
       datasource: selectedExecutionDatasourceId.value,
@@ -8096,15 +8155,19 @@ async function previewSqlSource(execution: EditorExecution) {
       return sourceSnapshot
     }
   }
+  const pivot = previewPivotPayload()
   const result = await dashboardApi.preview_sql({
     datasource: selectedExecutionDatasourceId.value,
     sql: form.sql.trim(),
-    pivot: previewPivotPayload(),
+    pivot,
     date_filter: dashboardDateFilterRequestPayload(),
   }, { signal: execution.controller.signal, requestOptions: { silent: true, retryCount: 0 } })
   if (!execution.isCurrent()) return null
   const snapshot = previewResultSnapshot(shapeDistributionTableResult(result, sqlBuilder))
   setSourceResult('sql', snapshot)
+  if (snapshot.status !== 'failed') {
+    rememberPreviewPivotConfig(pivot || { enabled: false })
+  }
   return snapshot
 }
 
@@ -8192,7 +8255,7 @@ async function runPreview(options: { useGlobalLoading?: boolean; execution?: Edi
     if (!nextPreview || !execution.isCurrent()) {
       return false
     }
-    if (hasSqlSource.value && !hasMcpSource.value && supportsPivotConfig.value && form.pivotEnabled) {
+    if (hasSqlSource.value && !hasMcpSource.value && previewPivotPayload()?.enabled) {
       updatePreviewResult(nextPreview)
     } else {
       applyPreviewSnapshot(nextPreview)
@@ -8525,7 +8588,7 @@ function writeEditorStateToViewInfo(options: {
   } else {
     delete nextData.raw
   }
-  if (supportsPivotConfig.value && form.pivotEnabled) {
+  if (previewPivotPayload()?.enabled) {
     nextData.source_fields = [...sourcePreview.fields]
     nextData.source_data = [...sourcePreview.data]
   } else if (isMixedSource.value) {
