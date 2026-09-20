@@ -140,10 +140,10 @@ def _configured_display_name(value: Any, fallback: str) -> str:
         return fallback
     candidates = [
         str(value.get(key) or "").strip()
-        for key in ("alias", "displayName", "display_name", "label", "comment", "name")
+        for key in ("displayName", "display_name", "alias", "label", "comment", "name")
     ]
     candidates = [text for text in candidates if text]
-    return next((text for text in candidates if re.search(r"[\u3400-\u9fff]", text)), candidates[0] if candidates else fallback)
+    return candidates[0] if candidates else fallback
 
 
 def _indexed_display_names(
@@ -179,7 +179,7 @@ def _analysis_result_display_names(
         normalized_config: dict[str, Any],
         analysis_model: str,
 ) -> dict[str, str]:
-    """返回分析模型固定结果键对应的中文显示名，不改变 SQL 字段契约。"""
+    """返回分析模型结果键对应的展示名，不改变 SQL 字段契约。"""
     if analysis_model not in ANALYSIS_RESULT_DISPLAY_NAME_MODELS:
         return {}
 
@@ -3369,6 +3369,7 @@ def _dashboard_config_prompt(
         related_property = interval.get("relatedProperty") if isinstance(interval.get("relatedProperty"), dict) else {}
         interval_rules = [
             "当前 analysisModel=interval，只能使用 interval 配置生成间隔查询；不得读取或套用事件、留存、漏斗、分布模型的指标语义。",
+            "startEventAlias 和 endEventAlias 仅为展示名称；事件条件必须使用 startEvent/endEvent 的 eventName，固定结果列不随展示名称改变。",
             "同一分析主体的起点事件和终点事件必须按事件时间顺序配对，最终持续时间统一计算为秒。",
             "时间字段职责必须严格区分：YYYYMMDD 类型的 dt/分区字段只用于看板日期范围过滤和 interval_date 展示；真实事件时间字段（例如 time 的 Unix 毫秒值）才允许使用 FROM_UNIXTIME(<time_field> / 1000) 转换。禁止对 dt 使用 FROM_UNIXTIME，也不能用 dt 代替事件时间计算间隔。",
             "起点事件与终点事件不同时采用最短间隔原则：连续出现多个起点时只保留最后一个起点，每个起点只匹配其后第一个有效终点；例如 A1,A2,B1,B2 只生成 A2-B1，A1,B1,A2,B2 生成两条间隔。",
@@ -5708,6 +5709,8 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         response.result_config = {
             "type": "interval_table",
             "date_field": "interval_date",
+            "start_event_alias": str(interval.get("startEventAlias") or "").strip(),
+            "end_event_alias": str(interval.get("endEventAlias") or "").strip(),
             "entity_count_field": "entity_count",
             "interval_count_field": "interval_count",
             "max_field": "max_interval_seconds",

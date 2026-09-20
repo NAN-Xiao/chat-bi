@@ -80,6 +80,7 @@ import {
   formulaTokensToText,
   insertFormulaTokenAt,
   normalizeFormulaAtomicMetricDisplay,
+  normalizeFormulaTokens,
   serializeFormulaTokensForContext,
   validateFormulaTokens,
   type FormulaAtomicMetric,
@@ -1666,7 +1667,7 @@ function collectPivotGroupSourceValues(field: string) {
 
 function toFieldOptions(fields: string[]) {
   return fields.map((field) => ({
-    label: field,
+    label: analysisResultFieldLabel(field),
     value: field,
     table: '',
     tableRole: '',
@@ -1894,7 +1895,7 @@ function removeCalculatedMetricItem(index: number) {
 }
 
 function metricTitle(item: SqlBuilderMetricItem, index: number) {
-  const field = schemaFieldOptions.value.find((option) => option.value === item.field)
+  const field = fieldOptionByValue(item.field)
   const aggregation = builderAggregationOptions.find((option) => option.value === item.aggregation)
   return `${field?.displayName || field?.label || field?.field || `指标${index + 1}`}.${aggregation?.label || '指标'}`
 }
@@ -2566,10 +2567,45 @@ function restoreBuilderFilters(value: any): SqlBuilderFilter[] {
     : []
 }
 
+function serializeEventBuilderConfig() {
+  return {
+    metrics: sqlBuilder.metricItems.map((item) => ({
+      ...serializePropertyMetric(item),
+      filters: { logic: builderLogic(item.filterLogic), rules: compactBuilderFilters(item.filters) },
+    })),
+    formulaMetrics: sqlBuilder.calculatedMetrics.map((item) => ({
+      id: item.id,
+      alias: item.alias.trim(),
+      decimalPlaces: item.decimalPlaces,
+      tokens: normalizeFormulaTokens(item.tokens),
+    })),
+  }
+}
+
+function restoreEventBuilderConfig(value: any) {
+  sqlBuilder.metricItems = Array.isArray(value?.metrics)
+    ? value.metrics.map((metric: any, index: number) => ({
+        ...restorePropertyMetric(metric, index),
+        filterLogic: builderLogic(metric?.filters?.logic),
+        filters: restoreBuilderFilters(metric?.filters?.rules),
+      }))
+    : []
+  sqlBuilder.calculatedMetrics = Array.isArray(value?.formulaMetrics)
+    ? value.formulaMetrics.map((metric: any) => ({
+        ...emptyCalculatedMetricItem(),
+        id: typeof metric?.id === 'string' && metric.id ? metric.id : nodeId('calc-metric'),
+        alias: typeof metric?.alias === 'string' ? metric.alias : '',
+        decimalPlaces: Number.isFinite(Number(metric?.decimalPlaces)) ? Number(metric.decimalPlaces) : 2,
+        tokens: normalizeFormulaTokens(metric?.tokens),
+      }))
+    : []
+}
+
 function builderConfigForSave() {
   const usesDashboardDateParameters = shouldUseDashboardDateParameters()
   return {
     analysisModel: sqlBuilder.analysisModel,
+    event: sqlBuilder.analysisModel === 'event' ? serializeEventBuilderConfig() : undefined,
     property: sqlBuilder.analysisModel === 'property' ? {
       groupMode: sqlBuilder.property.groupMode,
       groupSettings: Object.fromEntries(
@@ -2794,6 +2830,7 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.analysisModel = ['property', 'retention', 'funnel', 'distribution', 'interval', 'path', 'revenue', 'attribution', 'ranking', 'heatmap'].includes(value.analysisModel)
     ? value.analysisModel
     : 'event'
+  if (sqlBuilder.analysisModel === 'event') restoreEventBuilderConfig(value.event)
   const property = value.property && typeof value.property === 'object' ? value.property : {}
   sqlBuilder.property.groupMode = ['property', 'audience'].includes(property.groupMode)
     ? property.groupMode
@@ -5621,6 +5658,7 @@ function collectBuilderAiContext() {
       metric: {
         event: fieldOptionPayload(sqlBuilder.ranking.metric.event),
         alias: sqlBuilder.ranking.metric.alias.trim(),
+        displayName: sqlBuilder.ranking.metric.alias.trim(),
         aggregation: sqlBuilder.ranking.metric.aggregation,
         metricField: sqlBuilder.ranking.metric.aggregation === 'count'
           ? null
@@ -5633,6 +5671,7 @@ function collectBuilderAiContext() {
         alias: item.alias.trim(),
         aggregation: item.aggregation,
         metricField: item.aggregation === 'count' ? null : fieldOptionPayload(item.metricField),
+        displayName: item.alias.trim(),
       })),
       simultaneousProperties: sqlBuilder.ranking.simultaneousProperties.map(fieldOptionPayload).filter(Boolean),
     } : null,
@@ -5700,11 +5739,13 @@ function collectBuilderAiContext() {
       content: '分析同一主体依次完成起点事件和终点事件的时间间隔；不同事件按最后一个连续起点匹配后续第一个终点，相同事件按相邻两次匹配',
       entityField: fieldOptionPayload(sqlBuilder.interval.entityField),
       startEvent: fieldOptionPayload(sqlBuilder.interval.startEvent),
+      startEventAlias: sqlBuilder.interval.startEventAlias.trim(),
       startEventFilters: {
         logic: sqlBuilder.interval.startEventFilterLogic,
         rules: filterContext(sqlBuilder.interval.startEventFilters),
       },
       endEvent: fieldOptionPayload(sqlBuilder.interval.endEvent),
+      endEventAlias: sqlBuilder.interval.endEventAlias.trim(),
       endEventFilters: {
         logic: sqlBuilder.interval.endEventFilterLogic,
         rules: filterContext(sqlBuilder.interval.endEventFilters),
@@ -5801,6 +5842,7 @@ function collectBuilderAiContext() {
     metrics: sqlBuilder.metricItems.map((item, index) => ({
       id: item.id,
       alias: metricOutputAlias(item, index),
+      displayName: item.alias.trim() || metricTitle(item, index),
       label: metricTitle(item, index),
       field: fieldOptionPayload(item.field),
       metricField: fieldOptionPayload(metricMeasureField(item)),
@@ -5813,6 +5855,7 @@ function collectBuilderAiContext() {
     calculatedMetrics: sqlBuilder.calculatedMetrics.map((item, index) => ({
       id: item.id,
       alias: sqlAlias(item.alias || `公式指标${index + 1}`, `公式指标${index + 1}`),
+      displayName: item.alias.trim() || `公式指标${index + 1}`,
       decimalPlaces: item.decimalPlaces,
       formulaText: formulaTokensToText(item.tokens, builderMetricOptions.value),
       tokens: serializeFormulaTokensForContext(item.tokens, metricAliasById, fieldOptionPayload),
@@ -5820,6 +5863,7 @@ function collectBuilderAiContext() {
     formulaMetrics: sqlBuilder.calculatedMetrics.map((item, index) => ({
       id: item.id,
       alias: sqlAlias(item.alias || `公式指标${index + 1}`, `公式指标${index + 1}`),
+      displayName: item.alias.trim() || `公式指标${index + 1}`,
       decimalPlaces: item.decimalPlaces,
       formulaText: formulaTokensToText(item.tokens, builderMetricOptions.value),
       tokens: serializeFormulaTokensForContext(item.tokens, metricAliasById, fieldOptionPayload),

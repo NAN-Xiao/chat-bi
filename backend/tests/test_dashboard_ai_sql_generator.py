@@ -3347,7 +3347,7 @@ def test_sql_validation_keeps_model_contract_issues_with_dialect_issues() -> Non
             {
                 "time": {"field": {"field": "dt", "displayName": "日期"}},
                 "groups": [{"field": "channel", "displayName": "渠道"}],
-                "metrics": [{"alias": "active_users", "label": "活跃用户数"}],
+                "metrics": [{"alias": "active_users", "displayName": "活跃用户数"}],
             },
             {"dt": "日期", "channel": "渠道", "active_users": "活跃用户数"},
         ),
@@ -3398,7 +3398,7 @@ def test_finalize_response_attaches_display_names_only_to_analysis_generation_re
         "normalized_config": {
             "analysis_model": "event",
             "time": {"field": {"field": "dt", "displayName": "日期"}},
-            "metrics": [{"alias": "active_users", "label": "活跃用户数"}],
+            "metrics": [{"alias": "active_users", "displayName": "活跃用户数"}],
         },
         "graph_trace": [],
     })["response"]

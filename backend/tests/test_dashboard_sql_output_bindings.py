@@ -1,5 +1,32 @@
 import sqlglot
 import pytest
+import sqlite3
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mysql", "sqlite"])
+@pytest.mark.parametrize("name", ["select", "order", "123", "a b", 'a"b', "a`b", "x'; DROP TABLE activity; --"])
+def test_binding_preserves_reserved_and_special_names_as_identifiers(dialect, name):
+    from apps.dashboard.crud.sql_output_bindings import bind_output_columns
+    sql = "SELECT 2 AS chart_metric_1 ORDER BY chart_metric_1"
+    result, issues = bind_output_columns(sql, {"chart_metric_1": name}, dialect)
+    assert not issues
+    statements = sqlglot.parse(result, read=dialect)
+    assert len(statements) == 1
+    assert statements[0].named_selects == [name]
+    assert statements[0].args["order"].expressions[0].this.name == name
+    if dialect == "sqlite":
+        with sqlite3.connect(":memory:") as connection:
+            cursor = connection.execute(result)
+            assert cursor.description[0][0] == name
+            assert cursor.fetchall() == [(2,)]
+
+
+def test_binding_rejects_duplicate_output_names():
+    from apps.dashboard.crud.sql_output_bindings import bind_output_columns
+    sql = "SELECT 1 AS chart_metric_1, 2 AS chart_metric_2"
+    result, issues = bind_output_columns(sql, {"chart_metric_1": "order", "chart_metric_2": "order"}, "postgres")
+    assert issues
+    assert result == sql
 
 
 def test_binding_quotes_configured_names_and_preserves_literals_and_order():
