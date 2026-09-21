@@ -1702,6 +1702,10 @@ def test_distribution_prompt_and_result_contract_are_not_scatter_or_event_analys
     assert "分布 SQL 参考示例（首次生成和修复均参考）" in prompt
     assert "COUNT(*) OVER (PARTITION BY distribution_date, group_1) AS total_entities" in prompt
     assert "NULL 分组值保留为同一分区" in prompt
+    assert "错误示例" in prompt
+    assert "正确示例" in prompt
+    assert "不能从 base_events 直接计算 total_entities" in prompt
+    assert "interval_label 不能在同一层读取 interval_order" in prompt
     assert "无分组时同步删除 group_1" in prompt
     assert normalized["analysis_model"] == "distribution"
     assert normalized["chart"]["type"] == "table"
