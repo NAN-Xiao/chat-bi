@@ -3310,6 +3310,9 @@ def test_retention_system_prompt_uses_wide_result_without_changing_event_prompt(
     assert "day_1 到 day_7" in retention_prompt
     assert "simultaneous_value 必须表示回访窗口内已匹配主体的事件明细总次数" in retention_prompt
     assert "SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value" in retention_prompt
+    assert "simultaneous_agg" in retention_prompt
+    assert "COUNT(*) AS simultaneous_count" in retention_prompt
+    assert "禁止使用 1 AS event_count + SUM(event_count)" in retention_prompt
     assert "不得只按 cohort_date 关联" in retention_prompt
     assert "不能使用 (SELECT end_date FROM dashboard_date_bounds)" in retention_prompt
     assert "必须使用 CROSS JOIN dashboard_date_bounds" in retention_prompt
@@ -3581,6 +3584,37 @@ def test_retention_repair_prompt_carries_contract_original_sql_and_issues() -> N
     assert issue in prompt
     assert '"type": "cohort_table"' in prompt
     assert "完整重写 SQL" in prompt
+    assert "包含边界的 YYYYMMDD" in prompt
+    assert "成熟窗口必须使用 STR_TO_DATE/TO_DATE 解析后的看板结束参数和 <=" in prompt
+    assert "只处理 sql-validation-issues 中列出的错误" in prompt
+
+
+def test_retention_count_repair_prompt_forbids_equivalent_sum_event_count_shape() -> None:
+    request = _retention_request(simultaneous={
+        "enabled": True,
+        "event": {
+            "kind": "tracking-event", "eventTable": "event", "eventNameField": "event_name",
+            "eventName": "login", "field": "event_name",
+        },
+        "aggregation": "count",
+        "metricField": None,
+    })
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    prompt = ai_sql_generator._dashboard_sql_repair_user_prompt({
+        "request": request,
+        "datasource": SimpleNamespace(name="测试", type="mysql", type_name="MySQL"),
+        "normalized_config": normalized,
+        "formula_ir": formula_ir,
+        "sql_plan": ai_sql_generator._build_sql_plan(normalized, formula_ir),
+        "response": ai_sql_generator.DashboardAiSqlGenerateResponse(
+            success=False, sql="SELECT broken", issues=["simultaneous_value 校验失败"],
+        ),
+        "allowed_tables": ["event"],
+    })
+
+    assert "必须直接 COUNT(*) AS simultaneous_count" in prompt
+    assert "不得生成 1 AS event_count 再 SUM(event_count)" in prompt
 
 
 def test_heatmap_comparison_groups_are_normalized_and_extend_result_contract() -> None:

@@ -3256,7 +3256,7 @@ def _dashboard_config_prompt(
             f"基础结果使用固定 Cohort 宽表，范围为第 0 日到第 {RETENTION_COHORT_DAYS} 日的留存比例：第一列 cohort_date，第二列 cohort_size，后续列为 day_0 到 day_{RETENTION_COHORT_DAYS}。",
             "retention.simultaneous.enabled=true 时，额外按 simultaneous.event、simultaneous.aggregation 和 simultaneous.metricField 计算回访用户参与该事件的统计值，并以 simultaneous_value 输出。",
             "同时展示聚合规则与事件分析指标一致：count=事件明细总次数；count_distinct=COUNT(DISTINCT metricField)；sum/avg/max/min 分别对 metricField 使用 SUM/AVG/MAX/MIN。禁止改用其他字段或默认字段。",
-            "同时展示使用 count 时，simultaneous_value 是回访窗口内已匹配主体的事件明细总次数，不是参与用户平均次数、留存率或其他比例；如果先按 entity_id + behavior_date 在 CTE 中得到 simultaneous_count，最终 Cohort 层必须使用 SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value，禁止使用 AVG、COUNT(simultaneous_count)、COUNT(*)、除以 cohort_size 或 ROUND 包装成比例。",
+            "同时展示使用 count 时，必须使用固定的两层聚合结构：simultaneous_agg 按 entity_id + behavior_date 直接使用 COUNT(*) AS simultaneous_count，最终 Cohort 层使用 SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value。禁止用 1 AS event_count 再 SUM(event_count) 替代 COUNT(*)，也禁止使用 AVG、COUNT(simultaneous_count)、COUNT(*) 直接统计已预聚合行、除以 cohort_size 或 ROUND 包装成比例。",
             "同时展示事件必须按 entity_id + behavior_date 聚合，并将 behavior_date 与 matched.behavior_date 关联；不得只按 cohort_date 关联，否则会漏掉第 1 日到第 7 日的回访事件。simultaneous_value 只汇总 matched 回访窗口内的记录，不得参与 cohort 分母或 period_offset 分桶。",
             "retention.relatedProperty.enabled=true 时，初始事件、回访事件以及已启用的同时展示事件必须按各自配置的关联属性值相等进行关联，不得改用同名字段猜测。",
             "retention.relatedProperty.asGroup=true 时，结果必须额外输出 related_property 分组列。",
@@ -4543,13 +4543,14 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "FROM matched\n"
              "GROUP BY cohort_date\n"
              "ORDER BY cohort_date。\n"
-             "成熟窗口边界必须使用 CROSS JOIN dashboard_date_bounds AS bounds，由最终 SELECT 读取 bounds.end_date；不能使用 (SELECT end_date FROM dashboard_date_bounds) 这种标量子查询，也不能从行为记录最大日期推断截止日。\n"
+             "成熟窗口边界必须使用 CROSS JOIN dashboard_date_bounds AS bounds，由最终 SELECT 读取 bounds.end_date；不能使用 (SELECT end_date FROM dashboard_date_bounds) 这种标量子查询，也不能从行为记录最大日期推断截止日。yyyymmdd_number/yyyymmdd_text 的看板结束参数是包含边界，day_N 必须使用 <= bounds.end_date；只有 timestamp 的 dashboard_end_exclusive_timestamp 才使用 <，修复 SQL 时不得把 <= 改成 <。\n"
              "错误示例：day_N 的成熟窗口放在外层或另一个窗口查询，再回到 Cohort 结果猜测成熟日期；这样无法证明 day_N 与 cohort_date 同一输出粒度。\n"
              "正确示例：最终 Cohort SELECT 直接读取 bounds.end_date，并在每个 day_N 的 CASE WHEN DATE_ADD(cohort_date, INTERVAL N DAY) <= bounds.end_date THEN ... ELSE NULL END 中计算成熟窗口。\n"
              "最终 SELECT 必须逐项输出 sql-plan.result_contract.required_columns，列名、顺序和最终粒度必须完全一致。"
             "period_offset 只能作为中间计算字段，不能出现在基础 Cohort 最终结果中。\n"
             "day_0 到 day_7 都表示对应周期回访人数占 cohort_size 的比例；不得输出长表 matched_rate 代替这些固定列。\n"
-            "当 retention.simultaneous.enabled=true 且 aggregation=count 时，simultaneous_value 必须表示回访窗口内已匹配主体的事件明细总次数，不是平均次数、留存率或其他比例；若 simultaneous 先按 entity_id + behavior_date 聚合为 simultaneous_count，最终 Cohort 层必须使用 SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value，禁止使用 AVG、COUNT(simultaneous_count)、COUNT(*)、除以 cohort_size 或 ROUND 包装成比例。\n"
+             "当 retention.simultaneous.enabled=true 且 aggregation=count 时，simultaneous_value 必须表示回访窗口内已匹配主体的事件明细总次数，不是平均次数、留存率或其他比例；simultaneous_agg 必须按 entity_id + behavior_date 使用 COUNT(*) AS simultaneous_count，最终 Cohort 层使用 SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value，禁止使用 1 AS event_count + SUM(event_count)、AVG、COUNT(simultaneous_count)、COUNT(*) 直接统计已预聚合行、除以 cohort_size 或 ROUND 包装成比例。\n"
+             "count 的固定正例：simultaneous_agg AS (SELECT entity_id, behavior_date, COUNT(*) AS simultaneous_count FROM <simultaneous_event_rows> GROUP BY entity_id, behavior_date)，matched 层按 entity_id + behavior_date LEFT JOIN，最终 SELECT 使用 SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value；不要把明细行先投影为常量 1 再 SUM。\n"
             "同时展示事件必须按 entity_id + behavior_date 聚合，并将 behavior_date 与 matched.behavior_date 关联；不得只按 cohort_date 关联，否则会漏掉第 1 日到第 7 日的回访事件。simultaneous_value 只汇总 matched 回访窗口内的记录，不得参与 cohort 分母或 period_offset 分桶。\n"
              + COHORT_MATURITY_RULE + "\n"
              + COHORT_INPUT_RULE + "\n"
@@ -5224,6 +5225,36 @@ def _dashboard_sql_repair_user_prompt(state: DashboardManualChartGraphState) -> 
     response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
     analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
     analysis_label = ANALYSIS_MODEL_LABELS.get(analysis_model, "分析")
+    repair_rules = []
+    normalized = state.get("normalized_config") or {}
+    if analysis_model == "retention":
+        time_config = normalized.get("time") if isinstance(normalized.get("time"), dict) else {}
+        parameter_type = str(
+            time_config.get("date_parameter_type") or time_config.get("dateParameterType") or ""
+        ).strip()
+        if parameter_type == "timestamp":
+            repair_rules.append(
+                "当前留存日期参数是 timestamp，成熟窗口使用 dashboard_end_exclusive_timestamp，必须使用 <；"
+                "不要改成 <=。"
+            )
+        else:
+            repair_rules.append(
+                "当前留存日期参数是包含边界的 YYYYMMDD（yyyymmdd_number/yyyymmdd_text），成熟窗口必须使用 "
+                "STR_TO_DATE/TO_DATE 解析后的看板结束参数和 <=；不要改成 timestamp 专用的 <。"
+            )
+        retention_config = normalized.get("retention") if isinstance(normalized.get("retention"), dict) else {}
+        simultaneous = retention_config.get("simultaneous") if isinstance(retention_config.get("simultaneous"), dict) else {}
+        if isinstance(simultaneous, dict) and simultaneous.get("enabled") is True \
+                and str(simultaneous.get("aggregation") or "count").lower() == "count":
+            repair_rules.append(
+                "当前同时展示是 count：simultaneous_agg 必须直接 COUNT(*) AS simultaneous_count，"
+                "最终使用 SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value；"
+                "不得生成 1 AS event_count 再 SUM(event_count)。"
+            )
+        repair_rules.append(
+            "修复时只处理 sql-validation-issues 中列出的错误；已经满足的成熟窗口边界、关联属性、"
+            "事件筛选和结果列不得被改写。"
+        )
     return "\n".join([
         _dashboard_sql_user_prompt(state),
         "",
@@ -5237,6 +5268,7 @@ def _dashboard_sql_repair_user_prompt(state: DashboardManualChartGraphState) -> 
         "",
         f"上一版 SQL 未通过{analysis_label} SQL 协议或方言校验。请根据 sql-plan.result_contract 和上述具体错误完整重写 SQL。",
         "不得删除日期、权限、事件、筛选、关联属性或同时展示约束。输出别名不匹配时必须按 quoted_output_columns 修正；其他聚合或筛选错误不能仅靠重命名掩盖。",
+        *repair_rules,
     ])
 
 

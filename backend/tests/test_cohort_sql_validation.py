@@ -86,6 +86,14 @@ def test_rejects_inclusive_comparison_to_exclusive_timestamp_end():
     assert any("成熟" in issue for issue in _issues(sql, parameter_type="timestamp"))
 
 
+def test_rejects_exclusive_comparison_to_inclusive_yyyymmdd_end():
+    sql = _query(
+        "DATE_ADD(cohort_date, INTERVAL {day} DAY) < {cutoff}",
+        cutoff="STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')",
+    )
+    assert any("成熟" in issue for issue in _issues(sql, parameter_type="yyyymmdd_number"))
+
+
 def test_rejects_raw_yyyymmdd_cutoff_in_date_arithmetic():
     sql = _query("DATE_ADD(cohort_date, INTERVAL {day} DAY) <= {cutoff}", cutoff="{{dashboard_end_yyyymmdd}}")
     assert any("成熟" in issue for issue in _issues(sql, parameter_type="yyyymmdd_number"))
