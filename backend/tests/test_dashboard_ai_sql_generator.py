@@ -3311,6 +3311,13 @@ def test_retention_system_prompt_uses_wide_result_without_changing_event_prompt(
     assert "simultaneous_value 必须表示回访窗口内已匹配主体的事件明细总次数" in retention_prompt
     assert "SUM(COALESCE(simultaneous_count, 0)) AS simultaneous_value" in retention_prompt
     assert "不得只按 cohort_date 关联" in retention_prompt
+    assert "不能使用 (SELECT end_date FROM dashboard_date_bounds)" in retention_prompt
+    assert "必须使用 CROSS JOIN dashboard_date_bounds" in retention_prompt
+    assert "错误示例：day_N 的成熟窗口放在外层" in retention_prompt
+    assert "正确示例：最终 Cohort SELECT 直接读取 bounds.end_date" in retention_prompt
+    assert "retention_range_count" in retention_prompt
+    assert "retention_range_sum" in retention_prompt
+    assert "只能在已确认支持 AnalyticDB 留存函数时使用" not in retention_prompt
     assert "base_count,\n    matched_count,\n    matched_rate" not in retention_prompt
     assert "推荐 SQL 结构范式" in event_prompt
     assert "matched_rate" in event_prompt
