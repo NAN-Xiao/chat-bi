@@ -59,9 +59,9 @@ def test_cross_midnight_pair_is_counted_on_start_day_at_execution():
     assert issues(interval_sql(wrong_date=True))
 
 
-def test_generator_routes_end_date_attribution_to_repair():
+def test_generator_reports_end_date_attribution_without_llm_repair():
     state = {"normalized_config": {"analysis_model": "interval"}, "sql_dialect": "mysql", "graph_trace": [],
              "response": generator.DashboardAiSqlGenerateResponse(success=True, sql=interval_sql(wrong_date=True))}
     state.update(generator._node_validate_sql(state))
     assert not state["response"].success
-    assert generator._route_after_sql_validate(state) == "repair_sql"
+    assert generator._route_after_sql_validate(state) == "explain_advice"

@@ -2369,6 +2369,25 @@ def test_interval_percentile_functions_follow_mysql_compatible_dialect() -> None
     ) == []
 
 
+def test_interval_compiler_failure_does_not_add_empty_sql_contract_errors() -> None:
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=False,
+        sql="",
+        message="间隔配置无法编译。",
+        issues=["事件时间字段配置无效。"],
+    )
+
+    result = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": {"analysis_model": "interval"},
+        "sql_dialect": "mysql",
+        "graph_trace": [],
+    })["response"]
+
+    assert result.success is False
+    assert result.issues == ["事件时间字段配置无效。"]
+
+
 def test_funnel_config_uses_ordered_steps_and_deterministic_validation() -> None:
     request = _funnel_request()
     normalized = ai_sql_generator._normalize_manual_config(request)
@@ -3434,7 +3453,7 @@ def test_finalize_response_attaches_display_names_only_to_analysis_generation_re
 
 
 @pytest.mark.parametrize("analysis_model", ai_sql_generator.ANALYSIS_MODEL_LABELS)
-def test_sql_validation_routes_every_analysis_model_failure_to_one_repair(
+def test_sql_validation_routes_failures_by_generation_strategy(
     monkeypatch: pytest.MonkeyPatch,
     analysis_model: str,
 ) -> None:
@@ -3445,11 +3464,12 @@ def test_sql_validation_routes_every_analysis_model_failure_to_one_repair(
         issues=["SQL 未通过当前分析模型的结果契约。"],
     )
 
+    expected_route = "explain_advice" if analysis_model == "interval" else "repair_sql"
     assert ai_sql_generator._route_after_sql_validate({
         "normalized_config": {"analysis_model": analysis_model},
         "response": failed_response,
         "sql_repair_attempts": 0,
-    }) == "repair_sql"
+    }) == expected_route
     assert ai_sql_generator._route_after_sql_validate({
         "normalized_config": {"analysis_model": analysis_model},
         "response": failed_response,

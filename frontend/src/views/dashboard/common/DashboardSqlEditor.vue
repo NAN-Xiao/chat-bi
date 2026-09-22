@@ -6018,7 +6018,19 @@ function builderAgentBlockingIssues(result: any) {
 
 const builderSqlGenerationFailureMessage = '生成失败 请重新计算生成'
 
-function stopBuilderExecutionWithAdvice(result: any, generatedSql = '') {
+function invalidateBuilderSqlResult(message: string) {
+  form.sql = ''
+  const result = { fields: [], data: [], status: 'failed', message }
+  updateSourcePreviewResult(result)
+  updatePreviewResult(result)
+  setSourceResult('sql', result)
+  clearMergeState()
+  lastPreviewSql.value = ''
+  lastPreviewSignature.value = ''
+  previewVersion.value += 1
+}
+
+function stopBuilderExecutionWithAdvice(result: any) {
   const localAdvice = collectLocalBuilderConfigIssues()
   const blockingIssues = unique([...localAdvice.issues, ...resultBlockingIssueItems(result)])
   setBuilderAgentAdvice({
@@ -6035,9 +6047,7 @@ function stopBuilderExecutionWithAdvice(result: any, generatedSql = '') {
     ]),
     raw: result?.raw || '',
   })
-  if (generatedSql && sqlBuilder.activeTab === 'sql') {
-    form.sql = generatedSql
-  }
+  invalidateBuilderSqlResult(result?.message || builderSqlGenerationFailureMessage)
   ElMessage.warning(builderSqlGenerationFailureMessage)
 }
 
@@ -6085,10 +6095,12 @@ async function generateBuilderAiSql() {
     return false
   }
   if (!selectedExecutionDatasourceId.value) {
+    invalidateBuilderSqlResult(t('dashboard.sql_editor_no_datasource'))
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return false
   }
   if (blockMissingFixedTimeField()) {
+    invalidateBuilderSqlResult('请先配置有效的时间字段。')
     return false
   }
   const usesDashboardDateParameters = shouldUseDashboardDateParameters()
@@ -6099,6 +6111,7 @@ async function generateBuilderAiSql() {
       'Asia/Shanghai'
     )
     if (!validation.valid) {
+      invalidateBuilderSqlResult(validation.message)
       ElMessage.warning(validation.message)
       return false
     }
@@ -6154,6 +6167,7 @@ async function generateBuilderAiSql() {
       raw: '',
     })
     ElMessage.warning(analysisIssues[0])
+    invalidateBuilderSqlResult(analysisIssues[0])
     return false
   }
   if (eventScopeIssues.length) {
@@ -6168,6 +6182,7 @@ async function generateBuilderAiSql() {
       raw: '',
     })
     ElMessage.warning(eventScopeIssues[0])
+    invalidateBuilderSqlResult(eventScopeIssues[0])
     return false
   }
   const invalidFormulaItems = invalidFormulaMetricItems()
@@ -6183,6 +6198,7 @@ async function generateBuilderAiSql() {
       raw: '',
     })
     ElMessage.warning(invalidFormulaItems[0].validation.message || '公式指标公式语法错误')
+    invalidateBuilderSqlResult('公式指标公式语法错误')
     return false
   }
   const execution = beginEditorExecution()
@@ -6215,6 +6231,7 @@ async function generateAndPreviewBuilderSql(execution: EditorExecution) {
   } catch (error: any) {
     if (!execution.isCurrent()) return false
     const message = chineseErrorMessage(error, 'SQL 生成请求失败，请稍后重试。')
+    invalidateBuilderSqlResult(message)
     const localAdvice = collectLocalBuilderConfigIssues()
     setBuilderAgentAdvice({
       severity: 'warning',
@@ -6233,7 +6250,7 @@ async function generateAndPreviewBuilderSql(execution: EditorExecution) {
   const generatedSql = String(result?.sql || '').trim()
   const blockingIssues = builderAgentBlockingIssues(result)
   if (result?.success === false || blockingIssues.length > 0) {
-    stopBuilderExecutionWithAdvice(result, generatedSql)
+    stopBuilderExecutionWithAdvice(result)
     return false
   }
   if (!generatedSql) {

@@ -9,6 +9,8 @@ from sqlglot.optimizer.scope import Scope, build_scope
 
 from apps.dashboard.crud.dashboard_date_filter import _scan_sql_tokens
 from apps.dashboard.crud.sql_generation_validation import _outputs, _source
+from apps.dashboard.crud.event_sql_contract import _implies, _physical_tables, _unquoted
+from apps.dashboard.crud.interval_sql_compiler import exact_percentile_expression
 
 
 INTERVAL_START_DATE_RULE = (
@@ -101,13 +103,72 @@ def _duration_starts(node: exp.Expression):
     if isinstance(node, (exp.TimestampDiff, exp.DateDiff)):
         yield node.expression
         return
-    if isinstance(node, exp.Sub) and _origins(node.this) and _origins(node.expression):
-        # Covers native timestamp subtraction / EXTRACT(EPOCH FROM ...),
-        # and declared epoch differences divided to seconds in an outer node.
-        yield node.expression
-        return
+    if isinstance(node, exp.Sub):
+        try:
+            if _origins(node.this) and _origins(node.expression):
+                yield node.expression
+                return
+        except ValueError:
+            pass
     for child in node.iter_expressions():
         yield from _duration_starts(child)
+
+
+def _fact_date_projection(root: Scope, projection: exp.Expression) -> exp.Expression:
+    date = projection.unalias().unnest()
+    if not isinstance(date, exp.Column):
+        return projection
+    source = _source(root, date)
+    if not isinstance(source, Scope) or _physical_tables(source):
+        return projection
+    candidates = []
+    for join in root.expression.args.get("joins") or []:
+        predicate = join.args.get("on")
+        if join.side != "LEFT" or predicate is None:
+            continue
+        alias = join.this.alias_or_name
+        for equality in predicate.find_all(exp.EQ):
+            if not _implies(predicate, equality):
+                continue
+            for left, right in ((equality.this, equality.expression), (equality.expression, equality.this)):
+                if left == date and isinstance(right, exp.Column) and right.table == alias:
+                    candidates.append(right)
+    if len(candidates) != 1:
+        raise ValueError("补齐日期必须通过唯一的 LEFT JOIN 等值条件连接实际配对起点日期")
+    return candidates[0]
+
+
+def has_exact_interval_percentiles(sql: str, dialect: str) -> bool:
+    source = re.sub(r"\{\{dashboard_[a-z0-9_]+\}\}", "0", sql, flags=re.I)
+    try:
+        root = build_scope(sqlglot.parse_one(source, read=dialect))
+        if root is None:
+            return False
+        for scope in root.traverse():
+            outputs = _outputs(scope) or {}
+            aliases = [("0.75", "p75_interval_seconds"), ("0.50", "median_interval_seconds"), ("0.25", "p25_interval_seconds")]
+            if not all(name in outputs and _unquoted(outputs[name].unalias()) == _unquoted(sqlglot.parse_one(exact_percentile_expression(quantile), read=dialect))
+                       for quantile, name in aliases):
+                continue
+            sources = list(scope.selected_sources.values())
+            if len(sources) != 1 or not isinstance(sources[0][1], Scope):
+                continue
+            ranking = sources[0][1]
+            group = scope.expression.args.get("group")
+            if group is None:
+                continue
+            partition = ", ".join(item.sql(dialect=dialect) for item in group.expressions)
+            expected = {
+                "percentile_position": f"ROW_NUMBER() OVER (PARTITION BY {partition} ORDER BY interval_seconds)",
+                "percentile_count": f"COUNT(*) OVER (PARTITION BY {partition})",
+            }
+            if all((projection := _projection(ranking, name)) is not None
+                   and _unquoted(projection.unalias()) == _unquoted(sqlglot.parse_one(expression, read=dialect))
+                   for name, expression in expected.items()):
+                return True
+        return False
+    except (sqlglot.errors.SqlglotError, ValueError, TypeError):
+        return False
 
 
 def interval_start_date_issues(sql: str, dialect: str = "mysql") -> list[str]:
@@ -123,7 +184,7 @@ def interval_start_date_issues(sql: str, dialect: str = "mysql") -> list[str]:
         outputs = _outputs(root) or {}
         if "interval_date" not in outputs:
             raise ValueError("缺少最终 interval_date")
-        date_origins = _origins(_expanded(outputs["interval_date"], root))
+        date_origins = _origins(_expanded(_fact_date_projection(root, outputs["interval_date"]), root))
         if len(date_origins) != 1:
             raise ValueError("interval_date 必须来自唯一的起点事件行")
         issues = []

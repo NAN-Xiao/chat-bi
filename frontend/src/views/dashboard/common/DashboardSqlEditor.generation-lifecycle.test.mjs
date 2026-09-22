@@ -8,7 +8,10 @@ const source = readFileSync(new URL('./DashboardSqlEditor.vue', import.meta.url)
 const script = source.slice(source.indexOf('>') + 1, source.indexOf('</script>'))
 const ast = ts.createSourceFile('editor.ts', script, ts.ScriptTarget.Latest, true)
 const names = new Set(['generateBuilderAiSql', 'generateAndPreviewBuilderSql', 'beginEditorExecution',
-  'finishEditorExecution', 'cancelBuilderSqlGeneration', 'clearBuilderLoading', 'closeDrawer', 'generatedSqlMatchesBuilderMetrics'])
+  'finishEditorExecution', 'cancelBuilderSqlGeneration', 'clearBuilderLoading', 'closeDrawer', 'generatedSqlMatchesBuilderMetrics',
+  'invalidateBuilderSqlResult', 'stopBuilderExecutionWithAdvice', 'resultAdviceItems', 'resultWarningItems',
+  'resultBlockingIssueItems', 'resultNonBlockingIssueItems', 'isNonBlockingBuilderAdviceItem',
+  'setSourceResult', 'previewResultSnapshot', 'getPreviewResultFields', 'updateSourcePreviewResult', 'updatePreviewResult'])
 const previewNames = ['previewAndPersistBuilderDraft', 'previewSqlSource', 'previewMcpSource', 'runPreview',
   'applyPreviewSnapshot', 'updatePreviewResult', 'updateSourcePreviewResult', 'previewResultSnapshot',
   'getPreviewResultFields', 'setSourceResult', 'persistEditorDraftToViewInfo', 'writeEditorStateToViewInfo',
@@ -51,7 +54,7 @@ function editor({ realPreview = false, pivot = false, mixed = false } = {}) {
         pendingPreviews.push({ options, resolve, reject, kind: 'sql' })
       }),
     },
-    chineseErrorMessage: () => 'failed', collectLocalBuilderConfigIssues: () => ({ suggestions: [] }),
+    chineseErrorMessage: () => 'failed', collectLocalBuilderConfigIssues: () => ({ issues: [], suggestions: [] }),
     setBuilderAgentAdvice: (value) => { warnings.push(value) }, inferBuilderIntentText: () => '',
     builderSqlGenerationFailureMessage: 'failed',
     ElMessage: { success: () => {}, warning: (value) => { warnings.push(value) }, error: (value) => { warnings.push(value) } },
@@ -114,6 +117,37 @@ test('backend validation failure never reaches preview even when SQL is returned
   await promise
   assert.equal(e.previews(), 0)
 })
+
+for (const failure of ['configuration', 'transport', 'empty SQL', 'invalid SQL', 'local validation']) {
+  test(`${failure} failure clears stale SQL and preview without changing saved chart`, async () => {
+    const e = editor()
+    e.context.props.viewInfo = { sql: 'saved SQL' }
+    e.context.preview.fields = ['old']
+    e.context.preview.data = [{ old: 7 }]
+    e.context.sourcePreview.data = [{ old: 7 }]
+    e.context.sourceResults.sql = { fields: ['old'], data: [{ old: 7 }] }
+    e.context.lastPreviewSql.value = 'previous SQL'
+    e.context.lastPreviewSignature.value = 'previous signature'
+    if (failure === 'local validation') {
+      e.context.intervalBlockingIssues = () => ['missing event']
+      assert.equal(await e.context.generateBuilderAiSql(), false)
+    } else {
+      const { promise, request } = await start(e)
+      if (failure === 'transport') request.reject(new Error('unavailable'))
+      else request.resolve({ success: failure === 'empty SQL', sql: failure === 'invalid SQL' ? 'SELECT invalid' : '', issues: ['missing event key'] })
+      assert.equal(await promise, false)
+    }
+    assert.equal(e.context.form.sql, '')
+    assert.equal(e.context.preview.data.length, 0)
+    assert.equal(e.context.sourcePreview.data.length, 0)
+    assert.equal(e.context.sourceResults.sql.data.length, 0)
+    assert.equal(e.context.preview.status, 'failed')
+    assert.equal(e.context.lastPreviewSql.value, '')
+    assert.equal(e.context.lastPreviewSignature.value, '')
+    assert.equal(e.context.props.viewInfo.sql, 'saved SQL')
+    assert.equal(e.applied.length, 0)
+  })
+}
 
 for (const ending of ['close', 'unmount']) {
   test(`${ending} cancels the transport and refuses a late SQL response`, async () => {

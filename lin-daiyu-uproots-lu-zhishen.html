@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>林黛玉倒拔鲁智深 · SVG 2D 动画</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+      background: #121117;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 15%, rgba(102, 81, 137, .32), transparent 35%),
+        linear-gradient(180deg, #171420 0%, #0e1118 100%);
+    }
+
+    .stage-shell {
+      position: relative;
+      width: min(96vw, 1180px);
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 22px;
+      background: #d9e8e2;
+      box-shadow: 0 34px 100px rgba(0,0,0,.52);
+      isolation: isolate;
+    }
+
+    svg { width: 100%; height: 100%; display: block; }
+
+    .ui {
+      position: absolute;
+      inset: 20px 22px auto auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 30;
+      font-family: system-ui, sans-serif;
+    }
+
+    .ui button {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,.55);
+      border-radius: 999px;
+      padding: 9px 15px;
+      color: #fff;
+      background: rgba(31, 42, 47, .55);
+      box-shadow: 0 8px 24px rgba(0,0,0,.18);
+      backdrop-filter: blur(9px);
+      cursor: pointer;
+      transition: transform .2s ease, background .2s ease;
+    }
+
+    .ui button:hover { transform: translateY(-2px); background: rgba(116, 55, 73, .82); }
+
+    .title-card {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      animation: titleCard 14s linear infinite;
+    }
+
+    .title-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle, rgba(31,27,37,.12), rgba(20,18,26,.75));
+    }
+
+    .title-inner {
+      position: relative;
+      text-align: center;
+      color: #fff8e8;
+      text-shadow: 0 5px 18px rgba(0,0,0,.5);
+    }
+
+    .seal {
+      display: inline-grid;
+      place-items: center;
+      width: 48px;
+      height: 48px;
+      margin-bottom: 12px;
+      border: 3px solid #f4d6b5;
+      color: #f4d6b5;
+      font-size: 16px;
+      line-height: 1;
+      transform: rotate(-5deg);
+    }
+
+    h1 { margin: 0; font-size: clamp(38px, 7vw, 84px); letter-spacing: .12em; font-weight: 700; }
+    .subtitle { margin-top: 14px; font-size: clamp(13px, 1.8vw, 22px); letter-spacing: .38em; opacity: .88; }
+
+    .caption {
+      position: absolute;
+      left: 50%;
+      bottom: 7%;
+      z-index: 18;
+      min-width: min(84%, 760px);
+      padding: 13px 22px;
+      border-radius: 8px;
+      color: #fffdf4;
+      background: rgba(18, 20, 25, .7);
+      box-shadow: 0 8px 30px rgba(0,0,0,.25);
+      text-align: center;
+      font-size: clamp(16px, 2.25vw, 28px);
+      letter-spacing: .08em;
+      transform: translateX(-50%);
+      backdrop-filter: blur(5px);
+      animation: caption 14s linear infinite;
+    }
+
+    .grain {
+      position: absolute;
+      inset: 0;
+      z-index: 25;
+      pointer-events: none;
+      opacity: .12;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+    }
+
+    .scene { animation: camera 14s ease-in-out infinite; transform-origin: 50% 70%; }
+    .cloud-a { animation: cloudA 14s linear infinite; }
+    .cloud-b { animation: cloudB 18s linear infinite; }
+    .petals > * { animation: petal 4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .petals > *:nth-child(2) { animation-delay: -1.3s; }
+    .petals > *:nth-child(3) { animation-delay: -2.1s; }
+    .petals > *:nth-child(4) { animation-delay: -.7s; }
+
+    .daiyu { animation: daiyu 14s cubic-bezier(.4,0,.2,1) infinite; transform-origin: 355px 512px; }
+    .daiyu-arm { animation: armPull 14s ease-in-out infinite; transform-origin: 380px 352px; }
+    .daiyu-sleeve { animation: sleeve 2.4s ease-in-out infinite; transform-origin: 378px 360px; }
+    .ribbon { animation: ribbon 1.8s ease-in-out infinite; transform-origin: 307px 234px; }
+
+    .luzhishen { animation: luLift 14s cubic-bezier(.55,.05,.35,1) infinite; transform-origin: 705px 430px; }
+    .lu-arm-left { animation: luFlailLeft .75s ease-in-out infinite; transform-origin: 663px 362px; }
+    .lu-arm-right { animation: luFlailRight .62s ease-in-out infinite; transform-origin: 771px 365px; }
+    .beard { animation: beard .42s ease-in-out infinite alternate; transform-origin: 717px 289px; }
+    .robe-tail { animation: robeTail .7s ease-in-out infinite alternate; transform-origin: 721px 472px; }
+
+    .ground-crack { animation: crack 14s linear infinite; transform-origin: center; }
+    .dust { animation: dust 14s linear infinite; transform-origin: 705px 510px; }
+    .impact-lines { animation: impact 14s linear infinite; transform-origin: 704px 465px; }
+    .bamboo { animation: bamboo 3.2s ease-in-out infinite; transform-origin: 1010px 530px; }
+
+    @keyframes titleCard {
+      0%, 10% { opacity: 1; transform: scale(1); }
+      14%, 88% { opacity: 0; transform: scale(1.06); }
+      94%, 100% { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes caption {
+      0%, 13%, 92%, 100% { opacity: 0; transform: translate(-50%, 12px); }
+      17%, 30% { opacity: 1; transform: translate(-50%, 0); }
+      34%, 43% { opacity: 0; }
+      47%, 61% { opacity: 1; transform: translate(-50%, 0); }
+      65%, 71% { opacity: 0; }
+      75%, 88% { opacity: 1; transform: translate(-50%, 0); }
+    }
+
+    @keyframes camera {
+      0%, 15%, 100% { transform: scale(1); }
+      24%, 42% { transform: scale(1.08) translateX(-1%); }
+      54%, 72% { transform: scale(1.16) translate(-2%, 2%); }
+      76% { transform: scale(1.18) translate(-2%, 2%) rotate(.4deg); }
+      78% { transform: scale(1.16) translate(-2%, 2%) rotate(-.4deg); }
+      82%, 90% { transform: scale(1.08); }
+    }
+
+    @keyframes cloudA { from { transform: translateX(-80px); } to { transform: translateX(180px); } }
+    @keyframes cloudB { from { transform: translateX(90px); } to { transform: translateX(-160px); } }
+    @keyframes petal { 0%,100% { transform: translate(0,0) rotate(0); } 50% { transform: translate(18px,15px) rotate(110deg); } }
+    @keyframes bamboo { 0%,100% { transform: rotate(-1deg); } 50% { transform: rotate(2deg); } }
+
+    @keyframes daiyu {
+      0%, 18%, 100% { transform: translate(0,0) rotate(0); }
+      27%, 42% { transform: translate(26px, 2px) rotate(2deg); }
+      49%, 62% { transform: translate(42px, 15px) rotate(8deg); }
+      68% { transform: translate(22px, -7px) rotate(-5deg); }
+      75%, 86% { transform: translate(4px, 0) rotate(0); }
+    }
+
+    @keyframes armPull {
+      0%, 25%, 100% { transform: rotate(0); }
+      38%, 52% { transform: rotate(18deg); }
+      62% { transform: rotate(-28deg); }
+      70%, 86% { transform: rotate(-38deg); }
+    }
+
+    @keyframes sleeve { 0%,100% { transform: skewX(0); } 50% { transform: skewX(-8deg) rotate(-2deg); } }
+    @keyframes ribbon { 0%,100% { transform: rotate(0) scaleX(1); } 50% { transform: rotate(11deg) scaleX(1.12); } }
+
+    @keyframes luLift {
+      0%, 22%, 100% { transform: translate(0,0) rotate(0); }
+      35%, 47% { transform: translate(-18px, 3px) rotate(-3deg); }
+      55% { transform: translate(-28px, -15px) rotate(-8deg); }
+      64% { transform: translate(-40px, -128px) rotate(-75deg); }
+      72%, 83% { transform: translate(-85px, -250px) rotate(-170deg); }
+      89% { transform: translate(-20px, 8px) rotate(-360deg); }
+      92%, 96% { transform: translate(0,0) rotate(-360deg); }
+    }
+
+    @keyframes luFlailLeft { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(32deg); } }
+    @keyframes luFlailRight { 0%,100% { transform: rotate(7deg); } 50% { transform: rotate(-28deg); } }
+    @keyframes beard { from { transform: skewX(-5deg); } to { transform: skewX(8deg); } }
+    @keyframes robeTail { from { transform: rotate(-4deg); } to { transform: rotate(7deg); } }
+
+    @keyframes crack {
+      0%, 51%, 93%, 100% { opacity: 0; transform: scale(.15); }
+      56%, 88% { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes dust {
+      0%, 52%, 90%, 100% { opacity: 0; transform: scale(.2); }
+      58% { opacity: .85; transform: scale(1); }
+      72% { opacity: 0; transform: scale(1.7) translateY(-20px); }
+    }
+
+    @keyframes impact {
+      0%, 57%, 87%, 100% { opacity: 0; transform: scale(.2); }
+      62%, 78% { opacity: 1; transform: scale(1); }
+      83% { opacity: 0; transform: scale(1.25); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-play-state: paused !important; }
+      .title-card { display: none; }
+      .caption { opacity: 1; animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage-shell" aria-label="林黛玉倒拔鲁智深二维动画">
+    <svg viewBox="0 0 1120 630" role="img" aria-labelledby="svgTitle svgDesc">
+      <title id="svgTitle">林黛玉倒拔鲁智深</title>
+      <desc id="svgDesc">古典园林中，林黛玉轻挽衣袖，将鲁智深整个人拔起并旋转的幽默二维动画。</desc>
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#bfdedc" />
+          <stop offset=".55" stop-color="#e8e8d7" />
+          <stop offset="1" stop-color="#ecd4b6" />
+        </linearGradient>
+        <linearGradient id="mountain" x1="0" x2="1">
+          <stop stop-color="#809d91" />
+          <stop offset="1" stop-color="#587a70" />
+        </linearGradient>
+        <linearGradient id="pinkRobe" x1="0" x2="1">
+          <stop stop-color="#f4cad0" />
+          <stop offset=".5" stop-color="#d997a9" />
+          <stop offset="1" stop-color="#a75e76" />
+        </linearGradient>
+        <linearGradient id="greenRobe" x1="0" x2="1">
+          <stop stop-color="#8da58d" />
+          <stop offset="1" stop-color="#506b62" />
+        </linearGradient>
+        <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+          <stop stop-color="#bdc7a5" />
+          <stop offset="1" stop-color="#788b6b" />
+        </linearGradient>
+        <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="7" />
+        </filter>
+        <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#18211e" flood-opacity=".28" />
+        </filter>
+      </defs>
+
+      <rect width="1120" height="630" fill="url(#sky)" />
+      <circle cx="890" cy="116" r="62" fill="#fff3c9" opacity=".68" filter="url(#soft)" />
+
+      <g opacity=".32" fill="#fff">
+        <path class="cloud-a" d="M-80 123c24-31 57-27 70-2 30-40 84-20 83 16 46-17 76 26 45 47H-74c-25-18-21-44-6-61Z" />
+        <path class="cloud-b" d="M812 168c25-28 55-21 65 4 32-38 85-13 80 23 35-9 64 20 46 43H802c-28-15-21-52 10-70Z" />
+      </g>
+
+      <g class="scene">
+        <path d="M0 285 120 201l74 37 95-98 107 114 91-76 105 85 82-58 92 66 96-97 78 75 80-50v225H0Z" fill="#a8bcb0" opacity=".62" />
+        <path d="M0 354 113 266l76 52 125-106 108 111 117-94 120 102 101-82 125 108 101-73 54 47v133H0Z" fill="url(#mountain)" opacity=".82" />
+        <path d="M0 409c135-52 236-15 348-36 124-23 208-61 348-24 119 31 261-27 424 10v271H0Z" fill="url(#ground)" />
+        <path d="M0 492c160-41 293-14 421-31 166-22 289 13 404-9 113-22 191-5 295 16v162H0Z" fill="#839773" opacity=".8" />
+
+        <g opacity=".7">
+          <path d="M54 391c89-59 169-69 271-22" fill="none" stroke="#d6c9a4" stroke-width="18" stroke-linecap="round" />
+          <path d="M836 382c86-48 168-37 238 4" fill="none" stroke="#d6c9a4" stroke-width="16" stroke-linecap="round" />
+        </g>
+
+        <g transform="translate(44 164)" opacity=".86">
+          <path d="M0 198h228V59L114 0 0 59Z" fill="#d7c8ad" />
+          <path d="M-22 69 114 0l136 69-14 24L114 37-8 93Z" fill="#4f6661" />
+          <path d="M20 198V88h188v110" fill="#efe0c4" />
+          <path d="M32 198V98m44 100V98m44 100V98m44 100V98" stroke="#506963" stroke-width="7" />
+          <path d="M18 124h192" stroke="#8f624e" stroke-width="9" />
+        </g>
+
+        <g class="bamboo" stroke="#395c49" stroke-linecap="round">
+          <path d="M1020 508c-9-101-2-211 20-330M1068 514c-6-87 1-187 26-273M982 514c-7-67-4-137 8-206" fill="none" stroke-width="9" />
+          <g fill="#49735a" stroke-width="3">
+            <path d="m1037 252-59-37c29-3 50 3 65 23Z" /><path d="m1033 295 59-39c-29-1-49 7-64 25Z" />
+            <path d="m1090 314-50-30c25-2 42 4 55 19Z" /><path d="m990 359-44-31c22-1 38 6 48 19Z" />
+            <path d="m1060 402 61-35c-30-2-51 6-66 23Z" />
+          </g>
+        </g>
+
+        <ellipse cx="575" cy="524" rx="330" ry="49" fill="#34483d" opacity=".16" filter="url(#soft)" />
+
+        <g class="ground-crack" fill="none" stroke="#4f5241" stroke-width="5" stroke-linecap="round">
+          <path d="M706 510 673 545l-27 8M706 510l36 39 38 3M701 516l1 43-19 22M714 515l53 13" />
+        </g>
+
+        <g class="dust" fill="#e9d8b5" opacity=".75">
+          <ellipse cx="671" cy="504" rx="48" ry="25" /><ellipse cx="728" cy="500" rx="59" ry="32" />
+          <circle cx="642" cy="486" r="19" /><circle cx="765" cy="480" r="23" />
+        </g>
+
+        <g class="daiyu" filter="url(#shadow)">
+          <path d="M334 281c-32 18-59 70-53 114 5 37 1 87-27 121h194c-29-41-35-84-26-125 9-46-12-91-48-111Z" fill="url(#pinkRobe)" stroke="#764c61" stroke-width="4" />
+          <path d="M320 379c20 18 63 21 96-4M302 450c45 22 91 21 132-1" fill="none" stroke="#f7d9dc" stroke-width="7" opacity=".75" />
+          <path d="M291 502c38-14 83-12 126 0l31 17H259Z" fill="#8a4f68" />
+          <path d="M323 283c-6-20 0-45 15-59 21-18 58-11 69 16 6 15 0 38-10 51Z" fill="#f4d0b3" stroke="#6a3d3d" stroke-width="4" />
+          <path d="M325 253c-11-41 34-71 69-47 16 11 19 28 13 52-14-18-27-21-45-12-14 7-24 10-37 7Z" fill="#302c35" />
+          <path d="M337 217c-23 7-27 33-14 51M395 217c19 10 22 31 10 50" fill="none" stroke="#292833" stroke-width="9" stroke-linecap="round" />
+          <path class="ribbon" d="M322 227c-31-11-55 0-72 22 28-4 48 4 71 19" fill="none" stroke="#bb526d" stroke-width="10" stroke-linecap="round" />
+          <circle cx="349" cy="257" r="3.5" fill="#43343b" /><circle cx="382" cy="257" r="3.5" fill="#43343b" />
+          <path d="M352 275c9 5 18 5 27 0" fill="none" stroke="#b3616b" stroke-width="3" stroke-linecap="round" />
+          <path d="M343 242c7-4 14-4 20-1M375 241c7-3 14-1 19 3" fill="none" stroke="#5a4345" stroke-width="3" stroke-linecap="round" />
+
+          <g class="daiyu-arm">
+            <path class="daiyu-sleeve" d="M388 310c33 4 67 28 84 56l-37 25c-26-26-42-38-70-45Z" fill="#d899aa" stroke="#764c61" stroke-width="4" />
+            <path d="M464 358c15 3 27 11 30 23-4 12-19 15-35 7l-17-12Z" fill="#f4d0b3" stroke="#8f5a58" stroke-width="3" />
+            <path d="M483 370c20-2 34-7 48-17" fill="none" stroke="#f4d0b3" stroke-width="10" stroke-linecap="round" />
+          </g>
+          <path d="M305 315c-32 16-49 43-59 75 16 8 32 9 49 3l43-64Z" fill="#d99bad" stroke="#764c61" stroke-width="4" />
+          <path d="M284 388c-9 31-8 58 5 84" fill="none" stroke="#f1cbd2" stroke-width="17" stroke-linecap="round" />
+        </g>
+
+        <g class="luzhishen" filter="url(#shadow)">
+          <path d="M657 321c23-24 91-29 121 5 28 32 28 109 3 178l-132 2c-27-63-23-150 8-185Z" fill="url(#greenRobe)" stroke="#304b43" stroke-width="5" />
+          <path d="M645 393c44 26 100 24 143-2M649 453c41 17 91 17 132 0" fill="none" stroke="#b8c6a5" stroke-width="8" opacity=".55" />
+          <path d="M674 498 648 558h57l16-58M752 497l20 61h-58l-3-58" fill="#3b4e49" stroke="#283c38" stroke-width="5" />
+          <path d="M637 554h72c5 10 1 19-9 23h-67c-8-8-6-16 4-23ZM717 554h65c11 8 10 16 2 23h-70c-6-9-5-16 3-23Z" fill="#2e3032" />
+          <path d="M671 258c10-25 35-39 61-34 33 6 52 37 43 67-8 28-35 44-65 37-32-7-51-39-39-70Z" fill="#d6a379" stroke="#5a3831" stroke-width="5" />
+          <path d="M676 262c8-37 45-53 75-31 16 12 21 31 17 51-21-24-55-32-92-20Z" fill="#26292a" />
+          <circle cx="704" cy="278" r="5" fill="#2f2422" /><circle cx="744" cy="279" r="5" fill="#2f2422" />
+          <path d="M690 264c11-8 23-9 33-4M734 260c11-5 24-1 31 7" fill="none" stroke="#432e29" stroke-width="6" stroke-linecap="round" />
+          <path d="M716 299c8 8 18 9 29 2" fill="none" stroke="#693b34" stroke-width="4" stroke-linecap="round" />
+          <g class="beard" fill="#30302f">
+            <path d="M687 292c11 3 18 8 26 17l-12 49c-16-12-24-35-14-66ZM755 293c-10 3-18 9-25 18l14 47c16-15 22-38 11-65Z" />
+            <path d="M704 306c12 5 26 5 39 0l-5 61-13-14-11 15Z" />
+          </g>
+          <g class="lu-arm-left">
+            <path d="M660 333c-34 13-58 36-72 67l40 19 58-55Z" fill="#708779" stroke="#304b43" stroke-width="5" />
+            <circle cx="595" cy="405" r="15" fill="#d6a379" stroke="#5a3831" stroke-width="4" />
+          </g>
+          <g class="lu-arm-right">
+            <path d="M771 334c37 14 60 40 71 71l-42 15-56-59Z" fill="#708779" stroke="#304b43" stroke-width="5" />
+            <circle cx="833" cy="407" r="15" fill="#d6a379" stroke="#5a3831" stroke-width="4" />
+          </g>
+          <path class="robe-tail" d="M653 464c28 16 53 23 72 22 21-1 41-9 60-25l-1 55-62-3-71 3Z" fill="#61796c" stroke="#304b43" stroke-width="4" />
+          <path d="M684 346c25 13 54 13 80 0" fill="none" stroke="#d7c38f" stroke-width="7" />
+          <g transform="translate(713 365)">
+            <circle r="23" fill="#b8914e" stroke="#5f4c31" stroke-width="4" />
+            <path d="m-10-2 7 7 14-16M-11 12h22" fill="none" stroke="#5f4c31" stroke-width="4" stroke-linecap="round" />
+          </g>
+        </g>
+
+        <g class="impact-lines" fill="none" stroke="#f6eacb" stroke-width="8" stroke-linecap="round">
+          <path d="M591 303 543 263M821 273l43-49M864 382l64-5M579 435l-57 23M728 204l3-61" />
+        </g>
+
+        <g class="petals" fill="#e890a5" opacity=".85">
+          <path d="M176 286c12-9 23-5 26 8-12 7-22 4-26-8Z" />
+          <path d="M254 206c13-7 23-1 24 11-12 6-21 1-24-11Z" />
+          <path d="M898 329c11-9 23-5 26 7-11 8-21 5-26-7Z" />
+          <path d="M963 191c11-6 20-1 21 10-10 5-18 1-21-10Z" />
+        </g>
+      </g>
+    </svg>
+
+    <section class="title-card" aria-hidden="true">
+      <div class="title-inner">
+        <div class="seal">奇<br>谭</div>
+        <h1>林黛玉倒拔鲁智深</h1>
+        <div class="subtitle">一出不太讲理的古典功夫喜剧</div>
+      </div>
+    </section>
+
+    <div class="caption" aria-live="polite">黛玉轻叹：“花落尚可葬，人倒了……便拔起来罢。”</div>
+    <div class="ui"><button id="replay" type="button" aria-label="重新播放动画">↻ 重播</button></div>
+    <div class="grain"></div>
+  </main>
+
+  <script>
+    const replayButton = document.querySelector('#replay');
+    const animatedElements = document.querySelectorAll('.stage-shell *');
+
+    replayButton.addEventListener('click', () => {
+      animatedElements.forEach((element) => {
+        element.style.animation = 'none';
+      });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          animatedElements.forEach((element) => {
+            element.style.animation = '';
+          });
+        });
+      });
+    });
+  </script>
+</body>
+</html>

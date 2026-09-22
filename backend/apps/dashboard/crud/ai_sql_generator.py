@@ -53,7 +53,8 @@ from apps.dashboard.crud.funnel_sql_validation import (
     native_window_funnel_issues,
 )
 from apps.dashboard.crud.path_sql_validation import PATH_SEQUENCE_RULE, path_sequence_issues
-from apps.dashboard.crud.interval_sql_validation import INTERVAL_START_DATE_RULE, interval_start_date_issues
+from apps.dashboard.crud.interval_sql_validation import INTERVAL_START_DATE_RULE, interval_start_date_issues, has_exact_interval_percentiles
+from apps.dashboard.crud.interval_sql_compiler import compile_interval_sql
 from apps.dashboard.crud.cohort_sql_validation import COHORT_MATURITY_RULE, cohort_maturity_contract, cohort_maturity_issues
 from apps.dashboard.crud.cohort_input_grain import COHORT_INPUT_RULE, cohort_input_contract, cohort_input_grain_issues
 from apps.dashboard.crud.event_grain_validation import event_grain_issues
@@ -385,6 +386,7 @@ class DashboardManualChartGraphState(TypedDict, total=False):
     allowed_fields_by_table: dict[str, set[str]]
     data_skill: str
     tracking_config: str
+    tracking_metadata: Any
     event_scope: dict[str, Any]
     skill_model_id: int | None
     normalized_config: dict[str, Any]
@@ -2921,6 +2923,7 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
                 "p25_interval_seconds",
                 "min_interval_seconds",
                 "avg_interval_seconds",
+                *[f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])],
             ],
             "duration_unit": "seconds",
             "limit_seconds": int(interval.get("limitSeconds") or interval.get("limit_seconds") or 3600),
@@ -4126,14 +4129,15 @@ def _interval_sql_result_issues(
     for function_name, label in (("max", "最大值"), ("min", "最小值"), ("avg", "平均值")):
         if not re.search(rf"\b{function_name}\s*\(", normalized_sql):
             issues.append(f"间隔 SQL 缺少{label}聚合。")
-    if not re.search(r"\b(?:percentile|percentile_cont|percentile_approx|approx_percentile|quantile|quantile_cont|median)\s*\(", normalized_sql):
+    exact_percentiles = has_exact_interval_percentiles(sql, sql_dialect or "mysql")
+    if not exact_percentiles and not re.search(r"\b(?:percentile|percentile_cont|percentile_approx|approx_percentile|quantile|quantile_cont|median)\s*\(", normalized_sql):
         issues.append("间隔 SQL 必须使用当前方言支持的分位数函数计算四分位数。")
     dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
     if any(name in dialect_text for name in ("analyticdb", "mysql", "mariadb")):
         if re.search(r"\bpercentile_cont\s*\([^)]*\)\s*within\s+group\b", normalized_sql):
             issues.append("当前 MySQL/AnalyticDB 兼容数据源不支持 PERCENTILE_CONT ... WITHIN GROUP；请改用 APPROX_PERCENTILE(interval_seconds, 分位数)。")
-        if not re.search(r"\bapprox_percentile\s*\(", normalized_sql):
-            issues.append("当前 MySQL/AnalyticDB 兼容数据源必须使用 APPROX_PERCENTILE 计算四分位数。")
+        if not exact_percentiles and not re.search(r"\bapprox_percentile\s*\(", normalized_sql):
+            issues.append("当前 MySQL/AnalyticDB 数据源需要已确认支持的 APPROX_PERCENTILE 或经验证的排序插值计算四分位数。")
     elif any(name in dialect_text for name in ("starrocks", "doris")):
         if re.search(r"\bpercentile_cont\s*\([^)]*\)\s*within\s+group\b", normalized_sql):
             issues.append("当前 StarRocks/Doris 数据源不支持 PERCENTILE_CONT ... WITHIN GROUP；请改用 PERCENTILE_APPROX(interval_seconds, 分位数)。")
@@ -5128,6 +5132,7 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         "allowed_fields_by_table": _allowed_fields_by_table_from_schema(business_context.schema),
         "data_skill": business_context.data_skill,
         "tracking_config": business_context.tracking_config,
+        "tracking_metadata": workspace_tracking_config,
         "event_scope": event_scope,
         "skill_model_id": business_context.skill_model_id,
         "graph_trace": _append_trace(state, "collect_context"),
@@ -5199,12 +5204,26 @@ def _node_build_sql_plan(state: DashboardManualChartGraphState) -> dict[str, Any
 
 
 async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
     analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
-    response = await _async_invoke_llm_json(llm, [
-        SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
-        HumanMessage(content=_dashboard_sql_user_prompt(state)),
-    ], node="generate_sql")
+    if analysis_model == "interval":
+        try:
+            sql = compile_interval_sql(
+                state.get("normalized_config") or {}, state.get("tracking_metadata"),
+                state.get("schema") or "", get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+                _dashboard_sql_dialect_text(state.get("sql_dialect"), state.get("datasource")),
+                state.get("allowed_tables") or [], state.get("allowed_fields_by_table") or {},
+            )
+            response = DashboardAiSqlGenerateResponse(success=True, sql=sql, chart_type="table",
+                message="已按事件配置编译间隔 SQL。")
+        except (ValueError, sqlglot.errors.SqlglotError) as exc:
+            response = DashboardAiSqlGenerateResponse(success=False, sql="", message="间隔配置无法编译。",
+                issues=[str(exc)], advice="请修正当前工作空间事件元数据或间隔配置后重试；不会调用 LLM 猜测或改写口径。")
+    else:
+        llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
+        response = await _async_invoke_llm_json(llm, [
+            SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
+            HumanMessage(content=_dashboard_sql_user_prompt(state)),
+        ], node="generate_sql")
     response.sql, binding_issues = bind_output_columns(
         response.sql, (state.get("sql_plan") or {}).get("output_bindings") or {},
         get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
@@ -5307,6 +5326,30 @@ async def _async_node_validate_sql(state: DashboardManualChartGraphState) -> dic
 
 def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
+    normalized = state.get("normalized_config") or {}
+    if (
+        str(normalized.get("analysis_model") or "event") == "interval"
+        and "tracking_metadata" in state
+    ):
+        try:
+            response.sql = compile_interval_sql(
+                normalized,
+                state.get("tracking_metadata"),
+                state.get("schema") or "",
+                get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+                _dashboard_sql_dialect_text(state.get("sql_dialect"), state.get("datasource")),
+                state.get("allowed_tables") or [],
+                state.get("allowed_fields_by_table") or {},
+            )
+            response.chart_type = "table"
+            response.analysis_model = "interval"
+        except (ValueError, sqlglot.errors.SqlglotError) as exc:
+            response.success = False
+            response.sql = ""
+            response.message = "间隔配置无法编译。"
+            response.issues = [str(exc)]
+            response.advice = "请修正当前工作空间事件元数据或间隔配置后重试；不会调用 LLM 猜测或改写口径。"
+            return _sql_validation_result(state, response)
     sql = (response.sql or "").strip()
     datasource = state.get("datasource")
     datasource_type = getattr(datasource, "type", None) or state.get("sql_dialect")
@@ -5340,7 +5383,6 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
             response.issues = []
 
     structural_issues: list[str] = []
-    normalized = state.get("normalized_config") or {}
     time_config = normalized.get("time") or {}
     parameter_type = str(time_config.get("date_parameter_type") or "").strip()
 
@@ -5440,6 +5482,11 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.success = False
         response.message = response.message or "Agent 未生成 SQL。"
         response.advice = response.advice or "按建议补全配置后再生成。"
+        # A compiler/LLM failure with no SQL has no query structure to validate.
+        # Running model-contract checks against an empty string only creates a
+        # cascade of misleading "missing column/aggregate" diagnostics and
+        # hides the original configuration or generation error.
+        return _sql_validation_result(state, response)
     elif not re.match(r"^\s*(select|with)\b", sql, flags=re.IGNORECASE):
         response.success = False
         response.message = "SQL 不是只读查询。"
@@ -5661,6 +5708,8 @@ def _sql_validation_result(state: DashboardManualChartGraphState, response: Dash
 def _route_after_sql_validate(state: DashboardManualChartGraphState) -> str:
     response = state.get("response")
     analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
+    if analysis_model == "interval":
+        return "explain_advice"
     if (
         response is not None
         and response.success is False
@@ -5762,6 +5811,7 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         response.result_config = {
             "type": "interval_table",
             "date_field": "interval_date",
+            "group_fields": [f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])],
             "start_event_alias": str(interval.get("startEventAlias") or "").strip(),
             "end_event_alias": str(interval.get("endEventAlias") or "").strip(),
             "entity_count_field": "entity_count",
