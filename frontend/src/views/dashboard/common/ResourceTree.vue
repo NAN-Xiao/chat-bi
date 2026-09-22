@@ -2048,7 +2048,7 @@ defineExpose({
       )
       > .ed-tree-node__children
   ) {
-    margin: 0 8px 8px !important;
+    margin: 0 0 8px !important;
     border-bottom: 1px solid var(--workspace-border, #e5e7eb);
   }
 

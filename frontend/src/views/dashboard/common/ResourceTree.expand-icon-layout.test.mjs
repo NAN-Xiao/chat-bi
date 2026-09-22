@@ -22,6 +22,7 @@ test('keeps virtual group labels and child dashboards in the intended hierarchy'
     /data-virtual-group='true'[\s\S]*?> \.custom-tree-node[\s\S]*?> \.tree-node-icon[\s\S]*?display: none;/
   )
   assert.match(source, /> \.ed-tree-node:first-child:has\(/)
+  assert.match(source, /\.ed-tree-node:first-child:has\([\s\S]*?> \.ed-tree-node__children[\s\S]*?margin: 0 0 8px !important;/)
   assert.match(source, /border-bottom: 1px solid var\(--workspace-border, #e5e7eb\);/)
   assert.match(source, /\.custom-tree-node\.is-leaf-node[\s\S]*?padding-left: 10px;/)
 })
