@@ -1445,6 +1445,7 @@ defineExpose({
             :style="getTreeNodeStyle(node, data)"
             :data-tree-depth="getTreeNodeDepth(node, data)"
             :data-shift-folder="shouldShiftTopLevelFolder(node, data) ? 'true' : undefined"
+            :data-virtual-group="isVirtualNode(data) ? 'true' : undefined"
             :class="{
               'is-group-node': data.node_type !== 'leaf',
               'is-leaf-node': data.node_type === 'leaf',
@@ -2004,6 +2005,80 @@ defineExpose({
     display: inline-flex !important;
     flex: 0 0 2px;
     width: 2px;
+  }
+
+  :deep(
+    .dashboard-resource-tree
+      > .ed-tree-node
+      > .ed-tree-node__content:has(> .custom-tree-node[data-virtual-group='true'])
+      > .ed-tree-node__expand-icon
+  ) {
+    position: absolute;
+    right: 8px;
+    z-index: 2;
+    margin: 0;
+  }
+
+  :deep(
+    .dashboard-resource-tree
+      > .ed-tree-node
+      > .ed-tree-node__content:has(> .custom-tree-node[data-virtual-group='true'])
+  ) {
+    position: relative;
+    padding-right: 28px !important;
+  }
+
+  :deep(
+    .dashboard-resource-tree
+      > .ed-tree-node
+      > .ed-tree-node__content:has(> .custom-tree-node[data-virtual-group='true'])
+      > .custom-tree-node
+  ) {
+    padding-left: 0;
+  }
+
+  :deep(
+    .dashboard-resource-tree
+      > .ed-tree-node
+      > .ed-tree-node__content:has(> .custom-tree-node[data-virtual-group='true'])
+      > .custom-tree-node
+      > .tree-node-icon
+  ) {
+    display: none;
+  }
+
+  :deep(
+    .dashboard-resource-tree
+      > .ed-tree-node:first-child:has(
+        > .ed-tree-node__content > .custom-tree-node[data-virtual-group='true']
+      )
+      > .ed-tree-node__children
+  ) {
+    margin: 0 8px 8px !important;
+    border-bottom: 1px solid var(--workspace-border, #e5e7eb);
+  }
+
+  :deep(
+    .dashboard-resource-tree
+      > .ed-tree-node
+      > .ed-tree-node__children
+      > .ed-tree-node
+      > .ed-tree-node__content
+  ) {
+    margin: 0 !important;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  :deep(
+    .dashboard-resource-tree
+      > .ed-tree-node
+      > .ed-tree-node__children
+      > .ed-tree-node
+      > .ed-tree-node__content
+      > .custom-tree-node.is-leaf-node
+  ) {
+    padding-left: 10px;
   }
 
   :deep(
