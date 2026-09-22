@@ -17,7 +17,10 @@ test('keeps virtual group labels and child dashboards in the intended hierarchy'
     source,
     /\.custom-tree-node[\s\S]*?data-virtual-group='true'[\s\S]*?padding-left: 0;/
   )
-  assert.match(source, /\.custom-tree-node[\s\S]*?> \.tree-node-icon[\s\S]*?display: none;/)
+  assert.doesNotMatch(
+    source,
+    /data-virtual-group='true'[\s\S]*?> \.custom-tree-node[\s\S]*?> \.tree-node-icon[\s\S]*?display: none;/
+  )
   assert.match(source, /> \.ed-tree-node:first-child:has\(/)
   assert.match(source, /border-bottom: 1px solid var\(--workspace-border, #e5e7eb\);/)
   assert.match(source, /\.custom-tree-node\.is-leaf-node[\s\S]*?padding-left: 10px;/)

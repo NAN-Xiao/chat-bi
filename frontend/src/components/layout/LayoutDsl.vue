@@ -517,6 +517,7 @@ onMounted(() => {
   &.system-layout-top-nav {
     --top-nav-height: 52px;
     --top-nav-control-height: 32px;
+    --top-nav-bg: #f2f6fb;
 
     flex-direction: column;
     background: var(--workspace-shell-bg, var(--theme-shell-bg));
@@ -531,7 +532,7 @@ onMounted(() => {
       gap: 12px;
       padding: 0 14px;
       color: var(--workspace-text-primary, var(--theme-text-primary));
-      background: var(--workspace-card-bg, var(--theme-panel-bg));
+      background: var(--top-nav-bg);
       border-bottom: 1px solid var(--workspace-border, var(--theme-shell-border));
       box-shadow: none;
       z-index: 9;

@@ -2039,16 +2039,6 @@ defineExpose({
 
   :deep(
     .dashboard-resource-tree
-      > .ed-tree-node
-      > .ed-tree-node__content:has(> .custom-tree-node[data-virtual-group='true'])
-      > .custom-tree-node
-      > .tree-node-icon
-  ) {
-    display: none;
-  }
-
-  :deep(
-    .dashboard-resource-tree
       > .ed-tree-node:first-child:has(
         > .ed-tree-node__content > .custom-tree-node[data-virtual-group='true']
       )
