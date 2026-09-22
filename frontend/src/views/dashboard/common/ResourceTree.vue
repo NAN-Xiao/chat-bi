@@ -2035,6 +2035,10 @@ defineExpose({
       > .custom-tree-node
   ) {
     padding-left: 0;
+
+    > .label-tooltip {
+      font-weight: 600;
+    }
   }
 
   :deep(

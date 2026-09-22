@@ -452,6 +452,7 @@ const routerList = computed(() => {
   --ed-menu-active-color: var(--ed-color-primary, #2f6bff);
   display: flex;
   align-items: center;
+  gap: 8px;
   flex-wrap: nowrap;
   min-width: max-content;
   height: var(--top-nav-height);
@@ -470,13 +471,13 @@ const routerList = computed(() => {
     min-width: 92px;
     width: auto !important;
     height: 34px !important;
-    margin: 0 3px;
-    padding: 0 12px !important;
+    margin: 0;
+    padding: 0 14px !important;
     border-bottom: 2px solid transparent !important;
     border-radius: 8px !important;
     color: #41506a !important;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
