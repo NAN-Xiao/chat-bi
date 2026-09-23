@@ -611,7 +611,7 @@ onMounted(() => {
       width: 2px;
       height: 32px;
       border-radius: 1px;
-      background: var(--ed-color-primary, #2f6bff);
+      background: #bfdbfe;
     }
 
     :deep(.workspace-selector) {
