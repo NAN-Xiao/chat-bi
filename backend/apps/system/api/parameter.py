@@ -3,7 +3,7 @@
 """
 from fastapi import APIRouter, Request
 
-from apps.system.crud.parameter_manage import get_groups, get_parameter_args, save_parameter_args
+from apps.system.crud.parameter_manage import get_app_version, get_groups, get_parameter_args, save_parameter_args
 from apps.system.models.system_model import SysArgModel
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.core.deps import SessionDep
@@ -11,6 +11,11 @@ from common.core.deps import SessionDep
 router = APIRouter(tags=["system/parameter"], prefix="/system/parameter", include_in_schema=False)
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
+
+
+@router.get('/version')
+async def get_version(session: SessionDep) -> dict[str, str]:
+    return {'version': get_app_version(session)}
 
 @router.get("/login")
 async def get_login_args(session: SessionDep) -> list[SysArgModel]:

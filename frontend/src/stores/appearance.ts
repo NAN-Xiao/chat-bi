@@ -3,6 +3,7 @@ import { store } from '@/stores/index'
 import { setCurrentColor, setTitle } from '@/utils/utils'
 import { isBtnShow } from '@/utils/utils'
 import elexDataLogoUrl from '@/assets/elex_data.png'
+import { request } from '@/utils/request'
 
 interface AppearanceState {
   themeColor?: string
@@ -21,6 +22,7 @@ interface AppearanceState {
   slogan?: string
   web?: string
   name?: string
+  version: string
   foot?: string
   showSlogan?: string
   pc_welcome?: string
@@ -33,6 +35,7 @@ interface AppearanceState {
 }
 
 const DEFAULT_BRAND_NAME = '星通数智'
+const DEFAULT_APP_VERSION = 'v1.3.0'
 const DEFAULT_THEME_COLOR = '#2563EB'
 
 export const useAppearanceStore = defineStore('appearanceStore', {
@@ -55,6 +58,7 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       slogan: '',
       web: '',
       name: DEFAULT_BRAND_NAME,
+      version: DEFAULT_APP_VERSION,
       foot: 'false',
       footContent: '',
       loaded: false,
@@ -173,6 +177,15 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       document.title = DEFAULT_BRAND_NAME
       setTitle(DEFAULT_BRAND_NAME)
       setLinkIcon()
+      void this.loadVersion()
+    },
+    async loadVersion() {
+      try {
+        const result = await request.get<{ version: string }>('/system/parameter/version')
+        this.version = result.version
+      } catch {
+        this.version = ''
+      }
     },
   },
 })

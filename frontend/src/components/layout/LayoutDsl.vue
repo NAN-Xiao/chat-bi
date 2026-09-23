@@ -247,9 +247,14 @@ onMounted(() => {
             width="28"
             alt=""
           />
-          <span :title="appearanceStore.name" class="ellipsis">
-            {{ appearanceStore.name }}
-          </span>
+          <div class="top-nav-brand-copy">
+            <span :title="appearanceStore.name" class="top-nav-brand-name ellipsis">
+              {{ appearanceStore.name }}
+            </span>
+            <span v-if="appearanceStore.version" class="top-nav-version" :title="appearanceStore.version">
+              {{ appearanceStore.version }}
+            </span>
+          </div>
         </div>
         <div class="top-nav-brand-divider" aria-hidden="true"></div>
         <Menu
@@ -555,14 +560,49 @@ onMounted(() => {
         height: 28px;
       }
 
-      span {
+      .top-nav-brand-copy {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1px;
+      }
+
+      .top-nav-brand-name {
         min-width: 0;
         font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
         font-size: 16px;
         font-weight: 700;
-        line-height: 22px;
-        letter-spacing: 0.08em;
+        line-height: 20px;
+        letter-spacing: 0;
         color: var(--ed-color-primary, #2f6bff);
+      }
+
+      .top-nav-version {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        max-width: 100%;
+        min-height: 17px;
+        padding: 0 7px;
+        border-radius: 6px;
+        background: #e3eeff;
+        color: #235fd2;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 17px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+
+        &::after {
+          content: '';
+          flex: 0 0 5px;
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: #f5b235;
+        }
       }
     }
 
