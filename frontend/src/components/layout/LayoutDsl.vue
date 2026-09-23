@@ -587,7 +587,7 @@ onMounted(() => {
         padding: 0 7px;
         border-radius: 6px;
         background: #e3eeff;
-        color: #235fd2;
+        color: var(--ed-color-primary, #2f6bff);
         font-size: 11px;
         font-weight: 700;
         line-height: 17px;
@@ -601,7 +601,7 @@ onMounted(() => {
           width: 5px;
           height: 5px;
           border-radius: 50%;
-          background: #f5b235;
+          background: var(--ed-color-primary, #2f6bff);
         }
       }
     }
@@ -611,7 +611,7 @@ onMounted(() => {
       width: 2px;
       height: 32px;
       border-radius: 1px;
-      background: #8293a8;
+      background: var(--ed-color-primary, #2f6bff);
     }
 
     :deep(.workspace-selector) {
