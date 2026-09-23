@@ -229,21 +229,21 @@ const routerList = computed(() => {
 }
 
 .ed-menu-vertical {
-  --ed-menu-item-height: 36px;
+  --ed-menu-item-height: 40px;
   --ed-menu-bg-color: transparent;
   --ed-menu-base-level-padding: 4px;
   --shuzhi-sidebar-icon-size: 16px;
   --shuzhi-sidebar-icon-column: 18px;
-  --shuzhi-sidebar-icon-gap: 8px;
+  --shuzhi-sidebar-icon-gap: 7px;
   border-right: none;
 
   .ed-menu-item {
     display: flex !important;
     align-items: center;
-    height: 36px !important;
+    height: 40px !important;
     padding: 0 10px !important;
-    border-radius: 6px !important;
-    margin-bottom: 2px;
+    border-radius: 8px !important;
+    margin-bottom: 4px;
     color: var(--theme-sidebar-text-secondary, var(--theme-text-secondary));
     font-size: 13px;
     line-height: 20px !important;
@@ -259,8 +259,10 @@ const routerList = computed(() => {
     }
 
     &.is-active {
-      background: var(--theme-sidebar-active-bg, var(--ed-color-primary, #2f6bff)) !important;
-      border-radius: 6px;
+      background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.16), transparent),
+        var(--theme-sidebar-active-bg, var(--ed-color-primary, #2f6bff)) !important;
+      border-radius: 8px;
       color: var(--theme-sidebar-active-text, #ffffff) !important;
       font-weight: 600;
       box-shadow: var(--theme-sidebar-active-shadow, 0 10px 22px rgba(47, 107, 255, 0.24));
@@ -271,10 +273,10 @@ const routerList = computed(() => {
     display: flex !important;
     align-items: center;
     position: relative !important;
-    height: 36px !important;
+    height: 40px !important;
     padding: 0 28px 0 10px !important;
-    border-radius: 6px;
-    margin-bottom: 2px;
+    border-radius: 8px;
+    margin-bottom: 4px;
     color: var(--theme-sidebar-text-secondary, var(--theme-text-secondary));
     font-size: 13px;
     line-height: 20px !important;
@@ -292,7 +294,9 @@ const routerList = computed(() => {
 
   .ed-sub-menu.is-active:not(.is-opened) {
     .ed-sub-menu__title {
-      background: var(--theme-sidebar-active-bg, var(--ed-color-primary, #2f6bff)) !important;
+      background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.16), transparent),
+        var(--theme-sidebar-active-bg, var(--ed-color-primary, #2f6bff)) !important;
       color: var(--theme-sidebar-active-text, #ffffff) !important;
       font-weight: 600;
       box-shadow: var(--theme-sidebar-active-shadow, 0 10px 22px rgba(47, 107, 255, 0.24));
@@ -441,14 +445,14 @@ const routerList = computed(() => {
 }
 
 .shuzhi-layout-menu-horizontal {
-  --top-nav-height: 48px;
+  --top-nav-height: 52px;
   --ed-menu-item-height: var(--top-nav-height);
   --ed-menu-bg-color: transparent;
   --ed-menu-hover-bg-color: transparent;
   --ed-menu-active-color: var(--ed-color-primary, #2f6bff);
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
   flex-wrap: nowrap;
   min-width: max-content;
   height: var(--top-nav-height);
@@ -464,16 +468,16 @@ const routerList = computed(() => {
     height: var(--top-nav-height) !important;
     line-height: 20px !important;
     flex: 0 0 auto;
-    min-width: 0;
+    min-width: 92px;
     width: auto !important;
-    height: 30px !important;
+    height: 34px !important;
     margin: 0;
-    padding: 0 10px !important;
+    padding: 0 14px !important;
     border-bottom: 2px solid transparent !important;
-    border-radius: 6px !important;
-    color: #65656b !important;
-    font-size: 13px;
-    font-weight: 500;
+    border-radius: 8px !important;
+    color: #41506a !important;
+    font-size: 14px;
+    font-weight: 600;
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
@@ -497,7 +501,7 @@ const routerList = computed(() => {
 
     .menu-title-text {
       position: relative;
-      font-size: 13px;
+      font-size: 14px;
       transition:
         font-size 160ms ease,
         font-weight 160ms ease;
@@ -548,23 +552,23 @@ const routerList = computed(() => {
   > .ed-menu-item:focus,
   > .ed-sub-menu:hover .ed-sub-menu__title,
   > .ed-sub-menu:focus .ed-sub-menu__title {
-    background: var(--workspace-control-hover-bg, #f2f2f3) !important;
-    color: #262629 !important;
+    background: var(--workspace-control-hover-bg, #f3f7ff) !important;
+    color: #1f2f4a !important;
 
     .menu-title-text {
-      font-size: 13px;
+      font-size: 14px;
     }
   }
 
   > .ed-menu-item.is-active,
   > .ed-sub-menu.is-active .ed-sub-menu__title {
-    background: #ececee !important;
+    background: var(--workspace-primary-soft-bg, #eaf1ff) !important;
     border-bottom-color: transparent !important;
-    color: #1d1d20 !important;
+    color: var(--ed-color-primary, #2f6bff) !important;
 
     .menu-title-text {
-      font-size: 13px;
-      font-weight: 500;
+      font-size: 14px;
+      font-weight: 600;
     }
 
     .menu-title-text::after {
