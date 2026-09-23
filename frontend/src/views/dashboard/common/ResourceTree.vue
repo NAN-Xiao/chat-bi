@@ -2017,6 +2017,16 @@ defineExpose({
     right: 8px;
     z-index: 2;
     margin: 0;
+    transform: rotate(180deg);
+  }
+
+  :deep(
+    .dashboard-resource-tree
+      > .ed-tree-node
+      > .ed-tree-node__content:has(> .custom-tree-node[data-virtual-group='true'])
+      > .ed-tree-node__expand-icon.expanded
+  ) {
+    transform: rotate(270deg);
   }
 
   :deep(

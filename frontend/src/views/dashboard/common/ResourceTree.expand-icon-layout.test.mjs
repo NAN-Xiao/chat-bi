@@ -10,6 +10,14 @@ test('places virtual dashboard group expand icons at the right edge', () => {
     source,
     /\.dashboard-resource-tree[\s\S]*?\.ed-tree-node__content:has\(> \.custom-tree-node\[data-virtual-group='true'\]\)[\s\S]*?> \.ed-tree-node__expand-icon[\s\S]*?position: absolute;[\s\S]*?right: 8px;/
   )
+  assert.match(
+    source,
+    /data-virtual-group='true'[\s\S]*?> \.ed-tree-node__expand-icon[\s\S]*?transform: rotate\(180deg\);/
+  )
+  assert.match(
+    source,
+    /data-virtual-group='true'[\s\S]*?> \.ed-tree-node__expand-icon\.expanded[\s\S]*?transform: rotate\(270deg\);/
+  )
 })
 
 test('keeps virtual group labels and child dashboards in the intended hierarchy', () => {
