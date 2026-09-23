@@ -181,10 +181,14 @@ export const useAppearanceStore = defineStore('appearanceStore', {
     },
     async loadVersion() {
       try {
-        const result = await request.get<{ version: string }>('/system/parameter/version')
-        this.version = result.version
+        const result = await request.get<{ version: string }>('/system/parameter/version', {
+          requestOptions: { workspaceMode: 'none', silent: true },
+        })
+        if (typeof result?.version === 'string') {
+          this.version = result.version.trim()
+        }
       } catch {
-        this.version = ''
+        this.version = this.version || DEFAULT_APP_VERSION
       }
     },
   },

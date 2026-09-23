@@ -607,10 +607,11 @@ onMounted(() => {
     }
 
     .top-nav-brand-divider {
-      flex: 0 0 1px;
-      width: 1px;
-      height: 34px;
-      background: var(--workspace-border-soft, #e5eaf2);
+      flex: 0 0 2px;
+      width: 2px;
+      height: 32px;
+      border-radius: 1px;
+      background: #8293a8;
     }
 
     :deep(.workspace-selector) {
