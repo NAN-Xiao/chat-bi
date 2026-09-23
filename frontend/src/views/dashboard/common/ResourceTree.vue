@@ -2026,7 +2026,7 @@ defineExpose({
       > .ed-tree-node__content:has(> .custom-tree-node[data-virtual-group='true'])
       > .ed-tree-node__expand-icon.expanded
   ) {
-    transform: rotate(270deg);
+    transform: rotate(90deg);
   }
 
   :deep(

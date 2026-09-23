@@ -16,7 +16,7 @@ test('places virtual dashboard group expand icons at the right edge', () => {
   )
   assert.match(
     source,
-    /data-virtual-group='true'[\s\S]*?> \.ed-tree-node__expand-icon\.expanded[\s\S]*?transform: rotate\(270deg\);/
+    /data-virtual-group='true'[\s\S]*?> \.ed-tree-node__expand-icon\.expanded[\s\S]*?transform: rotate\(90deg\);/
   )
 })
 
