@@ -572,8 +572,8 @@ const routerList = computed(() => {
     }
 
     .menu-title-text::after {
-      opacity: 0;
-      transform: scaleX(0.45);
+      opacity: 1;
+      transform: scaleX(1);
     }
   }
 
