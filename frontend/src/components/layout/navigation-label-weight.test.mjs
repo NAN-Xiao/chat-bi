@@ -8,10 +8,10 @@ const dashboardTreeSource = fs.readFileSync(
   'utf8'
 )
 
-test('uses semibold labels for top navigation and dashboard groups only', () => {
+test('uses compact medium-weight labels for top navigation and semibold dashboard groups', () => {
   assert.match(
     menuSource,
-    /\.shuzhi-layout-menu-horizontal[\s\S]*?> \.ed-menu-item,[\s\S]*?font-weight: 600;/
+    /\.shuzhi-layout-menu-horizontal[\s\S]*?> \.ed-menu-item,[\s\S]*?font-weight: 500;/
   )
   assert.match(
     dashboardTreeSource,
@@ -19,10 +19,10 @@ test('uses semibold labels for top navigation and dashboard groups only', () => 
   )
 })
 
-test('spaces top navigation items without changing their height', () => {
-  assert.match(menuSource, /\.shuzhi-layout-menu-horizontal[\s\S]*?gap: 8px;/)
+test('keeps top navigation compact without changing its control height', () => {
+  assert.match(menuSource, /\.shuzhi-layout-menu-horizontal[\s\S]*?gap: 2px;/)
   assert.match(
     menuSource,
-    /> \.ed-menu-item,[\s\S]*?height: 34px !important;[\s\S]*?margin: 0;[\s\S]*?padding: 0 14px !important;/
+    /> \.ed-menu-item,[\s\S]*?height: 30px !important;[\s\S]*?margin: 0;[\s\S]*?padding: 0 10px !important;/
   )
 })

@@ -515,9 +515,10 @@ onMounted(() => {
   }
 
   &.system-layout-top-nav {
-    --top-nav-height: 52px;
-    --top-nav-control-height: 32px;
-    --top-nav-bg: #f2f6fb;
+    --top-nav-height: 48px;
+    --top-nav-control-height: 30px;
+    --top-nav-bg: #ffffff;
+    --shell-content-padding: 28px 32px;
 
     flex-direction: column;
     background: var(--workspace-shell-bg, var(--theme-shell-bg));
@@ -529,8 +530,8 @@ onMounted(() => {
       height: var(--top-nav-height);
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 0 14px;
+      gap: 10px;
+      padding: 0 20px;
       color: var(--workspace-text-primary, var(--theme-text-primary));
       background: var(--top-nav-bg);
       border-bottom: 1px solid var(--workspace-border, var(--theme-shell-border));
@@ -539,38 +540,38 @@ onMounted(() => {
     }
 
     .top-nav-brand {
-      flex: 0 0 236px;
-      min-width: 236px;
-      max-width: 236px;
+      flex: 0 0 204px;
+      min-width: 204px;
+      max-width: 204px;
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-left: 18px;
+      margin-left: 0;
       cursor: pointer;
 
       img,
       :deep(svg) {
         flex: 0 0 auto;
-        width: 28px;
-        height: 28px;
+        width: 24px;
+        height: 24px;
       }
 
       span {
         min-width: 0;
         font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
-        font-size: 16px;
-        font-weight: 700;
-        line-height: 22px;
-        letter-spacing: 0.08em;
-        color: var(--ed-color-primary, #2f6bff);
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 20px;
+        letter-spacing: 0;
+        color: var(--workspace-text-primary, #1d1d1f);
       }
     }
 
     .top-nav-brand-divider {
       flex: 0 0 1px;
       width: 1px;
-      height: 34px;
-      background: var(--workspace-border-soft, #e5eaf2);
+      height: 20px;
+      background: var(--workspace-border, #e6e6e8);
     }
 
     :deep(.workspace-selector) {
@@ -580,9 +581,9 @@ onMounted(() => {
       height: var(--top-nav-control-height);
       margin-bottom: 0;
       padding: 0 10px;
-      border-radius: 8px;
-      background: var(--workspace-control-bg, var(--theme-control-bg));
-      border-color: var(--workspace-border, var(--theme-shell-border));
+      border-radius: 6px;
+      background: transparent;
+      border-color: transparent;
       color: var(--workspace-text-secondary, var(--theme-text-secondary));
 
       .ed-icon {
@@ -604,7 +605,7 @@ onMounted(() => {
 
       &:hover,
       &:focus {
-        background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+        background: var(--workspace-control-hover-bg, #f2f2f3);
         color: var(--workspace-text-primary, var(--theme-text-primary));
       }
     }
@@ -640,12 +641,12 @@ onMounted(() => {
         width: var(--top-nav-control-height);
         min-width: var(--top-nav-control-height);
         height: var(--top-nav-control-height);
-        border-radius: 8px;
+        border-radius: 6px;
         color: var(--workspace-text-secondary, var(--theme-text-secondary));
 
         &:hover,
         &:focus {
-          background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+          background: var(--workspace-control-hover-bg, #f2f2f3);
           color: var(--workspace-text-primary, var(--theme-text-primary));
         }
       }
@@ -728,11 +729,11 @@ onMounted(() => {
   }
 
   .left-side {
-    width: 240px;
+    width: 232px;
     height: 100%;
-    padding: 16px;
+    padding: 14px 12px;
     position: relative;
-    min-width: 240px;
+    min-width: 232px;
     color: var(--theme-sidebar-text);
     background: var(--theme-sidebar-bg);
     border-right: 1px solid var(--theme-sidebar-border);
@@ -856,12 +857,12 @@ onMounted(() => {
 
     .bottom {
       position: absolute;
-      bottom: 20px;
-      left: 16px;
+      bottom: 16px;
+      left: 12px;
       font-weight: 400;
       font-size: 14px;
       line-height: 22px;
-      width: calc(100% - 32px);
+      width: calc(100% - 24px);
       .back-to-project {
         display: flex;
         align-items: center;
@@ -947,8 +948,8 @@ onMounted(() => {
     .content {
       width: 100%;
       height: 100%;
-      padding: 18px 24px;
-      background-color: var(--workspace-shell-bg, var(--theme-panel-bg));
+      padding: var(--shell-content-padding, 28px 32px);
+      background-color: #f7f7f8;
       color: var(--workspace-text-primary, var(--theme-text-primary));
       border-radius: 0;
       border: 0;
@@ -971,43 +972,51 @@ onMounted(() => {
     }
 
     .workspace-admin-sidebar {
-      flex: 0 0 240px;
-      width: 240px;
-      min-width: 240px;
+      flex: 0 0 224px;
+      width: 224px;
+      min-width: 224px;
       height: 100%;
-      padding: 18px 14px;
+      padding: 20px 12px;
       display: flex;
       flex-direction: column;
-      color: var(--theme-sidebar-text);
-      background: var(--theme-sidebar-bg);
-      border-right: 1px solid var(--theme-sidebar-border);
-      --theme-text-primary: var(--theme-sidebar-text);
-      --theme-text-secondary: var(--theme-sidebar-text-secondary);
-      --theme-text-tertiary: var(--theme-sidebar-text-tertiary);
-      --theme-control-bg: var(--theme-sidebar-control-bg);
-      --theme-control-hover-bg: var(--theme-sidebar-control-hover-bg);
-      --theme-hover-bg: var(--theme-sidebar-hover-bg);
-      --theme-active-bg: var(--theme-sidebar-active-soft-bg);
-      --theme-shell-border: var(--theme-sidebar-border);
+      color: #262629;
+      background: #fbfbfc;
+      border-right: 1px solid #e6e6e8;
+      --theme-sidebar-text: #262629;
+      --theme-sidebar-text-secondary: #65656b;
+      --theme-sidebar-text-tertiary: #94949b;
+      --theme-sidebar-emphasis-text: #1d1d20;
+      --theme-sidebar-hover-bg: #f0f0f1;
+      --theme-sidebar-active-bg: #e9e9eb;
+      --theme-sidebar-active-text: #1d1d20;
+      --theme-sidebar-active-shadow: none;
+      --theme-text-primary: #262629;
+      --theme-text-secondary: #65656b;
+      --theme-text-tertiary: #94949b;
+      --theme-control-bg: #ffffff;
+      --theme-control-hover-bg: #f0f0f1;
+      --theme-hover-bg: #f0f0f1;
+      --theme-active-bg: #e9e9eb;
+      --theme-shell-border: #e6e6e8;
       --theme-card-shadow: none;
     }
 
     .workspace-admin-sidebar-head {
       flex: 0 0 auto;
-      padding: 0 6px 14px;
-      margin-bottom: 8px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 0 10px 14px;
+      margin-bottom: 6px;
+      border-bottom: 1px solid #e9e9eb;
     }
 
     .workspace-admin-sidebar-title {
       color: var(--theme-sidebar-emphasis-text, var(--theme-sidebar-text));
-      font-size: 16px;
-      line-height: 24px;
+      font-size: 13px;
+      line-height: 20px;
       font-weight: 600;
     }
 
     .workspace-admin-sidebar-subtitle {
-      margin-top: 2px;
+      margin-top: 3px;
       color: var(--theme-sidebar-text-secondary, var(--theme-text-secondary));
       font-size: 12px;
       line-height: 18px;
@@ -1030,7 +1039,7 @@ onMounted(() => {
     }
 
     .workspace-admin-content .content-main {
-      padding: 18px 24px;
+      padding: var(--shell-content-padding, 28px 32px);
       overflow: auto;
     }
 
