@@ -655,7 +655,48 @@ export class Table extends BaseChart {
         theme: {
           colCell: {
             icon: TABLE_HEADER_ACTION_ICON_THEME,
+            ...(this.layoutContext?.surface === 'dashboard'
+              ? {
+                  cell: {
+                    backgroundColor: '#f2f4f7',
+                    horizontalBorderColor: '#e8edf5',
+                    verticalBorderColor: '#e8edf5',
+                  },
+                  text: {
+                    fill: '#1d2939',
+                    fontSize: 12,
+                    fontWeight: 600,
+                  },
+                }
+              : {}),
           },
+          ...(this.layoutContext?.surface === 'dashboard'
+            ? {
+                cornerCell: {
+                  cell: {
+                    backgroundColor: '#f2f4f7',
+                    horizontalBorderColor: '#e8edf5',
+                    verticalBorderColor: '#e8edf5',
+                  },
+                  text: {
+                    fill: '#1d2939',
+                    fontSize: 12,
+                    fontWeight: 600,
+                  },
+                },
+                dataCell: {
+                  cell: {
+                    backgroundColor: '#ffffff',
+                    horizontalBorderColor: '#e8edf5',
+                    verticalBorderColor: '#e8edf5',
+                  },
+                  text: {
+                    fill: '#344054',
+                    fontSize: 12,
+                  },
+                },
+              }
+            : {}),
         },
       })
       // right click

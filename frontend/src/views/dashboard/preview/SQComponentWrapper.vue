@@ -1611,11 +1611,9 @@ defineExpose({
   --report-popover-right: var(--preview-action-right);
   --report-popover-horizontal-gap: calc(var(--report-popover-right) * 2);
   background: var(--workspace-card-bg, #ffffff);
-  border: 1px solid rgba(226, 232, 240, 0.9);
+  border: 1px solid #e8edf5;
   border-radius: 12px;
-  box-shadow:
-    0 2px 8px rgba(18, 34, 66, 0.035),
-    0 1px 2px rgba(18, 34, 66, 0.025);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.035);
   transform-origin: center;
   transition:
     transform 0.14s ease,
@@ -1625,18 +1623,12 @@ defineExpose({
 
   &:hover {
     z-index: 20;
-    border-color: rgba(47, 107, 255, 0.18);
-    box-shadow:
-      0 8px 20px rgba(18, 34, 66, 0.1),
-      0 3px 8px rgba(18, 34, 66, 0.06);
-    transform: translateY(-2px);
+    border-color: #d8e1ec;
+    box-shadow: 0 3px 10px rgba(16, 24, 40, 0.055);
   }
 
   &:active {
-    box-shadow:
-      0 6px 16px rgba(18, 34, 66, 0.08),
-      0 2px 6px rgba(18, 34, 66, 0.05);
-    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(16, 24, 40, 0.035);
   }
 
   &.is-report-open {

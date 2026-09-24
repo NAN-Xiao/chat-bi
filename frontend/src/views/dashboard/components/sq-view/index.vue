@@ -2956,10 +2956,10 @@ defineExpose({
 
 <style scoped lang="less">
 .chart-base-container {
-  --insight-frame-compact-padding-inline: 16px;
-  --insight-frame-compact-padding-block: 14px;
+  --insight-frame-compact-padding-inline: 20px;
+  --insight-frame-compact-padding-block: 18px;
   --insight-frame-compact-header-height: 34px;
-  --insight-frame-compact-header-gap: 10px;
+  --insight-frame-compact-header-gap: 12px;
 
   width: 100%;
   height: 100%;
@@ -2967,7 +2967,7 @@ defineExpose({
   padding: var(--insight-frame-compact-padding-block)
     var(--insight-frame-compact-padding-inline) !important;
   border: 0;
-  border-radius: 0;
+  border-radius: 10px;
   box-shadow: none;
   overflow: hidden;
   container-type: inline-size;
@@ -3058,11 +3058,11 @@ defineExpose({
       overflow: hidden;
       text-overflow: ellipsis;
 
-      color: var(--workspace-text-primary, rgba(31, 35, 41, 1));
+      color: #1d2939;
       font-weight: 600;
       font-size: 15px;
       line-height: 24px;
-      letter-spacing: 0.01em;
+      letter-spacing: 0;
     }
 
     .buttons-bar {
@@ -3114,12 +3114,12 @@ defineExpose({
 
   &.insight-density-mini,
   &.insight-density-basic {
-    padding: 10px 12px !important;
+    --insight-frame-compact-padding-inline: 16px;
+    --insight-frame-compact-padding-block: 14px;
+    --insight-frame-compact-header-height: 28px;
+    --insight-frame-compact-header-gap: 6px;
 
     .header-bar {
-      min-height: 28px;
-      margin-bottom: 6px;
-
       .title {
         font-size: 14px;
         line-height: 22px;
@@ -3128,12 +3128,10 @@ defineExpose({
   }
 
   &.insight-density-basic {
-    padding: 8px 10px !important;
-
-    .header-bar {
-      min-height: 24px;
-      margin-bottom: 4px;
-    }
+    --insight-frame-compact-padding-inline: 14px;
+    --insight-frame-compact-padding-block: 12px;
+    --insight-frame-compact-header-height: 24px;
+    --insight-frame-compact-header-gap: 4px;
   }
 
   .date-filter-toolbar {
@@ -3734,6 +3732,19 @@ defineExpose({
       flex-direction: row;
       align-items: stretch;
     }
+  }
+}
+
+.chart-base-container {
+  .chart-show-area :deep(.chart-container) {
+    padding: 2px 0 0;
+  }
+
+  .chart-empty-info,
+  .error-info {
+    color: #667085;
+    font-size: 12px;
+    line-height: 18px;
   }
 }
 
