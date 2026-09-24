@@ -2607,6 +2607,8 @@ defineExpose({
       <DashboardDateExpressionPicker
         :model-value="dashboardDateExpression"
         variant="roi"
+        show-resolved-range
+        :resolved-range="insightDateRange"
         timezone="Asia/Shanghai"
         :disabled="dashboardDateExpressionApplying"
         @apply="applyDashboardDateExpression"
@@ -2669,7 +2671,26 @@ defineExpose({
         aria-hidden="true"
       />
       <div v-if="pivotEnabled" class="pivot-toolbar">
+      <div
+        v-if="showDashboardDateExpression || (showDashboardDateFilter && !dateExpressionPickerEnabled)"
+        class="pivot-granularity-tabs"
+        role="group"
+        :aria-label="pivotGranularityOptions.map(option => option.label).join(' / ')"
+      >
+        <button
+          v-for="option in pivotGranularityOptions"
+          :key="option.value"
+          type="button"
+          class="pivot-granularity-tab"
+          :class="{ active: pivotState.granularity === option.value }"
+          :aria-pressed="pivotState.granularity === option.value"
+          @click="setPivotGranularity(option.value)"
+        >
+          {{ option.label }}
+        </button>
+      </div>
       <el-popover
+        v-else
         :visible="pivotModePopoverVisible"
         trigger="manual"
         placement="bottom-start"
@@ -3205,15 +3226,11 @@ defineExpose({
     align-self: flex-start;
     width: fit-content;
     max-width: 100%;
-    gap: 0;
+    gap: 12px;
     margin: -2px 0 8px;
 
     > .pivot-toolbar {
-      order: 0;
-      flex: 1 1 0;
-      min-width: 0;
-      margin-top: 0;
-      margin-bottom: 0;
+      display: contents;
     }
 
     > .dashboard-filter-divider {
@@ -3221,9 +3238,57 @@ defineExpose({
     }
 
     > .date-filter-toolbar {
-      order: 2;
+      order: 1;
       margin-top: 0;
       margin-bottom: 0;
+    }
+
+    .pivot-granularity-tabs {
+      order: 0;
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 2px;
+      height: 28px;
+      padding: 2px;
+      border-radius: 6px;
+      background: #f3f6fb;
+    }
+
+    .pivot-granularity-tab {
+      min-width: 46px;
+      height: 24px;
+      padding: 0 8px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      background: transparent;
+      color: #667085;
+      cursor: pointer;
+      font: inherit;
+      font-size: 11px;
+      line-height: 22px;
+
+      &:hover,
+      &:focus-visible {
+        color: #2f6bff;
+        outline: none;
+      }
+
+      &.active {
+        border-color: #b7d0ff;
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+        color: #2f6bff;
+        font-weight: 600;
+      }
+    }
+
+    .pivot-group-chip {
+      order: 2;
+    }
+
+    .pivot-summary {
+      order: 3;
     }
 
     > .pivot-toolbar .pivot-chip.pivot-link {
@@ -3234,10 +3299,10 @@ defineExpose({
     }
 
     > .date-filter-toolbar :deep(.date-expression-trigger) {
-      height: 24px;
-      min-height: 24px;
+      height: 28px;
+      min-height: 28px;
       font-size: 12px;
-      line-height: 24px;
+      line-height: 26px;
       font-weight: 400;
     }
 
@@ -3248,11 +3313,7 @@ defineExpose({
     }
 
     .dashboard-filter-divider {
-      flex: 0 0 1px;
-      width: 1px;
-      height: 16px;
-      margin: 0 8px;
-      border-left: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
+      display: none;
     }
   }
 
@@ -3288,6 +3349,11 @@ defineExpose({
       .date-filter-trigger {
         width: 100%;
       }
+    }
+
+    .date-expression-toolbar {
+      width: auto;
+      max-width: 100%;
     }
   }
 

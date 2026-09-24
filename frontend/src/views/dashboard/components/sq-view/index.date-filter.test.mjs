@@ -39,6 +39,10 @@ assert.match(source, /<DashboardDateExpressionPicker[\s\S]*variant="roi"/)
 assert.match(source, /dashboard-filter-controls/)
 assert.match(source, /dashboard-filter-controls--combined/)
 assert.match(source, /dashboard-filter-divider/)
+assert.match(source, /class="pivot-granularity-tabs"/)
+assert.match(source, /v-for="option in pivotGranularityOptions"[\s\S]*?:aria-pressed="pivotState\.granularity === option\.value"[\s\S]*?@click="setPivotGranularity\(option\.value\)"/)
+assert.match(source, /<el-popover\s+v-else\s+:visible="pivotModePopoverVisible"/)
+assert.match(source, /show-resolved-range\s+:resolved-range="insightDateRange"/)
 assert.match(source, /const pivotModeLabel = computed\(\(\) =>[\s\S]*pivotGranularityLabel\.value/)
 assert.doesNotMatch(source, /pivotTimeRangeActive\.value\s*\?\s*t\('dashboard\.pivot_select_time'\)/)
 assert.match(source, /v-if="showDashboardDateExpression"/)
@@ -134,9 +138,11 @@ assert.match(
   /:deep\(\.date-expression-trigger\)[\s\S]*?padding:\s*0\s*;[\s\S]*?justify-content:\s*flex-start/
 )
 assert.match(source, /\.dashboard-filter-controls--combined[\s\S]*?display:\s*flex/)
-assert.match(source, /\.dashboard-filter-divider[\s\S]*?border-left:/)
-assert.match(source, /\.dashboard-filter-controls--combined[\s\S]*?> \.pivot-toolbar[\s\S]*?order:\s*0/)
-assert.match(source, /\.dashboard-filter-controls--combined[\s\S]*?> \.date-filter-toolbar[\s\S]*?order:\s*2/)
+assert.match(source, /\.dashboard-filter-divider[\s\S]*?display:\s*none/)
+assert.match(source, /\.dashboard-filter-controls--combined[\s\S]*?> \.pivot-toolbar\s*\{\s*display:\s*contents/)
+assert.match(source, /\.dashboard-filter-controls--combined[\s\S]*?> \.date-filter-toolbar[\s\S]*?order:\s*1/)
+assert.match(source, /\.pivot-granularity-tabs\s*\{[^}]*order:\s*0/)
+assert.match(source, /\.pivot-group-chip\s*\{[^}]*order:\s*2/)
 assert.match(
   source,
   /\.dashboard-filter-controls--combined[\s\S]*?\.pivot-chip\.pivot-link[\s\S]*?color:\s*var\(--workspace-text-primary/
@@ -155,7 +161,7 @@ assert.match(
 )
 assert.match(
   styleSource,
-  /> \.date-filter-toolbar\s*:deep\(\.date-expression-trigger\)\s*\{[^}]*\n\s+height:\s*24px/
+  /> \.date-filter-toolbar\s*:deep\(\.date-expression-trigger\)\s*\{[^}]*\n\s+height:\s*28px/
 )
 assert.match(
   styleSource,

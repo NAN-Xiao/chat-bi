@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { ArrowDown, Calendar } from '@element-plus/icons-vue'
 import { ElConfigProvider, ElDatePickerPanel } from 'element-plus'
 import 'element-plus/es/components/date-picker-panel/style/css'
 import elementZhCnLocale from 'element-plus/es/locale/lang/zh-cn'
@@ -24,11 +25,14 @@ const props = withDefaults(
     disabled?: boolean
     timezone?: string
     variant?: 'default' | 'roi'
+    showResolvedRange?: boolean
+    resolvedRange?: [string, string] | null
   }>(),
   {
     disabled: false,
     timezone: 'Asia/Shanghai',
     variant: 'default',
+    showResolvedRange: false,
   }
 )
 
@@ -52,6 +56,13 @@ const validation = computed(() =>
 const buttonLabel = computed(() =>
   model.value ? formatDashboardDateExpression(model.value) : '选择时间'
 )
+const appliedRangeLabel = computed(() => {
+  if (!props.showResolvedRange || !model.value) return ''
+  if (model.value.mode === 'preset' && model.value.preset === 'all_time') return ''
+  const range = props.resolvedRange
+    || dashboardDateExpressionCalendarRange(model.value, now.value, props.timezone)
+  return range.length === 2 ? `${range[0]} ~ ${range[1]}` : ''
+})
 const activePreset = computed(() => (draft.value.mode === 'preset' ? draft.value.preset : ''))
 
 const calendarRange = computed<DashboardDateExpressionCalendarRange>({
@@ -149,7 +160,12 @@ function applyDraft() {
   >
     <template #reference>
       <el-button class="date-expression-trigger" :disabled="disabled">
-        {{ buttonLabel }}
+        <span v-if="appliedRangeLabel" class="date-expression-range">
+          <el-icon><Calendar /></el-icon>
+          <span>{{ appliedRangeLabel }}</span>
+        </span>
+        <span class="date-expression-label">{{ buttonLabel }}</span>
+        <el-icon v-if="showResolvedRange" class="date-expression-arrow"><ArrowDown /></el-icon>
       </el-button>
     </template>
 
@@ -263,8 +279,47 @@ function applyDraft() {
   width: 100%;
   min-width: 0;
   justify-content: flex-start;
+}
+
+.date-expression-trigger :deep(> span) {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.date-expression-range {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid #e8edf5;
+  border-radius: 6px;
+  background: #f9fbff;
+  color: #51637e;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.date-expression-range > span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.date-expression-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.date-expression-arrow {
+  flex: 0 0 auto;
+  color: #667085;
+  font-size: 12px;
 }
 
 .date-expression-picker {

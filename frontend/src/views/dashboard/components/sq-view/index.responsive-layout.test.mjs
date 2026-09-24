@@ -92,7 +92,7 @@ assert.doesNotMatch(source, /sizeX\s*=|sizeY\s*=/)
 assert.match(style, /--insight-frame-compact-padding-inline:\s*16px/)
 assert.match(style, /--insight-frame-compact-padding-block:\s*14px/)
 assert.match(style, /--insight-frame-compact-header-height:\s*34px/)
-assert.match(style, /--insight-frame-compact-header-gap:\s*10px/)
+assert.match(style, /--insight-frame-compact-header-gap:\s*12px/)
 assert.match(
   style,
   /padding:\s*var\(--insight-frame-compact-padding-block\)\s+var\(--insight-frame-compact-padding-inline\)/
@@ -101,17 +101,17 @@ assert.match(style, /min-height:\s*var\(--insight-frame-compact-header-height\)/
 assert.match(style, /margin-bottom:\s*var\(--insight-frame-compact-header-gap\)/)
 assert.match(
   style,
-  /&\.insight-density-mini,\s*&\.insight-density-basic\s*\{[^}]*padding:\s*10px\s+12px\s*!important[^}]*\.header-bar\s*\{[^}]*min-height:\s*28px[^}]*margin-bottom:\s*6px/s,
-  'mini/basic 必须保留原有紧凑外层几何，规范帧只统一策略输入'
+  /&\.insight-density-mini,\s*&\.insight-density-basic\s*\{[^}]*--insight-frame-compact-padding-inline:\s*16px[^}]*--insight-frame-compact-padding-block:\s*14px[^}]*--insight-frame-compact-header-height:\s*28px[^}]*--insight-frame-compact-header-gap:\s*6px/s,
+  'mini/basic 必须保留紧凑外层几何变量'
 )
 assert.match(
   style,
-  /&\.insight-density-basic\s*\{[^}]*padding:\s*8px\s+10px\s*!important[^}]*\.header-bar\s*\{[^}]*min-height:\s*24px[^}]*margin-bottom:\s*4px/s,
-  'basic 必须保留最紧凑的原有外层几何'
+  /&\.insight-density-basic\s*\{[^}]*--insight-frame-compact-padding-inline:\s*14px[^}]*--insight-frame-compact-padding-block:\s*12px[^}]*--insight-frame-compact-header-height:\s*24px[^}]*--insight-frame-compact-header-gap:\s*4px/s,
+  'basic 必须保留最紧凑的外层几何变量'
 )
 assert.match(
   style,
-  /\.dashboard-filter-controls--combined\s*\{[\s\S]*> \.pivot-toolbar\s*\{[^}]*flex:\s*1\s+1\s+0[^}]*min-width:\s*0/s
+  /\.dashboard-filter-controls--combined\s*\{[\s\S]*> \.pivot-toolbar\s*\{[^}]*display:\s*contents/s
 )
 assert.match(
   style,
