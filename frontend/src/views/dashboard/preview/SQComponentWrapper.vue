@@ -1692,20 +1692,8 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   gap: var(--preview-action-gap);
-  opacity: 0;
-  pointer-events: auto;
-  transform: translateY(-2px);
-  transition:
-    opacity 0.14s ease,
-    transform 0.14s ease;
-}
-
-.wrapper-outer:hover .preview-chart-actions,
-.preview-chart-actions:hover,
-.wrapper-outer.is-report-open .preview-chart-actions {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
 }
 
 .preview-action-btn {
