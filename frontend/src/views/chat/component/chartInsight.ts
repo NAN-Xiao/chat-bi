@@ -594,9 +594,13 @@ export function resolveDashboardCardInsightDisplay(
   params: Parameters<typeof resolveInsightDisplay>[0]
 ): InsightDisplayStrategy {
   const dashboard = params.dashboard !== false
-  return resolveInsightDisplay({
+  const display = resolveInsightDisplay({
     ...params,
     dashboard,
     layout: dashboard && ['line', 'area'].includes(params.chartType) ? 'top' : params.layout,
   })
+  // 顶部卡片通过换行容纳摘要，不再因紧凑密度缩减为单个分组。
+  return dashboard && display.show && display.layout === 'top'
+    ? { ...display, maxStats: Math.max(display.maxStats, 4) }
+    : display
 }

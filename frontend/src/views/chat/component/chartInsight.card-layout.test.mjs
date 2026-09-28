@@ -29,4 +29,10 @@ assert.deepEqual(
   '复用为非看板预览时应保留调用方明确的展示上下文'
 )
 
+const groupedArea = resolveDashboardCardInsightDisplay({
+  ...base, chartType: 'area', width: 680, height: 260, series: [{ value: 'channel' }],
+})
+assert.equal(groupedArea.layout, 'top')
+assert.equal(groupedArea.maxStats, 4, '紧凑卡片不能只给分组摘要一个展示名额')
+
 console.log('dashboard card layout policy passed')

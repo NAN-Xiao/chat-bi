@@ -1274,6 +1274,33 @@ const anchorLabel = computed(() => {
   return t('chat.insight_top', [stats.value.length])
 })
 
+const usesLatestCardSummary = computed(() =>
+  !usesConversionFunnelStats.value
+  && !structureChartTypes.has(props.chartType)
+  && props.chartType !== 'sankey'
+  && isTrendLike.value
+)
+const cardSummaryCaption = computed(() =>
+  usesLatestCardSummary.value ? t('chat.insight_latest_value') : anchorLabel.value
+)
+
+function cardStatTitle(item: StatItem) {
+  const dateLabel = usesLatestCardSummary.value ? stringifyValue(latestAnchorValue.value) : ''
+  return [
+    cardSummaryCaption.value,
+    item.label,
+    dateLabel,
+    item.subLabel !== dateLabel ? item.subLabel : '',
+    item.value,
+    item.meta,
+  ].filter(Boolean).join(' · ')
+}
+
+function showCardStatDetail(item: StatItem) {
+  return Boolean(item.subLabel)
+    && (props.showDateContext || !isDateLikeValue(item.subLabel))
+}
+
 const layoutClass = computed(() => props.layout)
 const densityClass = computed(() => props.density)
 const visibleMetaItems = computed(() => {
@@ -1481,6 +1508,21 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </template>
+        <div v-else-if="surface === 'dashboard'" class="card-general-summary">
+          <div v-if="!usesLatestCardSummary && cardSummaryCaption" class="card-summary-caption">{{ cardSummaryCaption }}</div>
+          <div class="card-summary-grid">
+            <div v-for="item in visibleStats" :key="`${item.label}-${item.value}`" class="card-summary-stat" :title="cardStatTitle(item)">
+              <div v-if="item.label || usesLatestCardSummary" class="card-summary-label">
+                <span v-if="usesLatestCardSummary" class="card-summary-context">{{ cardSummaryCaption }}</span>
+                <span v-if="item.label" class="card-summary-color" :style="{ backgroundColor: item.color }" />
+                <span v-if="item.label" class="card-summary-label-text">{{ item.label }}</span>
+              </div>
+              <div class="card-summary-value">{{ item.value }}</div>
+              <div v-if="showCardStatDetail(item)" class="card-summary-detail">{{ item.subLabel }}</div>
+              <div v-if="item.meta" class="card-summary-change" :class="item.tone">{{ item.meta }}</div>
+            </div>
+          </div>
+        </div>
         <template v-else>
           <div v-if="showAnchor && anchorLabel" class="insight-anchor">{{ anchorLabel }}</div>
           <div class="insight-stat-grid">
@@ -2349,6 +2391,65 @@ onBeforeUnmount(() => {
   padding: 0 0 10px;
   margin-bottom: 8px;
 
+  .insight-stat-row { display: block; }
+  .card-general-summary { width: 100%; min-width: 0; }
+  .card-summary-caption {
+    color: #63748c;
+    font-size: 12px;
+    line-height: 18px;
+    margin-bottom: 6px;
+  }
+  .card-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(112px, 100%), 1fr));
+    gap: 12px 20px;
+  }
+  .card-summary-stat { min-width: 0; }
+  .card-summary-context { flex: 0 0 auto; }
+  .card-summary-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #63748c;
+    font-size: 12px;
+    line-height: 18px;
+  }
+  .card-summary-label-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-summary-color {
+    width: 6px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-radius: 2px;
+  }
+  .card-summary-value {
+    margin-top: 2px;
+    color: #14243a;
+    font-size: 24px;
+    line-height: 30px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-summary-detail,
+  .card-summary-change {
+    margin-top: 3px;
+    color: #63748c;
+    font-size: 12px;
+    line-height: 18px;
+    overflow-wrap: anywhere;
+  }
+  .card-summary-change.positive { color: #0c9b6d; }
+  .card-summary-change.negative { color: #e05252; }
+
+  &.side .card-summary-grid { grid-template-columns: minmax(0, 1fr); }
+
   &.configured-trend {
     .insight-stat-row { margin-top: 0; }
     .configured-trend-layout {
@@ -2413,6 +2514,13 @@ onBeforeUnmount(() => {
 }
 
 @container (max-width: 560px) {
+  .chart-insight-header.dashboard-card-summary {
+    .card-summary-grid {
+      grid-template-columns: repeat(auto-fit, minmax(min(88px, 100%), 1fr));
+      gap: 12px;
+    }
+    .card-summary-value { font-size: 22px; line-height: 28px; }
+  }
   .chart-insight-header.dashboard-card-summary.configured-trend {
     .configured-trend-layout { gap: 8px 16px; min-height: 56px; }
     .configured-trend-primary { flex-basis: 88px; }
