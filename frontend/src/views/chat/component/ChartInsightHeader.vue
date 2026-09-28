@@ -49,6 +49,7 @@ const props = withDefaults(
     sql?: string
     dateRange?: [string, string] | null
     showDateContext?: boolean
+    surface?: 'default' | 'dashboard'
     compact?: boolean
     maxStats?: number
     layout?: InsightLayout
@@ -65,6 +66,7 @@ const props = withDefaults(
     sql: '',
     dateRange: null,
     showDateContext: true,
+    surface: 'default',
     compact: false,
     maxStats: 4,
     layout: 'top',
@@ -530,6 +532,9 @@ function comparisonLabel(metric: TrendComparisonMetric, granularity: TrendTimeGr
 }
 
 function aggregateLabel(metric: TrendAggregateMetric) {
+  if (props.surface === 'dashboard' && (metric === 'average' || metric === 'sum')) {
+    return t(metric === 'average' ? 'chat.insight_card_average' : 'chat.insight_card_sum')
+  }
   const labels: Record<TrendAggregateMetric, string> = {
     average: insightText('chat.insight_period_average', 'dashboard.insight_period_average', 'average'),
     sum: insightText('chat.insight_period_sum', 'dashboard.insight_period_sum', 'sum'),
@@ -903,7 +908,7 @@ function buildConfiguredTrendSummary(
     })
   }
 
-  if (comparisonStats.length === 0 && aggregateStats.length === 0) {
+  if (props.surface !== 'dashboard' && comparisonStats.length === 0 && aggregateStats.length === 0) {
     return null
   }
 
@@ -1156,6 +1161,13 @@ const configuredTrendSummary = computed<ConfiguredTrendSummary | null>(() => {
   return buildConfiguredTrendSummary(axis, points)
 })
 
+const configuredTrendValueTitle = computed(() => {
+  const summary = configuredTrendSummary.value
+  if (!summary) return ''
+  const metric = displayAxisName(valueAxes.value[0]) || valueAxes.value[0]?.value || ''
+  return [metric, summary.anchorLabel, summary.latestValue].filter(Boolean).join(' · ')
+})
+
 const dataDateRangeLabel = computed(() => {
   if (rows.value.length === 0) {
     return ''
@@ -1395,7 +1407,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    v-if="shouldShow && stats.length > 0"
+    v-if="shouldShow && (configuredTrendSummary || stats.length > 0)"
     ref="headerRef"
     class="chart-insight-header"
     :style="fitStyle"
@@ -1405,6 +1417,7 @@ onBeforeUnmount(() => {
       {
         compact,
         'configured-trend': Boolean(configuredTrendSummary),
+        'dashboard-card-summary': surface === 'dashboard',
         'featured-side': featuredSide,
       },
     ]"
@@ -1417,10 +1430,13 @@ onBeforeUnmount(() => {
         <template v-if="configuredTrendSummary">
           <div class="configured-trend-layout">
             <div class="configured-trend-primary">
+              <div v-if="surface === 'dashboard'" class="configured-trend-caption">
+                {{ t('chat.insight_latest_value') }}
+              </div>
               <div v-if="showDateContext" class="configured-trend-anchor" :title="configuredTrendSummary.anchorLabel">
                 {{ configuredTrendSummary.anchorLabel }}
               </div>
-              <div class="configured-trend-value" :title="configuredTrendSummary.latestValue">
+              <div class="configured-trend-value" :title="configuredTrendValueTitle">
                 {{ configuredTrendSummary.latestValue }}
               </div>
             </div>
@@ -1439,7 +1455,9 @@ onBeforeUnmount(() => {
                   :title="item.subLabel ? `${item.label} ${item.subLabel}` : item.label"
                 >
                   <span class="configured-trend-item-label">{{ item.label }}</span>
-                  <span class="configured-trend-item-value" :class="item.tone">{{ item.value }}</span>
+                  <span class="configured-trend-item-value" :class="item.tone">
+                    <span v-if="surface === 'dashboard' && (item.tone === 'positive' || item.tone === 'negative')" aria-hidden="true">{{ item.tone === 'positive' ? '↑ ' : '↓ ' }}</span>{{ item.value }}
+                  </span>
                 </div>
               </div>
               <div
@@ -2324,4 +2342,88 @@ onBeforeUnmount(() => {
     }
   }
 }
+
+/* 卡片摘要采用固定信息顺序；宽度只控制换行，不改变摘要所在区域。 */
+.chart-insight-header.dashboard-card-summary {
+  min-width: 0;
+  padding: 0 0 10px;
+  margin-bottom: 8px;
+
+  &.configured-trend {
+    .insight-stat-row { margin-top: 0; }
+    .configured-trend-layout {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      min-height: 64px;
+      gap: 12px 20px;
+    }
+    .configured-trend-primary { flex: 0 0 96px; min-width: 0; }
+    .configured-trend-caption {
+      color: #63748c;
+      font-size: 12px;
+      font-weight: 400;
+      line-height: 18px;
+    }
+    .configured-trend-value {
+      margin-top: 2px;
+      font-size: 28px;
+      line-height: 34px;
+      font-variant-numeric: tabular-nums;
+    }
+    .configured-trend-metrics { display: contents; }
+    .configured-trend-comparison {
+      display: flex;
+      flex: 0 0 auto;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    .configured-trend-comparison-item { gap: 8px; }
+    .configured-trend-item-label { font-size: 12px; line-height: 18px; }
+    .configured-trend-item-value { font-size: 12px; line-height: 18px; }
+    .configured-trend-aggregate {
+      display: flex;
+      flex: 0 1 auto;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: flex-end;
+      gap: 12px 0;
+      margin-left: auto;
+    }
+    .configured-trend-aggregate-item {
+      flex: 0 0 104px;
+      min-width: 0;
+      padding-left: 16px;
+      border-left: 1px solid #eaf0f8;
+    }
+    .configured-trend-aggregate-row {
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 4px;
+    }
+    .configured-trend-aggregate-value {
+      font-size: 18px;
+      line-height: 24px;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+}
+
+@container (max-width: 560px) {
+  .chart-insight-header.dashboard-card-summary.configured-trend {
+    .configured-trend-layout { gap: 8px 16px; min-height: 56px; }
+    .configured-trend-primary { flex-basis: 88px; }
+    .configured-trend-value { font-size: 24px; line-height: 30px; }
+    .configured-trend-aggregate {
+      flex-basis: 100%;
+      margin-left: 0;
+    }
+    .configured-trend-aggregate-item { flex-basis: 96px; padding-left: 12px; }
+    .configured-trend-aggregate-value { font-size: 16px; line-height: 22px; }
+  }
+}
+
 </style>

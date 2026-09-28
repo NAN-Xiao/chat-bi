@@ -90,7 +90,7 @@ import {
   buildInsightLayoutStateKey,
   buildInsightColumns,
   detectTrendAxisGranularity,
-  resolveInsightDisplay,
+  resolveDashboardCardInsightDisplay,
   type InsightDisplayStrategy,
   type InsightDensity,
   type InsightLayout,
@@ -2142,7 +2142,7 @@ const mainInsightDisplay = computed(() => {
     previousInsightDensity = undefined
   }
   const measuredFrame = frameSize.value
-  const display = resolveInsightDisplay({
+  const display = resolveDashboardCardInsightDisplay({
     chartType: chartType.value,
     data: displayData.value,
     x: renderXAxis.value,
@@ -2560,12 +2560,13 @@ defineExpose({
     :style="tabInsightControlsStyle"
     :class="[
       `insight-density-${insightDensity}`,
+      isDashboardSurface ? 'dashboard-card-layout' : '',
       isTabDashboardSurface ? 'dashboard-layout-surface-tab' : '',
       isTabDashboardSurface ? `tab-controls-${tabInsightControlsVariant}` : '',
     ]"
   >
     <div class="header-bar">
-      <div class="title">
+      <div class="title" :title="viewInfo.chart.title">
         {{ viewInfo.chart.title }}
       </div>
       <div v-if="showPosition === 'multiplexing'" class="buttons-bar">
@@ -2883,6 +2884,7 @@ defineExpose({
         {{ t('dashboard.chart_no_data_found') }}
       </div>
       <ChartInsightHeader
+        :surface="isDashboardSurface ? 'dashboard' : 'default'"
         v-else-if="canShowInsightHeader && effectiveInsightLayout === 'top'"
         :compact="compactInsightHeader"
         :density="insightDensity"
@@ -2904,6 +2906,7 @@ defineExpose({
         :class="{ 'side-layout': effectiveInsightLayout === 'side' }"
       >
         <ChartInsightHeader
+          :surface="isDashboardSurface ? 'dashboard' : 'default'"
           v-if="canShowInsightHeader && effectiveInsightLayout === 'side'"
           :compact="compactInsightHeader"
           :density="insightDensity"
@@ -3164,6 +3167,15 @@ defineExpose({
     --insight-frame-compact-padding-block: 12px;
     --insight-frame-compact-header-height: 24px;
     --insight-frame-compact-header-gap: 4px;
+  }
+
+  &.dashboard-card-layout {
+    --insight-frame-compact-padding-inline: 16px;
+    --insight-frame-compact-padding-block: 16px;
+    --insight-frame-compact-header-height: 28px;
+    --insight-frame-compact-header-gap: 8px;
+
+    .header-bar .title { font-size: 15px; line-height: 24px; }
   }
 
   .date-filter-toolbar {

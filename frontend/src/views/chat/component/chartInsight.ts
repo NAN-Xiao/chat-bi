@@ -423,8 +423,9 @@ export function resolveInsightDisplay(params: {
   dashboard?: boolean
   previousLayout?: InsightLayout
   previousDensity?: InsightDensity
+  layout?: InsightLayout
 }): InsightDisplayStrategy {
-  const preferredLayout = resolveInsightLayout(params)
+  const preferredLayout = params.layout ?? resolveInsightLayout(params)
   const width = params.width || 0
   const height = params.height || 0
   const visibleMetricCount = axisValues(params.y).length
@@ -437,6 +438,7 @@ export function resolveInsightDisplay(params: {
   const wideTrendMinHeight =
     params.previousLayout === 'side' ? WIDE_TREND_SIDE_MIN_HEIGHT : SIDE_MIN_HEIGHT
   const isWideSingleMetricTrend =
+    params.layout === undefined &&
     params.dashboard &&
     preferredLayout === 'top' &&
     ['line', 'area'].includes(params.chartType) &&
@@ -467,7 +469,7 @@ export function resolveInsightDisplay(params: {
       && isAboveLayoutThreshold(width, WIDE_SIDE_MIN_WIDTH, params.previousLayout)
       && isAboveLayoutThreshold(height, SIDE_MIN_HEIGHT, params.previousLayout)) ||
     isWideSingleMetricTrend
-  const layout: InsightLayout = sideAllowed ? 'side' : 'top'
+  const layout: InsightLayout = params.layout ?? (sideAllowed ? 'side' : 'top')
 
   if (width < TINY_MIN_WIDTH || height < TINY_MIN_HEIGHT) {
     return {
@@ -584,4 +586,17 @@ export function resolveInsightDisplay(params: {
     maxStats: resolveSideMaxStats(height, useCompactDensity ? 3 : 4),
     featuredSide: isWideSingleMetricTrend,
   }
+}
+
+
+// 看板趋势卡片固定使用顶部摘要；其他图表仍按其结构选择摘要布局。
+export function resolveDashboardCardInsightDisplay(
+  params: Parameters<typeof resolveInsightDisplay>[0]
+): InsightDisplayStrategy {
+  const dashboard = params.dashboard !== false
+  return resolveInsightDisplay({
+    ...params,
+    dashboard,
+    layout: dashboard && ['line', 'area'].includes(params.chartType) ? 'top' : params.layout,
+  })
 }

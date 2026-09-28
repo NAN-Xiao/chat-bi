@@ -1324,6 +1324,7 @@ defineExpose({
       'is-report-open': reportPromptVisible,
       'is-report-tab-target': configItem.component === 'SQTab',
       'is-report-chart-target': configItem.component === 'SQView',
+      'has-chart-actions': isPreviewReportTarget && !readonlyTemplate,
     }"
   >
     <div :id="viewDemoInnerId" ref="componentWrapperInnerRef" class="wrapper-inner">
@@ -1637,8 +1638,13 @@ defineExpose({
   }
 
   &.is-report-chart-target {
-    --preview-action-top: 10px;
-    --report-popover-top: 38px;
+    --preview-action-top: 20px;
+    --report-popover-top: 48px;
+  }
+
+  &.is-report-chart-target.has-chart-actions :deep(.header-bar) {
+    padding-inline-end: 124px;
+    min-width: 0;
   }
 
   &.is-report-tab-target {
