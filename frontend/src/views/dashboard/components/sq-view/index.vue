@@ -494,6 +494,10 @@ const showDashboardDateExpression = computed(
     && dateExpressionPickerEnabled.value
     && dashboardDateExpression.value !== null
 )
+const showDashboardDateControl = computed(
+  () => showDashboardDateExpression.value
+    || (showDashboardDateFilter.value && !dateExpressionPickerEnabled.value)
+)
 const dateFilterState = ref(
   getOrCreateDashboardDateFilterState(props.viewInfo, dateFilterCapability.value)
 )
@@ -2891,6 +2895,7 @@ defineExpose({
         :data="displayData"
         :sql="viewInfo.sql"
         :date-range="insightDateRange"
+        :show-data-period="!showDashboardDateControl"
         :insight="viewInfo.chart?.insight"
       />
       <div
@@ -2912,6 +2917,7 @@ defineExpose({
           :data="displayData"
           :sql="viewInfo.sql"
           :date-range="insightDateRange"
+          :show-data-period="!showDashboardDateControl"
           :insight="viewInfo.chart?.insight"
           :featured-side="isFeaturedSideInsight"
         />

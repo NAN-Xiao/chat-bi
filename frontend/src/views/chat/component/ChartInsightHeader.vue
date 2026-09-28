@@ -48,6 +48,7 @@ const props = withDefaults(
     columns?: Array<ChartAxis>
     sql?: string
     dateRange?: [string, string] | null
+    showDataPeriod?: boolean
     compact?: boolean
     maxStats?: number
     layout?: InsightLayout
@@ -63,6 +64,7 @@ const props = withDefaults(
     columns: () => [],
     sql: '',
     dateRange: null,
+    showDataPeriod: true,
     compact: false,
     maxStats: 4,
     layout: 'top',
@@ -1224,11 +1226,13 @@ const inferredDataDateRangeLabel = computed(() => {
 
 const metaItems = computed(() => {
   const items: Array<string> = []
-  const dataPeriod = formatInsightDateRange(props.dateRange)
-    || dataDateRangeLabel.value
-    || inferredDataDateRangeLabel.value
-  if (dataPeriod) {
-    items.push(t('chat.insight_data_period', [dataPeriod]))
+  if (props.showDataPeriod) {
+    const dataPeriod = formatInsightDateRange(props.dateRange)
+      || dataDateRangeLabel.value
+      || inferredDataDateRangeLabel.value
+    if (dataPeriod) {
+      items.push(t('chat.insight_data_period', [dataPeriod]))
+    }
   }
   return items
 })
