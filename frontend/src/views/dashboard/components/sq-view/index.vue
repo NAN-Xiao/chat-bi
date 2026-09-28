@@ -3158,6 +3158,7 @@ defineExpose({
   .date-filter-toolbar {
     width: fit-content;
     max-width: 100%;
+    align-self: flex-end;
     min-height: 30px;
     margin: -2px 0 8px;
     display: flex;
@@ -3223,7 +3224,7 @@ defineExpose({
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    align-self: flex-start;
+    align-self: flex-end;
     width: fit-content;
     max-width: 100%;
     gap: 12px;

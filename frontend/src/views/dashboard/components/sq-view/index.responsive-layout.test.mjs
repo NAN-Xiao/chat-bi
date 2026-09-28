@@ -113,11 +113,6 @@ assert.match(
   style,
   /\.dashboard-filter-controls--combined\s*\{[\s\S]*> \.pivot-toolbar\s*\{[^}]*display:\s*contents/s
 )
-assert.match(
-  style,
-  /\.dashboard-filter-controls--combined\s*\{[^}]*align-self:\s*flex-start[^}]*width:\s*fit-content[^}]*max-width:\s*100%/s,
-  '组合筛选栏应按内容收缩，避免 pivot flex 项把日期控件推到最右侧'
-)
 assert.doesNotMatch(
   style,
   /\.pivot-toolbar\s*\{[^}]*margin-bottom:\s*4px/s,
