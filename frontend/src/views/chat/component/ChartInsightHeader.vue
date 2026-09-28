@@ -48,7 +48,7 @@ const props = withDefaults(
     columns?: Array<ChartAxis>
     sql?: string
     dateRange?: [string, string] | null
-    showDataPeriod?: boolean
+    showDateContext?: boolean
     compact?: boolean
     maxStats?: number
     layout?: InsightLayout
@@ -64,7 +64,7 @@ const props = withDefaults(
     columns: () => [],
     sql: '',
     dateRange: null,
-    showDataPeriod: true,
+    showDateContext: true,
     compact: false,
     maxStats: 4,
     layout: 'top',
@@ -1226,7 +1226,7 @@ const inferredDataDateRangeLabel = computed(() => {
 
 const metaItems = computed(() => {
   const items: Array<string> = []
-  if (props.showDataPeriod) {
+  if (props.showDateContext) {
     const dataPeriod = formatInsightDateRange(props.dateRange)
       || dataDateRangeLabel.value
       || inferredDataDateRangeLabel.value
@@ -1254,6 +1254,9 @@ const anchorLabel = computed(() => {
     return t('chat.insight_trend_summary')
   }
   if (isTrendLike.value && latestAnchorValue.value) {
+    if (!props.showDateContext && isDateLikeValue(latestAnchorValue.value)) {
+      return ''
+    }
     return t('chat.insight_latest', [stringifyValue(latestAnchorValue.value)])
   }
   return t('chat.insight_top', [stats.value.length])
@@ -1414,7 +1417,7 @@ onBeforeUnmount(() => {
         <template v-if="configuredTrendSummary">
           <div class="configured-trend-layout">
             <div class="configured-trend-primary">
-              <div class="configured-trend-anchor" :title="configuredTrendSummary.anchorLabel">
+              <div v-if="showDateContext" class="configured-trend-anchor" :title="configuredTrendSummary.anchorLabel">
                 {{ configuredTrendSummary.anchorLabel }}
               </div>
               <div class="configured-trend-value" :title="configuredTrendSummary.latestValue">

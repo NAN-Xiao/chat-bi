@@ -2895,7 +2895,7 @@ defineExpose({
         :data="displayData"
         :sql="viewInfo.sql"
         :date-range="insightDateRange"
-        :show-data-period="!showDashboardDateControl"
+        :show-date-context="!showDashboardDateControl"
         :insight="viewInfo.chart?.insight"
       />
       <div
@@ -2917,7 +2917,7 @@ defineExpose({
           :data="displayData"
           :sql="viewInfo.sql"
           :date-range="insightDateRange"
-          :show-data-period="!showDashboardDateControl"
+          :show-date-context="!showDashboardDateControl"
           :insight="viewInfo.chart?.insight"
           :featured-side="isFeaturedSideInsight"
         />
