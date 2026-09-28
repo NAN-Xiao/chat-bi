@@ -109,10 +109,6 @@ assert.match(
   /&\.insight-density-basic\s*\{[^}]*--insight-frame-compact-padding-inline:\s*14px[^}]*--insight-frame-compact-padding-block:\s*12px[^}]*--insight-frame-compact-header-height:\s*24px[^}]*--insight-frame-compact-header-gap:\s*4px/s,
   'basic 必须保留最紧凑的外层几何变量'
 )
-assert.match(
-  style,
-  /\.dashboard-filter-controls--combined\s*\{[\s\S]*> \.pivot-toolbar\s*\{[^}]*display:\s*contents/s
-)
 assert.doesNotMatch(
   style,
   /\.pivot-toolbar\s*\{[^}]*margin-bottom:\s*4px/s,

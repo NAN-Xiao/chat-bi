@@ -139,10 +139,6 @@ assert.match(
 )
 assert.match(source, /\.dashboard-filter-controls--combined[\s\S]*?display:\s*flex/)
 assert.match(source, /\.dashboard-filter-divider[\s\S]*?display:\s*none/)
-assert.match(source, /\.dashboard-filter-controls--combined[\s\S]*?> \.pivot-toolbar\s*\{\s*display:\s*contents/)
-assert.match(source, /\.dashboard-filter-controls--combined[\s\S]*?> \.date-filter-toolbar[\s\S]*?order:\s*1/)
-assert.match(source, /\.pivot-granularity-tabs\s*\{[^}]*order:\s*0/)
-assert.match(source, /\.pivot-group-chip\s*\{[^}]*order:\s*2/)
 assert.match(
   source,
   /\.dashboard-filter-controls--combined[\s\S]*?\.pivot-chip\.pivot-link[\s\S]*?color:\s*var\(--workspace-text-primary/

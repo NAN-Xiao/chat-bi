@@ -3010,6 +3010,11 @@ defineExpose({
       flex-wrap: nowrap;
       margin-block: 0;
 
+      > .date-filter-toolbar {
+        flex: 0 1 auto;
+        min-width: 0;
+      }
+
       > .pivot-toolbar,
       > .date-filter-toolbar {
         margin-block: 0;
@@ -3224,28 +3229,28 @@ defineExpose({
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    align-self: flex-end;
-    width: fit-content;
+    align-self: stretch;
+    width: 100%;
     max-width: 100%;
     gap: 12px;
     margin: -2px 0 8px;
 
     > .pivot-toolbar {
-      display: contents;
-    }
-
-    > .dashboard-filter-divider {
-      order: 1;
+      order: 0;
+      flex: 0 0 auto;
+      max-width: 100%;
+      margin: 0;
     }
 
     > .date-filter-toolbar {
       order: 1;
-      margin-top: 0;
-      margin-bottom: 0;
+      flex: 0 0 auto;
+      max-width: 100%;
+      align-self: center;
+      margin: 0 0 0 auto;
     }
 
     .pivot-granularity-tabs {
-      order: 0;
       display: inline-flex;
       flex: 0 0 auto;
       align-items: center;
@@ -3282,14 +3287,6 @@ defineExpose({
         color: #2f6bff;
         font-weight: 600;
       }
-    }
-
-    .pivot-group-chip {
-      order: 2;
-    }
-
-    .pivot-summary {
-      order: 3;
     }
 
     > .pivot-toolbar .pivot-chip.pivot-link {
