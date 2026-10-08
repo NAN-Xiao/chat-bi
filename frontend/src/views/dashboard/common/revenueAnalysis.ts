@@ -14,8 +14,39 @@ export type RevenueMetricMethod =
   | 'property_avg'
 
 export type RevenueMetricConfig = {
-  method: RevenueMetricMethod
+  method: RevenueMetricMethod | ''
   field: string
+}
+
+type RevenueEventSelection = {
+  paymentEvent: string
+  metricEvent: string
+  costEvent: string
+  metric: RevenueMetricConfig
+  costField: string
+  costMethod: RevenueMetricMethod | ''
+}
+
+export function setRevenuePaymentEvent(config: RevenueEventSelection, value: string) {
+  if (config.paymentEvent === value) return
+  config.paymentEvent = value
+}
+
+export function setRevenueMetricEvent(config: RevenueEventSelection, value: string) {
+  if (config.metricEvent === value) return
+  config.metricEvent = value
+  config.metric.field = ''
+}
+
+export function setRevenueCostEvent(config: RevenueEventSelection, value: string) {
+  if (config.costEvent === value) return
+  config.costEvent = value
+  config.costField = ''
+}
+
+export function setRevenueCostMetric(config: RevenueEventSelection, metric: RevenueMetricConfig) {
+  config.costMethod = metric.method
+  config.costField = revenueMetricUsesProperty(metric.method) ? metric.field : ''
 }
 
 export const REVENUE_METRIC_OPTIONS: Array<{ label: string; value: RevenueMetricMethod }> = [
@@ -30,11 +61,11 @@ export const REVENUE_METRIC_OPTIONS: Array<{ label: string; value: RevenueMetric
   { label: '事件属性均值', value: 'property_avg' },
 ]
 
-export function revenueMetricLabel(method: RevenueMetricMethod) {
-  return REVENUE_METRIC_OPTIONS.find((option) => option.value === method)?.label || '总次数'
+export function revenueMetricLabel(method: RevenueMetricMethod | '') {
+  return REVENUE_METRIC_OPTIONS.find((option) => option.value === method)?.label || '请选择计算方式'
 }
 
-export function revenueMetricUsesProperty(method: RevenueMetricMethod) {
+export function revenueMetricUsesProperty(method: RevenueMetricMethod | '') {
   return method === 'property_sum' || method === 'property_avg'
 }
 

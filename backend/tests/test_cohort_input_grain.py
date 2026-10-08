@@ -7,7 +7,7 @@ from apps.dashboard.crud import ai_sql_generator
 def _config(model="revenue", groups=None):
     event = lambda name: {"kind": "tracking-event", "eventTable": "events", "eventNameField": "kind", "eventName": name, "field": "kind"}
     return {"analysis_model": model, "time": {"date_parameter_type": "date"}, "groups": groups or [],
-            "revenue": {"entityField": {"table": "events", "field": "uid"}, "initialEvent": event("Entered"), "paymentEvent": event("Paid"), "observationDays": 7, "metric": {"method": "property_sum"}},
+            "revenue": {"entityField": {"table": "events", "field": "uid"}, "initialEvent": event("Entered"), "paymentEvent": event("Qualified"), "metricEvent": event("Paid"), "observationDays": 7, "metric": {"method": "property_sum"}},
             "retention": {"entityField": {"table": "events", "field": "uid"}, "initialEvent": event("Entered"), "returnEvent": event("Paid")}}
 
 

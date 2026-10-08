@@ -224,12 +224,14 @@ def test_except_cannot_claim_to_preserve_all_touch_rows():
     assert any('零贡献行' in issue for issue in issues(sql))
 
 
-def test_real_model_union_and_scalar_total_pass_full_generation_validation_and_execute():
+def test_historic_model_sql_executes_but_generation_requires_compilation_plan():
     sql = (Path(__file__).parent / 'fixtures/attribution_last_scalar_total.sql').read_text(encoding='utf-8')
     state = {'normalized_config': config('last'), 'sql_dialect': 'mysql',
              'response': DashboardAiSqlGenerateResponse(success=True, sql=sql)}
     validated = generator._node_validate_sql(state)
-    assert validated['response'].success, validated['response'].issues
+    assert not validated['response'].success
+    assert validated['response'].sql == ''
+    assert generator._attribution_sql_result_issues(sql, config('last'), sql_dialect='mysql') == []
     assert generator._route_after_sql_validate({**state, **validated}) == 'explain_advice'
     query = sql.replace('{{dashboard_start_yyyymmdd}}', '20260805').replace('{{dashboard_end_yyyymmdd}}', '20260901')
     with sqlite3.connect(':memory:') as db:

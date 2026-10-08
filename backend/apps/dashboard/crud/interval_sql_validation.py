@@ -22,6 +22,33 @@ INTERVAL_START_DATE_RULE = (
 )
 
 
+def interval_result_contract_issues(sql, plan, compiled_sql):
+    """Validate the returned query without compiling again or rewriting it.
+
+    The retained compiler output pins all authorized predicates. Independent
+    lineage/output checks and native fixtures verify the template itself.
+    """
+    from apps.dashboard.crud.interval_execution_contract import interval_tree
+    from apps.dashboard.crud.interval_sql_compiler import GUARD_COLUMN
+    if plan is None or not compiled_sql:
+        return ["间隔查询计划或编译快照缺失。"]
+    try:
+        tree, expected = interval_tree(sql, plan.dialect), interval_tree(compiled_sql, plan.dialect)
+        if tree != expected:
+            return ["间隔 SQL 与已授权配置的编译结果不一致，请重新生成。"]
+        if not isinstance(tree, exp.Union) or tree.args.get("distinct"):
+            return ["间隔结果必须包含互斥的业务结果和排序错误分支。"]
+        columns = [*plan.required_columns, GUARD_COLUMN]
+        if [s.alias_or_name for s in tree.this.selects] != columns or [s.alias_or_name for s in tree.expression.selects] != columns:
+            return ["间隔 SQL 最终结果列与查询计划不一致。"]
+        ctes = list(tree.args["with_"].expressions)
+        result = next(c.this.copy() for c in ctes if c.alias == "interval_result")
+        result.set("with_", exp.With(expressions=[c.copy() for c in ctes if c.alias != "interval_result"]))
+        return interval_start_date_issues(result.sql(dialect=plan.dialect), plan.dialect)
+    except (ValueError, KeyError, StopIteration, sqlglot.errors.SqlglotError) as exc:
+        return [f"间隔 SQL 结构无法验证：{exc}"]
+
+
 def _projection(scope: Scope, name: str) -> exp.Expression | None:
     outputs = _outputs(scope)
     if outputs is not None:

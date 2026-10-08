@@ -10,6 +10,7 @@ from apps.system.crud.tracking_expression import (
     compile_tracking_json_expression,
     datasource_family,
     quote_identifier,
+    normalize_tracking_property_type,
 )
 from apps.system.schemas.tenant_schema import TenantTrackingConfigDTO
 
@@ -26,24 +27,6 @@ _CONTAINER_TYPES = {
     "objectarray",
     "array",
 }
-_NUMBER_TYPES = {
-    "int",
-    "integer",
-    "bigint",
-    "smallint",
-    "float",
-    "double",
-    "decimal",
-    "number",
-    "numeric",
-    "real",
-    "数值",
-    "数字",
-    "整数",
-    "小数",
-}
-_BOOLEAN_TYPES = {"bool", "boolean", "布尔", "布尔值"}
-_DATE_TYPES = {"date", "datetime", "timestamp", "日期", "时间", "日期时间"}
 
 
 @dataclass(frozen=True)
@@ -79,14 +62,7 @@ def _text(value: Any) -> str:
 
 
 def _normalized_type(value: Any) -> str:
-    normalized = _text(value).lower().removesuffix("类型").replace("_", "").replace("-", "").replace(" ", "")
-    if normalized in {item.replace("_", "") for item in _NUMBER_TYPES}:
-        return "number"
-    if normalized in _BOOLEAN_TYPES:
-        return "boolean"
-    if normalized in _DATE_TYPES:
-        return "datetime"
-    return "text"
+    return normalize_tracking_property_type(value)
 
 
 def _is_container_type(value: Any) -> bool:

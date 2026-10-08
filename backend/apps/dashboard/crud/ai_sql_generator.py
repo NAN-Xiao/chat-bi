@@ -3,6 +3,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import inspect
 import json
@@ -34,6 +35,10 @@ from apps.dashboard.crud.attribution_rules import (
     ATTRIBUTION_METRIC_COLUMNS,
     ATTRIBUTION_RULES,
 )
+from apps.dashboard.crud.attribution_sql_plan import AttributionSqlPlan, AttributionConfigurationError, validate_attribution_input, build_attribution_plan
+from apps.dashboard.crud.attribution_sql_compiler import compile_attribution_sql
+from apps.dashboard.crud.attribution_sql_validation import attribution_result_contract_issues
+from apps.dashboard.crud.attribution_execution_contract import attach_attribution_contract
 from apps.dashboard.crud.dashboard_date_filter import (
     dashboard_date_parameter_tokens,
     validate_dashboard_date_parameter_sql,
@@ -52,13 +57,49 @@ from apps.dashboard.crud.funnel_sql_validation import (
     funnel_timing_issues,
     native_window_funnel_issues,
 )
-from apps.dashboard.crud.path_sql_validation import PATH_SEQUENCE_RULE, path_sequence_issues
+from apps.dashboard.crud.path_sql_validation import PATH_SEQUENCE_RULE, path_sequence_issues, path_result_contract_issues
+from apps.dashboard.crud.path_sql_plan import PathSqlPlan, PathConfigurationError, validate_path_input, build_path_plan
+from apps.dashboard.crud.path_sql_compiler import compile_path_sql
+from apps.dashboard.crud.path_execution_contract import attach_path_contract, read_path_contract
 from apps.dashboard.crud.interval_sql_validation import INTERVAL_START_DATE_RULE, interval_start_date_issues, has_exact_interval_percentiles
 from apps.dashboard.crud.interval_sql_compiler import compile_interval_sql
+from apps.dashboard.crud.interval_sql_plan import IntervalSqlPlan, IntervalConfigurationError, validate_interval_input, build_interval_plan
+from apps.dashboard.crud.interval_sql_time import build_interval_time_plan
+from apps.dashboard.crud.interval_sql_validation import interval_result_contract_issues
+from apps.dashboard.crud.interval_execution_contract import attach_interval_contract, read_interval_contract
+from apps.dashboard.crud.property_sql_plan import (
+    PropertyConfigurationError, PropertySqlPlan, build_property_plan,
+    property_metadata_fields, validate_property_input,
+)
+from apps.dashboard.crud.property_sql_compiler import compile_property_sql
+from apps.dashboard.crud.retention_sql_plan import (
+    RetentionConfigurationError, RetentionSqlPlan, build_retention_plan, validate_retention_input,
+)
+from apps.dashboard.crud.retention_sql_compiler import compile_retention_sql
+from apps.dashboard.crud.retention_sql_validation import retention_result_contract_issues
+from apps.dashboard.crud.revenue_sql_plan import RevenueSqlPlan, RevenueConfigurationError, validate_revenue_input, build_revenue_plan
+from apps.dashboard.crud.ranking_sql_plan import RankingSqlPlan, RankingConfigurationError, validate_ranking_input, build_ranking_plan
+from apps.dashboard.crud.ranking_sql_compiler import compile_ranking_sql
+from apps.dashboard.crud.ranking_sql_validation import ranking_result_contract_issues
+from apps.dashboard.crud.ranking_execution_contract import attach_ranking_contract, read_ranking_contract
+from apps.dashboard.crud.revenue_sql_compiler import compile_revenue_sql
+from apps.dashboard.crud.revenue_sql_validation import revenue_result_contract_issues
+from apps.dashboard.crud.funnel_sql_plan import build_funnel_plan, validate_funnel_input, FunnelConfigurationError, FunnelSqlPlan
+from apps.dashboard.crud.funnel_sql_compiler import compile_funnel_sql
+from apps.dashboard.crud.funnel_sql_validation import funnel_result_contract_issues
+from apps.dashboard.crud.property_sql_validation import property_result_contract_issues
 from apps.dashboard.crud.cohort_sql_validation import COHORT_MATURITY_RULE, cohort_maturity_contract, cohort_maturity_issues
 from apps.dashboard.crud.cohort_input_grain import COHORT_INPUT_RULE, cohort_input_contract, cohort_input_grain_issues
 from apps.dashboard.crud.event_grain_validation import event_grain_issues
+from apps.dashboard.crud.event_sql_plan import build_event_plan, validate_event_input, EventConfigurationError, EventSqlPlan
+from apps.dashboard.crud.event_sql_compiler import compile_event_sql
+from apps.dashboard.crud.event_sql_validation import event_compiled_contract_issues
 from apps.dashboard.crud.distribution_population import POPULATION_RULE, population_issues
+from apps.dashboard.crud.distribution_sql_plan import (
+    DistributionSqlPlan, DistributionConfigurationError, build_distribution_plan, validate_distribution_input,
+)
+from apps.dashboard.crud.distribution_sql_compiler import compile_distribution_sql
+from apps.dashboard.crud.distribution_sql_validation import distribution_result_contract_issues
 from apps.dashboard.crud.sql_generation_rules import build_date_scaffold, date_scaffold_issues, generation_sql_rules
 from apps.dashboard.crud.sql_generation_lifecycle import current_generation_run, run_sql_generation, SqlGenerationTimeout
 from apps.dashboard.crud.sql_generation_telemetry import check_generation_deadline, llm_invocation
@@ -74,7 +115,7 @@ from apps.datasource.crud.sql_engine import (
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import check_sql_read, get_sqlglot_dialect
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.tracking_config import get_tracking_config
+from apps.system.crud.tracking_config import get_tracking_config, required_table_filters
 from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.system.crud.user import (
     is_platform_admin,
@@ -106,6 +147,16 @@ ATTRIBUTION_WINDOW_UNIT_SECONDS = {
     "minute": 60,
 }
 ATTRIBUTION_WINDOW_MAX_SECONDS = 365 * 24 * 60 * 60
+DETERMINISTIC_SQL_MODELS = frozenset({"event", "property", "interval", "retention", "funnel", "distribution", "path", "revenue", "attribution", "ranking"})
+
+
+def requested_analysis_model(raw):
+    """Preserve the existing absent-model event contract; reject explicit unknown models."""
+    model = str(raw.get("analysisModel") or raw.get("analysis_model") or "event").strip().lower()
+    if model not in ANALYSIS_MODEL_LABELS:
+        raise HTTPException(status_code=400, detail="未知的分析模型，请选择有效分析配置。")
+    return model
+
 ANALYSIS_MODEL_LABELS = {
     "event": "事件",
     "property": "属性",
@@ -394,6 +445,38 @@ class DashboardManualChartGraphState(TypedDict, total=False):
     json_subfield_requirements: list[dict[str, str]]
     validation_result: DashboardAiSqlGenerateResponse
     sql_plan: dict[str, Any]
+    event_plan: EventSqlPlan
+    event_input_issues: list[str]
+    event_table_filters: dict[str, Any]
+    property_plan: PropertySqlPlan
+    property_input_issues: list[str]
+    retention_plan: RetentionSqlPlan
+    retention_input_issues: list[str]
+    retention_table_filters: dict[str, Any]
+    revenue_plan: RevenueSqlPlan
+    ranking_plan: RankingSqlPlan
+    ranking_input_issues: list[str]
+    ranking_table_filters: dict[str, Any]
+    attribution_plan: AttributionSqlPlan
+    attribution_input_issues: list[str]
+    attribution_table_filters: dict
+    revenue_input_issues: list[str]
+    revenue_table_filters: dict[str, Any]
+    funnel_input_issues: list[str]
+    funnel_plan: FunnelSqlPlan
+    funnel_table_filters: dict[str, Any]
+    distribution_plan: DistributionSqlPlan
+    distribution_input_issues: list[str]
+    distribution_table_filters: dict[str, Any]
+    interval_plan: IntervalSqlPlan
+    interval_input_issues: list[str]
+    interval_table_filters: dict[str, Any]
+    interval_compiled_sql: str
+    path_plan: PathSqlPlan
+    path_input_issues: list[str]
+    path_table_filters: dict[str, Any]
+    path_compiled_sql: str
+    workspace_filter_issues: list[str]
     response: DashboardAiSqlGenerateResponse
     sql_repair_attempts: int
     output_binding_issues: list[str]
@@ -788,7 +871,7 @@ def _tracking_event_metadata_issues(field: Any, label: str) -> list[str]:
     return issues
 
 
-def _json_subfield_mapping_issues(field: Any, label: str) -> list[str]:
+def _json_subfield_mapping_issues(field: Any, label: str, *, require_expression: bool = True) -> list[str]:
     if not isinstance(field, dict):
         return []
     source_field = str(field.get("sourceField") or field.get("source_field") or "").strip()
@@ -800,15 +883,11 @@ def _json_subfield_mapping_issues(field: Any, label: str) -> list[str]:
     )
     if not is_json_subfield:
         return []
-    missing = [
-        key
-        for key, value in (
-            ("sourceField", field.get("sourceField") or field.get("source_field")),
-            ("jsonPath", field.get("jsonPath") or field.get("json_path")),
-            ("expression", field.get("expression")),
-        )
-        if not str(value or "").strip()
-    ]
+    required = [("sourceField", field.get("sourceField") or field.get("source_field")),
+                ("jsonPath", field.get("jsonPath") or field.get("json_path"))]
+    if require_expression:
+        required.append(("expression", field.get("expression")))
+    missing = [key for key, value in required if not str(value or "").strip()]
     if not missing:
         return []
     return [f"{label} 的 JSON 字段映射不完整，缺少：{'、'.join(missing)}。请重新选择字段。"]
@@ -1064,7 +1143,11 @@ def _normalize_manual_config(
     """
     是什么：把前端手动配置归一化成后端稳定结构，供公式 IR 和确定性校验使用。
     """
-    context = _compile_json_subfield_fields(copy.deepcopy(dict(request.context or {})), datasource_type)
+    context = copy.deepcopy(dict(request.context or {}))
+    # Revenue's event resolver owns expression construction from trusted
+    # dictionary types. Do not synthesize an expression from client labels.
+    if str(context.get("analysisModel") or context.get("analysis_model") or "event").strip().lower() not in {"event", "revenue"}:
+        context = _compile_json_subfield_fields(context, datasource_type)
     metrics = _list_dict_items(context.get("metrics"))
     formula_metrics = _formula_metric_items_from_context(context)
     time_config = dict(context.get("time") or {}) if isinstance(context.get("time"), dict) else {}
@@ -1234,6 +1317,7 @@ def _parse_formula_expression(
         formula_index: int,
         metric_by_id: dict[str, dict[str, Any]],
         formula_metric_ids: set[str],
+        validate_atomic_metrics: bool = True,
 ) -> dict[str, Any]:
     tokens = formula.get("tokens") if isinstance(formula.get("tokens"), list) else []
     formula_id = _formula_item_id(formula, formula_index)
@@ -1268,12 +1352,13 @@ def _parse_formula_expression(
         elif token_type == "atomicMetric":
             metric = token.get("metric") if isinstance(token.get("metric"), dict) else {}
             label = str(metric.get("label") or metric.get("alias") or f"{alias} 内事件指标").strip()
-            issues.extend(_validate_metric_item(
-                metric,
-                label,
-                require_aggregation=True,
-                require_metric_field_for_count=True,
-            ))
+            if validate_atomic_metrics:
+                issues.extend(_validate_metric_item(
+                    metric,
+                    label,
+                    require_aggregation=True,
+                    require_metric_field_for_count=True,
+                ))
         elif token_type == "number" and not _is_valid_formula_number(token.get("value")):
             issues.append("数字格式不正确。")
         elif token_type == "operator" and str(token.get("value") or "") not in _FORMULA_OPERATORS:
@@ -1383,7 +1468,7 @@ def _parse_formula_expression(
     }
 
 
-def _build_formula_ir(normalized_config: dict[str, Any]) -> dict[str, Any]:
+def _build_formula_ir(normalized_config: dict[str, Any], *, validate_atomic_metrics: bool = True) -> dict[str, Any]:
     """
     是什么：把公式指标 token 解析为可校验的表达式树。
     """
@@ -1410,6 +1495,7 @@ def _build_formula_ir(normalized_config: dict[str, Any]) -> dict[str, Any]:
             formula_index=index,
             metric_by_id=metric_by_id,
             formula_metric_ids=formula_metric_ids,
+            validate_atomic_metrics=validate_atomic_metrics,
         )
         formulas.append(formula_ir)
         for issue in formula_ir.get("issues") or []:
@@ -1848,8 +1934,10 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
         revenue.get("entityField") or revenue.get("entity_field"),
         revenue.get("initialEvent") or revenue.get("initial_event"),
         revenue.get("paymentEvent") or revenue.get("payment_event"),
+        revenue.get("metricEvent"),
         revenue_metric.get("field"),
-        revenue_cost.get("field") or revenue.get("costField") or revenue.get("cost_field"),
+        revenue_cost.get("field") if revenue_cost.get("enabled") is True and revenue_cost.get("method") in ("property_sum", "property_avg") else None,
+        revenue_cost.get("event") if revenue_cost.get("enabled") is True else None,
     ]
     for field in revenue_fields:
         table_name = _field_table_name(field)
@@ -2493,8 +2581,8 @@ def _deterministic_validate_manual_config(
                 if not _field_has_resolvable_reference(property_field):
                     issues.append(f"{property_label}缺少字段。")
                     continue
-                if isinstance(property_field, dict) and str(property_field.get("kind") or "") != "tracking-property":
-                    issues.append(f"{property_label}必须是当前事件属性。")
+                if isinstance(property_field, dict) and str(property_field.get("kind") or "") not in {"", "field", "tracking-property"}:
+                    issues.append(f"{property_label}必须是当前事件参数或授权事件表属性。")
                 issues.extend(_json_subfield_mapping_issues(property_field, property_label))
                 issues.extend(_field_table_permission_issues(property_field, property_label, allowed_tables))
                 issues.extend(_field_schema_permission_issues(property_field, property_label, allowed_fields_by_table))
@@ -2509,12 +2597,16 @@ def _deterministic_validate_manual_config(
         entity_field = revenue.get("entityField") or revenue.get("entity_field")
         initial_event = revenue.get("initialEvent") or revenue.get("initial_event")
         payment_event = revenue.get("paymentEvent") or revenue.get("payment_event")
+        metric_event = revenue.get("metricEvent")
         metric = revenue.get("metric") if isinstance(revenue.get("metric"), dict) else {}
         metric_method = str(metric.get("method") or "count").strip().lower()
         metric_field = metric.get("field")
         cost = revenue.get("cost") if isinstance(revenue.get("cost"), dict) else {}
         cost_enabled = cost.get("enabled") is True or revenue.get("costEnabled") is True
         cost_field = cost.get("field") or revenue.get("costField") or revenue.get("cost_field")
+        cost_event = cost.get("event")
+        cost_method = cost.get("method")
+        cost_uses_property = cost_method in {"property_sum", "property_avg"} if isinstance(cost_method, str) else False
         observation_days = revenue.get("observationDays")
         if observation_days is None:
             observation_days = revenue.get("observation_days")
@@ -2525,6 +2617,8 @@ def _deterministic_validate_manual_config(
             issues.append("收入分析请先选择同期初始事件。")
         if not _field_has_resolvable_reference(payment_event):
             issues.append("收入分析请先选择付费事件。")
+        if not _field_has_resolvable_reference(metric_event):
+            issues.append("收入分析请先选择收入口径事件。")
         if not _field_has_resolvable_reference(time_config.get("field")):
             issues.append("收入分析请先选择时间字段。")
         if str((normalized_config.get("chart") or {}).get("type") or request.chart_type) != "table":
@@ -2534,13 +2628,13 @@ def _deterministic_validate_manual_config(
         if metric_method in {"property_sum", "property_avg"}:
             if not _field_has_resolvable_reference(metric_field):
                 issues.append("收入分析使用事件属性口径时，请先选择数值属性。")
-            elif _field_is_known_non_numeric(metric_field):
-                issues.append("收入分析事件属性口径要求数值字段。")
         if cost_enabled:
-            if not _field_has_resolvable_reference(cost_field):
+            if not _field_has_resolvable_reference(cost_event):
+                issues.append("收入分析启用成本数据时，请先选择成本事件。")
+            if not isinstance(cost_method, str) or cost_method not in _SUPPORTED_REVENUE_METRIC_METHODS:
+                issues.append("收入分析请先选择支持的成本计算方式。")
+            if cost_uses_property and not _field_has_resolvable_reference(cost_field):
                 issues.append("收入分析启用成本数据时，请先选择成本字段。")
-            elif _field_is_known_non_numeric(cost_field):
-                issues.append("收入分析成本字段必须是数值字段。")
         try:
             normalized_observation_days = int(observation_days)
         except (TypeError, ValueError):
@@ -2552,24 +2646,28 @@ def _deterministic_validate_manual_config(
             (entity_field, "收入分析主体"),
             (initial_event, "收入分析同期初始事件"),
             (payment_event, "收入分析付费事件"),
+            (metric_event, "收入分析口径事件"),
             (metric_field if metric_method in {"property_sum", "property_avg"} else None, "收入分析口径属性"),
-            (cost_field if cost_enabled else None, "收入分析成本字段"),
+            (cost_field if cost_enabled and cost_uses_property else None, "收入分析成本字段"),
+            (cost_event if cost_enabled else None, "收入分析成本事件"),
         ):
             if not field:
                 continue
             issues.extend(_tracking_event_metadata_issues(field, label))
-            issues.extend(_json_subfield_mapping_issues(field, label))
+            # The revenue compiler validates actual SQL types and constructs
+            # JSON expressions from authorized metadata, not client labels.
+            issues.extend(_json_subfield_mapping_issues(field, label, require_expression=False))
             issues.extend(_field_table_permission_issues(field, label, allowed_tables))
             issues.extend(_field_schema_permission_issues(field, label, allowed_fields_by_table))
 
-        payment_event_name = _tracking_event_name_from_field(payment_event)
-        for property_field, label in (
-            (metric_field if metric_method in {"property_sum", "property_avg"} else None, "收入分析口径属性"),
-            (cost_field if cost_enabled else None, "收入分析成本字段"),
+        for property_field, label, source_event in (
+            (metric_field if metric_method in {"property_sum", "property_avg"} else None, "收入分析口径属性", metric_event),
+            (cost_field if cost_enabled and cost_uses_property else None, "收入分析成本字段", cost_event),
         ):
+            source_event_name = _tracking_event_name_from_field(source_event)
             property_event_name = _tracking_event_name_from_field(property_field)
-            if property_event_name and payment_event_name and property_event_name != payment_event_name:
-                issues.append(f"{label}不属于当前付费事件。")
+            if property_event_name and source_event_name and property_event_name != source_event_name:
+                issues.append(f"{label}不属于该配置项选择的事件。")
 
     if analysis_model == "attribution":
         attribution = normalized_config.get("attribution") if isinstance(normalized_config.get("attribution"), dict) else {}
@@ -2771,19 +2869,20 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
         }
     elif analysis_model == "property":
         group_fields = _property_result_group_fields(normalized_config)
-        required_columns = ["property_date"]
+        has_date = time_config.get("grain") != "none"
+        required_columns = ["property_date"] if has_date else []
         required_columns.extend(group_fields)
         required_columns.extend(f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or []))
         result_contract = {
             "type": "property_table",
             "required_columns": required_columns,
-            "date_field": "property_date",
+            "date_field": "property_date" if has_date else "",
             "group_fields": group_fields,
             "metric_fields": [
                 f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or [])
             ],
             "final_grain": [
-                "property_date",
+                *(["property_date"] if has_date else []),
                 *group_fields,
             ],
         }
@@ -2828,7 +2927,9 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
     elif analysis_model == "distribution":
         distribution = normalized_config.get("distribution") if isinstance(normalized_config.get("distribution"), dict) else {}
         simultaneous = distribution.get("simultaneous") if isinstance(distribution.get("simultaneous"), dict) else {}
-        entity_result_name = _distribution_entity_result_name(distribution)
+        # Only explicitly configured groups define output dimensions. Entity
+        # names never imply a second grouping or a different population.
+        entity_result_name = ""
         required_columns = [
             "distribution_date",
             "total_entities",
@@ -3411,14 +3512,14 @@ def _dashboard_config_prompt(
             "当前 analysisModel=revenue，只能使用 revenue 配置生成收入查询；不得读取或套用事件、留存、漏斗、分布、间隔、路径模型的配置语义。",
             COHORT_MATURITY_RULE,
             COHORT_INPUT_RULE,
-            "revenue.initialEvent 定义同期 Cohort：按日期和分组对 revenue.entityField 去重，得到 cohort_date 与 cohort_size；revenue.paymentEvent 只统计 Cohort 主体在初始日期后观察期内的行为。",
-            "initialEvent 和 paymentEvent 必须分别使用字段对象中的 eventTable、eventNameField 和 eventName 定位事件，禁止从名称猜测其他事件。",
-            "metric.method=count 表示付费事件总次数；entity_count 表示触发付费事件的主体去重数；per_entity_count 表示总次数除以触发主体数；property_sum/property_avg 必须使用 metric.field。",
+            "revenue.initialEvent 定义同期 Cohort：按日期和分组对 revenue.entityField 去重，得到 cohort_date 与 cohort_size；revenue.paymentEvent 确定观察期内付费主体，revenue.metricEvent 独立指定这些主体的收入统计事件，归属日取口径事件日期。",
+            "initialEvent、paymentEvent、metricEvent 和启用的 cost.event 必须分别使用字段对象中的 eventTable、eventNameField 和 eventName 定位事件；不得互相代填。付费资格按 Cohort 日期、主体和分组去重后才关联口径事件明细，成本独立关联同期群与成本事件明细，包含未付费用户，禁止连接放大收入或成本。",
+            "metric.method=count 表示符合付费资格用户的口径事件总次数；entity_count 表示其中触发口径事件的主体去重数；per_entity_count 表示总次数除以触发主体数；property_sum/property_avg 必须使用口径事件的 metric.field。",
             "period_cumulative_count 和 period_cumulative_entity_count 分别对每日总次数或每日触发主体数做从 day_0 起的周期累计总和；period_average_count 和 period_average_entity_count 分别输出截至当日的周期累计均值。",
             f"观察时长为 {observation_days} 天，最终结果必须按 Cohort 日期输出 cohort_date、cohort_size 和 day_0 到 day_{observation_days} 的宽表列；不得改成长表 period_offset 结果。",
             "cohort_date 必须输出真实 DATE 或 YYYY-MM-DD 日期文本；当原始时间字段是 YYYYMMDD 编码键时，必须先按当前 SQL 方言解析，禁止直接输出 YYYYMMDD 数值或文本。",
             "全局 filters 只筛选配置允许的用户属性，groups 只增加 Cohort 分组粒度；不得把全局筛选改成初始事件或付费事件的隐式字段筛选。",
-            "cost.enabled=true 时使用 cost.field 按 Cohort 统计成本并额外输出 cost_value；不得猜测成本字段、成本口径或跨数据源关联关系。",
+            "cost.enabled=true 时必须选择独立 cost.event 和 cost.method；仅 property_sum/property_avg 需要该事件的数值属性 cost.field。按整个 Cohort 观察期计算成本，总次数、主体数、人均次数分别为总事件数、全期主体去重数、总次数除以全期主体去重数；周期主体数累计为每日去重数之和，周期均值除以 observationDays+1。不得猜测配置或跨数据源关联。",
             f"当前收入口径配置：{_safe_json(metric)}。",
             f"当前成本配置：{_safe_json(cost)}。",
             "最终返回 chart_type 必须为 table。",
@@ -3792,10 +3893,13 @@ def _event_analysis_sql_result_issues(
 def _property_sql_result_issues(
         sql: str,
         normalized_config: dict[str, Any],
+        plan: PropertySqlPlan | None = None,
 ) -> list[str]:
     if str(normalized_config.get("analysis_model") or "event") != "property":
         return []
-    required_aliases = ["property_date"]
+    if plan is not None:
+        return [str(issue) for issue in property_result_contract_issues(sql, plan)]
+    required_aliases = [] if (normalized_config.get("time") or {}).get("grain") == "none" else ["property_date"]
     required_aliases.extend(_property_result_group_fields(normalized_config))
     required_aliases.extend(
         f"property_metric_{index + 1}" for index, _ in enumerate(normalized_config.get("metrics") or [])
@@ -4743,8 +4847,10 @@ def _dashboard_sql_system_prompt(analysis_model: str = "event") -> str:
             "收入 SQL 结构范式：\n"
             "WITH bounds AS (...仅一行时间边界...),\n"
             "cohort AS (...按 revenue.initialEvent、entityField、cohort_date 和 groups 形成去重同期群...),\n"
-            "payment_events AS (...只保留 revenue.paymentEvent 及配置口径字段...),\n"
-            "matched AS (...按 entityField 关联 Cohort 与观察期内付费事件，并计算 day_offset...),\n"
+            "payment_events AS (...只保留 revenue.paymentEvent 以确定付费资格...),\n"
+            "payer_cohorts AS (...按 Cohort 日期、主体、分组对观察期内付费资格去重...),\n"
+            "metric_events AS (...只保留 revenue.metricEvent 及配置口径字段...),\n"
+            "matched AS (...关联唯一付费主体与观察期内口径事件明细，并计算 day_offset；成本另将唯一同期群与 cost.event 明细关联，按 cost.method 汇总，包含未付费主体...),\n"
             "daily_values AS (...严格按 revenue.metric.method 计算每天指标...),\n"
             "SELECT cohort_date, cohort_size,\n"
             "       CASE WHEN cohort_date <= <typed_observation_end> THEN <day_0_value> ELSE NULL END AS day_0, ... <按 day_N 日期成熟条件保护的指标> AS day_N\n"
@@ -5078,6 +5184,18 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
     current_user = state["current_user"]
     request = state["request"]
 
+    raw = request.context or {}
+    analysis_model = str(raw.get("analysisModel") or raw.get("analysis_model") or "event").strip().lower()
+    compilation = analysis_model in DETERMINISTIC_SQL_MODELS
+    if requested_analysis_model(raw) == "event":
+        issues = validate_event_input(raw)
+        if issues:
+            return {"event_input_issues": list(map(str, issues))}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "property":
+        issues = validate_property_input(raw)
+        if issues:
+            return {"property_input_issues": list(map(str, issues))}
+
     if not request.datasource:
         raise HTTPException(status_code=400, detail="看板未配置数据源，请重新选择数据源")
 
@@ -5085,7 +5203,8 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
     seed_datasource = session.get(CoreDatasource, int(request.datasource))
     if seed_datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
-    question_text = _dashboard_config_prompt(request, seed_datasource, "", "")
+    # The selected fields/events are sufficient for deterministic event-field
+    # projection. Do not build a model prompt or use semantic skill ranking.
     workspace_tracking_config = get_tracking_config(
         session,
         tenant_id,
@@ -5096,26 +5215,30 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         workspace_tracking_config,
         datasource_id=int(request.datasource),
     )
-    business_context = BusinessSqlContextService.build(
-        session=session,
-        current_user=current_user,
-        tenant_id=tenant_id,
-        datasource_id=int(request.datasource),
-        question=question_text,
-        target_scope=CustomPromptTargetScopeEnum.SMART_QA,
-        data_skill_id=request.data_skill_id,
-        platform_data_skills_only=True,
-        analysis_model=(
-            str((request.context or {}).get("analysisModel") or (request.context or {}).get("analysis_model") or "event")
-            .strip()
-            .lower()
-        ),
-        embedding=False,
-        table_list=event_scope["table_list"],
-        can_manage_all=is_system_admin(current_user),
-        can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
-        can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
-    )
+    if compilation:
+        if request.data_skill_id not in (None, ""):
+            raise HTTPException(status_code=400, detail="配置编译不支持附加 Data Skill，请使用分析配置和工作空间元数据。")
+        business_context = BusinessSqlContextService.build_for_compilation(
+            session=session, current_user=current_user, tenant_id=tenant_id,
+            datasource_id=int(request.datasource), configuration=raw, table_list=event_scope["table_list"],
+        )
+    else:
+        business_context = BusinessSqlContextService.build(
+            session=session,
+            current_user=current_user,
+            tenant_id=tenant_id,
+            datasource_id=int(request.datasource),
+            question=_dashboard_config_prompt(request, seed_datasource, "", ""),
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            data_skill_id=request.data_skill_id,
+            platform_data_skills_only=True,
+            analysis_model=analysis_model,
+            embedding=False,
+            table_list=event_scope["table_list"],
+            can_manage_all=is_system_admin(current_user),
+            can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
+            can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
+        )
     if event_scope["status"] == "active":
         event_scope = _dashboard_event_scope(
             workspace_tracking_config,
@@ -5141,6 +5264,59 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
 
 
 def _node_normalize_manual_config(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    raw = state["request"].context or {}
+    if requested_analysis_model(raw) == "event":
+        issues = list(map(str, validate_event_input(raw)))
+        if issues:
+            return {"normalized_config": {"analysis_model": "event"}, "event_input_issues": issues,
+                    "graph_trace": _append_trace(state, "normalize_manual_config"), "last_node": "normalize_manual_config"}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "ranking":
+        issues = list(map(str, validate_ranking_input(raw)))
+        if issues:
+            return {"normalized_config": {"analysis_model": "ranking"}, "ranking_input_issues": issues,
+                    "graph_trace": _append_trace(state, "normalize_manual_config"), "last_node": "normalize_manual_config"}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "attribution":
+        issues = list(map(str, validate_attribution_input(raw)))
+        if issues:
+            return {"normalized_config": {"analysis_model": "attribution"}, "attribution_input_issues": issues,
+                    "graph_trace": _append_trace(state, "normalize_manual_config"), "last_node": "normalize_manual_config"}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "revenue":
+        issues = list(map(str, validate_revenue_input(raw)))
+        if issues:
+            return {"normalized_config": {"analysis_model": "revenue"}, "revenue_input_issues": issues,
+                    "graph_trace": _append_trace(state, "normalize_manual_config"), "last_node": "normalize_manual_config"}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "path":
+        issues = list(map(str, validate_path_input(raw)))
+        if issues:
+            return {"normalized_config": {"analysis_model": "path"}, "path_input_issues": issues,
+                    "graph_trace": _append_trace(state, "normalize_manual_config"), "last_node": "normalize_manual_config"}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "distribution":
+        issues = list(map(str, validate_distribution_input(raw)))
+        if issues:
+            return {"normalized_config": {"analysis_model": "distribution"}, "distribution_input_issues": issues,
+                    "graph_trace": _append_trace(state, "normalize_manual_config"), "last_node": "normalize_manual_config"}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "interval":
+        issues = list(map(str, validate_interval_input(raw)))
+        if issues:
+            return {"normalized_config": {"analysis_model": "interval"}, "interval_input_issues": issues,
+                    "graph_trace": _append_trace(state, "normalize_manual_config"), "last_node": "normalize_manual_config"}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "funnel":
+        issues = list(map(str, validate_funnel_input(raw)))
+        if issues:
+            return {"normalized_config": {"analysis_model": "funnel"}, "funnel_input_issues": issues,
+                    "graph_trace": _append_trace(state, "normalize_manual_config"), "last_node": "normalize_manual_config"}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "retention":
+        issues = list(map(str, validate_retention_input(raw)))
+        if issues:
+            return {"normalized_config": {"analysis_model": "retention"}, "retention_input_issues": issues,
+                    "graph_trace": _append_trace(state, "normalize_manual_config"), "last_node": "normalize_manual_config"}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "property":
+        issues = state.get("property_input_issues") or list(map(str, validate_property_input(raw)))
+        if issues:
+            return {"normalized_config": {"analysis_model": "property"},
+                    "property_input_issues": issues,
+                    "graph_trace": _append_trace(state, "normalize_manual_config"),
+                    "last_node": "normalize_manual_config"}
     datasource = state.get("datasource")
     normalized_config = _normalize_manual_config(
         state["request"],
@@ -5154,9 +5330,67 @@ def _node_normalize_manual_config(state: DashboardManualChartGraphState) -> dict
 
 
 def _node_build_formula_ir(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    normalized_config = state.get("normalized_config") or {}
-    formula_ir = _build_formula_ir(normalized_config)
+    normalized_config = copy.deepcopy(state.get("normalized_config") or {})
+    formula_ir = _build_formula_ir(normalized_config,
+        validate_atomic_metrics=normalized_config.get("analysis_model") != "event")
+    filter_issues = []
+    event_table_filters = {}
+    retention_table_filters = {}
+    revenue_table_filters = {}
+    ranking_table_filters = {}
+    attribution_table_filters = {}
+    funnel_table_filters = {}
+    interval_table_filters = {}
+    path_table_filters = {}
+    distribution_table_filters = {}
+    try:
+        policies = required_table_filters(
+            state.get("tracking_metadata"), tenant_id=state.get("tenant_id"),
+            datasource_id=state["request"].datasource if state.get("request") else None,
+        )
+        referenced = _config_reference_table_names(normalized_config, formula_ir)
+        applicable = []
+        for table, rules in policies.items():
+            matches = [ref for ref in referenced if _canonical_table_name(ref) == _canonical_table_name(table)
+                       or _canonical_table_name(ref).split(".")[-1] == _canonical_table_name(table)]
+            if not matches:
+                continue
+            if normalized_config.get("analysis_model") in {"event", "retention", "funnel", "interval", "distribution", "path", "revenue", "attribution", "ranking"}:
+                if len(matches) != 1:
+                    raise ValueError("分析事件表存在歧义，无法应用强制筛选。")
+                policies_by_table = {"event": event_table_filters, "funnel": funnel_table_filters, "retention": retention_table_filters,
+                                    "interval": interval_table_filters, "distribution": distribution_table_filters, "path": path_table_filters,
+                                    "revenue": revenue_table_filters, "attribution": attribution_table_filters,
+                                    "ranking": ranking_table_filters}[normalized_config["analysis_model"]]
+                policies_by_table[matches[0]] = copy.deepcopy(rules)
+                continue
+            if len(matches) != 1 or len({_canonical_table_name(ref) for ref in referenced}) != 1:
+                raise ValueError("当前跨表分析不能把强制表筛选作为全局条件，请明确各表的查询范围后再生成。")
+            rules = copy.deepcopy(rules)
+            for field in _iter_filter_rule_fields(rules):
+                field["table"] = matches[0]
+            applicable.append(rules)
+        if applicable:
+            user_filters = normalized_config.get("filters") or {}
+            user_group = {"type": "group", "logic": user_filters.get("logic", "and"),
+                          "children": copy.deepcopy(user_filters.get("rules") or [])}
+            normalized_config["filters"] = {"logic": "and", "rules": [
+                *([user_group] if user_group["children"] else []), *applicable,
+            ]}
+    except ValueError as exc:
+        filter_issues = [str(exc)]
     return {
+        "normalized_config": normalized_config,
+        "workspace_filter_issues": filter_issues,
+        "event_table_filters": event_table_filters,
+        "retention_table_filters": retention_table_filters,
+        "revenue_table_filters": revenue_table_filters,
+        "ranking_table_filters": ranking_table_filters,
+        "attribution_table_filters": attribution_table_filters,
+        "funnel_table_filters": funnel_table_filters,
+        "interval_table_filters": interval_table_filters,
+        "path_table_filters": path_table_filters,
+        "distribution_table_filters": distribution_table_filters,
         "formula_ir": formula_ir,
         "json_subfield_requirements": _json_subfield_requirements(normalized_config, formula_ir),
         "graph_trace": _append_trace(state, "build_formula_ir"),
@@ -5165,7 +5399,30 @@ def _node_build_formula_ir(state: DashboardManualChartGraphState) -> dict[str, A
 
 
 def _node_deterministic_validate(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    input_issues = list(state.get("event_input_issues") or []) + list(state.get("ranking_input_issues") or []) + list(state.get("attribution_input_issues") or []) + list(state.get("path_input_issues") or []) + list(state.get("interval_input_issues") or []) + list(state.get("property_input_issues") or []) + list(state.get("retention_input_issues") or []) + list(state.get("funnel_input_issues") or []) + list(state.get("distribution_input_issues") or []) + list(state.get("revenue_input_issues") or []) + list(state.get("workspace_filter_issues") or [])
+    if input_issues:
+        validation = DashboardAiSqlGenerateResponse(success=False, sql="",
+            analysis_model=(state.get("normalized_config") or {}).get("analysis_model", "event"),
+            message="工作空间表筛选配置无效。" if state.get("workspace_filter_issues") else "分析配置无效。",
+            issues=input_issues, advice="请修正对应配置后重新生成。")
+        return {"validation_result": validation, "response": validation,
+                "graph_trace": _append_trace(state, "deterministic_validate"), "last_node": "deterministic_validate"}
     event_scope = state.get("event_scope") or {}
+    if (state.get("normalized_config") or {}).get("analysis_model") == "event":
+        issues = list(event_scope.get("issues") or [])
+        plan = None
+        if not issues:
+            try:
+                plan = _event_plan_from_state(state)
+            except EventConfigurationError as exc:
+                issues = list(map(str, exc.issues))
+        validation = DashboardAiSqlGenerateResponse(success=not issues, sql="", analysis_model="event",
+            issues=issues, message="事件配置可以编译 SQL。" if not issues else "事件配置无效。",
+            advice="请修正配置或当前工作空间元数据。" if issues else "",
+            warnings=list((state.get("formula_ir") or {}).get("warnings") or []))
+        return {"validation_result": validation, "response": validation if issues else state.get("response"),
+            "event_plan": plan, "event_input_issues": issues,
+            "graph_trace": _append_trace(state, "deterministic_validate"), "last_node": "deterministic_validate"}
     validation = _deterministic_validate_manual_config(
         state["request"],
         state.get("normalized_config") or {},
@@ -5191,12 +5448,146 @@ def _route_after_deterministic_validate(state: DashboardManualChartGraphState) -
     return "build_sql_plan"
 
 
+def _event_plan_from_state(state):
+    return build_event_plan(state["normalized_config"], state.get("formula_ir") or {},
+        metadata_fields=property_metadata_fields(state.get("schema") or "", state.get("tracking_metadata")),
+        allowed_fields_by_table=state.get("allowed_fields_by_table") or {},
+        dialect=get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+        engine=_dashboard_sql_dialect_text(state.get("sql_dialect"), state.get("datasource")),
+        tracking_metadata=state.get("tracking_metadata"), table_filters=state.get("event_table_filters") or {},
+        business_timezone=settings.DASHBOARD_BUSINESS_TIMEZONE)
+
+
 def _node_build_sql_plan(state: DashboardManualChartGraphState) -> dict[str, Any]:
     sql_plan = _build_sql_plan(
         state.get("normalized_config") or {}, state.get("formula_ir") or {},
         state.get("sql_dialect") or getattr(state.get("datasource"), "type", ""),
     )
+    property_state = {}
+    if (state.get("normalized_config") or {}).get("analysis_model") == "event":
+        try:
+            property_state["event_plan"] = state.get("event_plan") or _event_plan_from_state(state)
+        except EventConfigurationError as exc:
+            property_state["event_input_issues"] = list(map(str, exc.issues))
+    if (state.get("normalized_config") or {}).get("analysis_model") == "ranking":
+        try:
+            plan = build_ranking_plan(state["normalized_config"],
+                metadata_fields=property_metadata_fields(state.get("schema") or "", state.get("tracking_metadata")),
+                allowed_fields_by_table=state.get("allowed_fields_by_table") or {},
+                dialect=get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+                tracking_metadata=state.get("tracking_metadata"), table_filters=state.get("ranking_table_filters") or {})
+            property_state["ranking_plan"] = plan
+            sql_plan["result_contract"]["required_columns"] = list(plan.required_columns)
+        except RankingConfigurationError as exc:
+            property_state["ranking_input_issues"] = list(map(str, exc.issues))
+    if (state.get("normalized_config") or {}).get("analysis_model") == "attribution":
+        try:
+            plan = build_attribution_plan(state["normalized_config"],
+                metadata_fields=property_metadata_fields(state.get("schema") or "", state.get("tracking_metadata")),
+                allowed_fields_by_table=state.get("allowed_fields_by_table") or {},
+                dialect=get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+                engine=_dashboard_sql_dialect_text(state.get("sql_dialect"), state.get("datasource")),
+                tracking_metadata=state.get("tracking_metadata"), table_filters=state.get("attribution_table_filters") or {},
+                business_timezone=settings.DASHBOARD_BUSINESS_TIMEZONE)
+            property_state["attribution_plan"] = plan
+            sql_plan["result_contract"]["required_columns"] = list(plan.required_columns)
+        except AttributionConfigurationError as exc:
+            property_state["attribution_input_issues"] = list(map(str, exc.issues))
+    if (state.get("normalized_config") or {}).get("analysis_model") == "revenue":
+        try:
+            plan = build_revenue_plan(state["normalized_config"],
+                metadata_fields=property_metadata_fields(state.get("schema") or "", state.get("tracking_metadata")),
+                allowed_fields_by_table=state.get("allowed_fields_by_table") or {},
+                dialect=get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+                tracking_metadata=state.get("tracking_metadata"), table_filters=state.get("revenue_table_filters") or {})
+            property_state["revenue_plan"] = plan
+            sql_plan["result_contract"]["required_columns"] = list(plan.required_columns)
+        except (RevenueConfigurationError, PropertyConfigurationError) as exc:
+            property_state["revenue_input_issues"] = list(map(str, exc.issues))
+    if (state.get("normalized_config") or {}).get("analysis_model") == "path":
+        try:
+            plan = build_path_plan(state["normalized_config"],
+                metadata_fields=property_metadata_fields(state.get("schema") or "", state.get("tracking_metadata")),
+                allowed_fields_by_table=state.get("allowed_fields_by_table") or {},
+                dialect=get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+                engine=_dashboard_sql_dialect_text(state.get("sql_dialect"), state.get("datasource")),
+                tracking_metadata=state.get("tracking_metadata"), table_filters=state.get("path_table_filters") or {},
+                business_timezone=settings.DASHBOARD_BUSINESS_TIMEZONE)
+            property_state["path_plan"] = plan
+        except (PathConfigurationError, PropertyConfigurationError) as exc:
+            property_state["path_input_issues"] = list(map(str, exc.issues))
+    if (state.get("normalized_config") or {}).get("analysis_model") == "distribution":
+        try:
+            plan = build_distribution_plan(
+                state["normalized_config"],
+                metadata_fields=property_metadata_fields(state.get("schema") or "", state.get("tracking_metadata")),
+                allowed_fields_by_table=state.get("allowed_fields_by_table") or {},
+                dialect=get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+                engine=_dashboard_sql_dialect_text(state.get("sql_dialect"), state.get("datasource")),
+                tracking_metadata=state.get("tracking_metadata"), table_filters=state.get("distribution_table_filters") or {},
+            )
+            property_state["distribution_plan"] = plan
+            sql_plan["result_contract"]["required_columns"] = list(plan.required_columns)
+        except (DistributionConfigurationError, PropertyConfigurationError) as exc:
+            property_state["distribution_input_issues"] = list(map(str, exc.issues))
+    if (state.get("normalized_config") or {}).get("analysis_model") == "interval":
+        try:
+            metadata = property_metadata_fields(state.get("schema") or "", state.get("tracking_metadata"))
+            dialect = get_sqlglot_dialect(state.get("sql_dialect") or "") or ""
+            engine = _dashboard_sql_dialect_text(state.get("sql_dialect"), state.get("datasource"))
+            time_plan = build_interval_time_plan(state["normalized_config"], metadata_fields=metadata, dialect=dialect,
+                engine=engine, business_timezone=settings.DASHBOARD_BUSINESS_TIMEZONE, tracking_metadata=state.get("tracking_metadata"))
+            plan = build_interval_plan(state["normalized_config"], time_plan=time_plan, metadata_fields=metadata,
+                allowed_fields_by_table=state.get("allowed_fields_by_table") or {}, dialect=dialect, engine=engine,
+                tracking_metadata=state.get("tracking_metadata"), table_filters=state.get("interval_table_filters") or {})
+            property_state["interval_plan"] = plan
+            sql_plan["result_contract"]["required_columns"] = list(plan.required_columns)
+        except (IntervalConfigurationError, PropertyConfigurationError, ValueError) as exc:
+            property_state["interval_input_issues"] = list(map(str, getattr(exc, "issues", [exc])))
+    if (state.get("normalized_config") or {}).get("analysis_model") == "funnel":
+        try:
+            plan = build_funnel_plan(
+                state["normalized_config"],
+                metadata_fields=property_metadata_fields(state.get("schema") or "", state.get("tracking_metadata")),
+                allowed_fields_by_table=state.get("allowed_fields_by_table") or {},
+                dialect=get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+                engine=_dashboard_sql_dialect_text(state.get("sql_dialect"), state.get("datasource")),
+                tracking_metadata=state.get("tracking_metadata"), table_filters=state.get("funnel_table_filters") or {},
+            )
+            property_state["funnel_plan"] = plan
+            sql_plan["result_contract"]["required_columns"] = list(plan.required_columns)
+        except (FunnelConfigurationError, PropertyConfigurationError) as exc:
+            property_state["funnel_input_issues"] = list(map(str, exc.issues))
+    if (state.get("normalized_config") or {}).get("analysis_model") == "retention":
+        try:
+            plan = build_retention_plan(
+                state["normalized_config"],
+                metadata_fields=property_metadata_fields(state.get("schema") or "", state.get("tracking_metadata")),
+                allowed_fields_by_table=state.get("allowed_fields_by_table") or {},
+                dialect=get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+                tracking_metadata=state.get("tracking_metadata"),
+                table_filters=state.get("retention_table_filters"),
+            )
+            property_state["retention_plan"] = plan
+            sql_plan["result_contract"]["required_columns"] = list(plan.required_columns)
+        except (RetentionConfigurationError, PropertyConfigurationError) as exc:
+            property_state["retention_input_issues"] = list(map(str, exc.issues))
+    if (state.get("normalized_config") or {}).get("analysis_model") == "property":
+        try:
+            plan = build_property_plan(
+                state["normalized_config"],
+                metadata_fields=property_metadata_fields(state.get("schema") or "", state.get("tracking_metadata")),
+                allowed_fields_by_table=state.get("allowed_fields_by_table") or {},
+                dialect=get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+                engine=_dashboard_sql_dialect_text(state.get("sql_dialect"), state.get("datasource")),
+            )
+            property_state["property_plan"] = plan
+            sql_plan["result_contract"]["required_columns"] = list(plan.required_columns)
+            sql_plan["date_scaffold_required"] = bool(plan.scaffold_ctes)
+        except PropertyConfigurationError as exc:
+            property_state["property_input_issues"] = list(map(str, exc.issues))
     return {
+        **property_state,
         "sql_plan": sql_plan,
         "graph_trace": _append_trace(state, "build_sql_plan"),
         "last_node": "build_sql_plan",
@@ -5205,14 +5596,134 @@ def _node_build_sql_plan(state: DashboardManualChartGraphState) -> dict[str, Any
 
 async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
-    if analysis_model == "interval":
+    if analysis_model == "event":
         try:
-            sql = compile_interval_sql(
-                state.get("normalized_config") or {}, state.get("tracking_metadata"),
-                state.get("schema") or "", get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
-                _dashboard_sql_dialect_text(state.get("sql_dialect"), state.get("datasource")),
-                state.get("allowed_tables") or [], state.get("allowed_fields_by_table") or {},
-            )
+            if state.get("event_input_issues") or state.get("event_plan") is None:
+                raise ValueError("；".join(state.get("event_input_issues") or ["事件查询计划缺失。 "]))
+            response = DashboardAiSqlGenerateResponse(success=True, sql=compile_event_sql(state["event_plan"]),
+                chart_type=(state.get("normalized_config") or {}).get("chart", {}).get("type") or state["request"].chart_type,
+                title=state["request"].title, message="已按事件配置编译 SQL。")
+        except (ValueError, sqlglot.errors.SqlglotError) as exc:
+            response = DashboardAiSqlGenerateResponse(success=False, sql="", message="事件配置无法编译。",
+                issues=[str(exc)], advice="请修正配置或工作空间元数据；不会调用 LLM 改写。")
+    elif analysis_model == "ranking":
+        try:
+            if state.get("ranking_input_issues") or state.get("ranking_plan") is None:
+                raise ValueError("；".join(state.get("ranking_input_issues") or ["排行榜查询计划缺失。 "]))
+            plan = state["ranking_plan"]
+            sql = attach_ranking_contract(compile_ranking_sql(plan), plan,
+                tenant_id=state.get("tenant_id"), datasource_id=state["request"].datasource,
+                tracking_metadata=state.get("tracking_metadata"))
+            response = DashboardAiSqlGenerateResponse(success=True, sql=sql, chart_type="table",
+                message="已按排行榜配置编译 SQL。", suggestions=[
+                    "主事件决定排行主体，各指标独立按主体聚合；空主体不参与排名，空主指标排在最后。",
+                    "无匹配事件的次数和去重数为 0，其他聚合保留 NULL。",
+                    "同一主体的展示属性存在多值时会明确报错，请使用主体唯一属性。",
+                ])
+        except (ValueError, sqlglot.errors.SqlglotError) as exc:
+            response = DashboardAiSqlGenerateResponse(success=False, sql="", chart_type="table",
+                message="排行榜配置无法编译。", issues=[str(exc)], advice="请修正配置或工作空间元数据；不会调用 LLM 改写。")
+    elif analysis_model == "attribution":
+        try:
+            if state.get("attribution_input_issues") or state.get("attribution_plan") is None:
+                raise ValueError("；".join(state.get("attribution_input_issues") or ["归因查询计划缺失。 "]))
+            plan = state["attribution_plan"]
+            sql = attach_attribution_contract(compile_attribution_sql(plan),plan,
+                tenant_id=state.get("tenant_id"), datasource_id=state["request"].datasource,
+                tracking_metadata=state.get("tracking_metadata"))
+            response = DashboardAiSqlGenerateResponse(success=True, sql=sql,
+                chart_type="table", message="已按归因配置编译 SQL。", suggestions=[
+                    "每条目标独立归因，总触发数来自扩展窗口触点全集，有效触发按触点去重。",
+                    "贡献度分母按目标侧分组，从参与归因的目标明细独立聚合。",
+                    *(["非可加指标按首次/末次获选目标原值聚合，各行贡献度不保证相加为 100%。"]
+                      if plan.aggregation in {"avg", "max", "min", "count_distinct"} else []),
+                ])
+        except (ValueError, sqlglot.errors.SqlglotError) as exc:
+            response = DashboardAiSqlGenerateResponse(success=False, sql="", chart_type="table",
+                message="归因配置无法编译。", issues=[str(exc)], advice="请修正配置或工作空间元数据；不会调用 LLM 改写。")
+    elif analysis_model == "revenue":
+        try:
+            if state.get("revenue_input_issues") or state.get("revenue_plan") is None:
+                raise ValueError("；".join(state.get("revenue_input_issues") or ["收入查询计划缺失。 "]))
+            response = DashboardAiSqlGenerateResponse(success=True, sql=compile_revenue_sql(state["revenue_plan"]),
+                chart_type="table", message="已按收入配置编译 SQL。", suggestions=[
+                    "按初始日期、主体及配置分组形成唯一同期群；付费事件确定观察期内的付费用户，收入口径事件独立计算这些用户的指标。",
+                    "周期累计主体数为每日主体去重数之和；周期均值包含无行为的成熟日期。",
+                    *(["成本按所选计算方式独立汇总同期群观察期内的成本事件，包含未付费用户；观察期未成熟时返回 NULL。"]
+                      if state["revenue_plan"].cost_event else []),
+                ])
+        except (ValueError, sqlglot.errors.SqlglotError) as exc:
+            response = DashboardAiSqlGenerateResponse(success=False, sql="", chart_type="table",
+                message="收入配置无法编译。", issues=[str(exc)], advice="请修正对应配置或工作空间元数据；不会调用 LLM 改写。")
+    elif analysis_model == "distribution":
+        plan = state.get("distribution_plan")
+        issues = state.get("distribution_input_issues") or []
+        if plan is None or issues:
+            response = DashboardAiSqlGenerateResponse(success=False, sql="", chart_type="table",
+                message="分布配置无法编译。", issues=issues or ["分布查询计划缺失。"],
+                advice="请修正对应事件、字段、时间或区间配置后重新生成。")
+        else:
+            try:
+                response = DashboardAiSqlGenerateResponse(success=True, sql=compile_distribution_sql(plan), chart_type="table",
+                    message="已按分布配置编译 SQL。", suggestions=[
+                        "主体用于去重，展示维度来自显式分组；区间边界在当前查询范围内统一计算。",
+                        "方差和标准差采用总体口径；同时展示均值按有效事件数加权，去重数按桶真实去重。",
+                    ])
+            except (ValueError, sqlglot.errors.SqlglotError) as exc:
+                response = DashboardAiSqlGenerateResponse(success=False, sql="", chart_type="table",
+                    message="分布 SQL 编译失败。", issues=[str(exc)], advice="请检查分布配置；不会调用 LLM 改写。")
+    elif analysis_model == "funnel":
+        plan = state.get("funnel_plan")
+        issues = state.get("funnel_input_issues") or []
+        if plan is None or issues:
+            response = DashboardAiSqlGenerateResponse(success=False, sql="", message="漏斗配置无法编译。",
+                issues=issues or ["漏斗查询计划缺失。"], advice="请修正对应事件、字段或窗口配置后重新生成。")
+        else:
+            try:
+                response = DashboardAiSqlGenerateResponse(success=True, sql=compile_funnel_sql(plan),
+                    chart_type=(state.get("normalized_config") or {}).get("chart", {}).get("type") or "funnel",
+                    message="已按漏斗配置生成 SQL。")
+            except (ValueError, sqlglot.errors.SqlglotError) as exc:
+                response = DashboardAiSqlGenerateResponse(success=False, sql="", message="漏斗 SQL 编译失败。",
+                    issues=[str(exc)], advice="请检查漏斗配置；不会调用 LLM 改写。")
+    elif analysis_model == "retention":
+        plan = state.get("retention_plan")
+        issues = state.get("retention_input_issues") or []
+        if plan is None or issues:
+            response = DashboardAiSqlGenerateResponse(success=False, sql="", chart_type="table",
+                message="留存配置无法编译。", issues=issues or ["留存查询计划缺失。"],
+                advice="请修正对应事件、字段或时间配置后重新生成。")
+        else:
+            try:
+                response = DashboardAiSqlGenerateResponse(success=True, sql=compile_retention_sql(plan),
+                    chart_type="table", message="已按留存配置生成 SQL。")
+            except (ValueError, sqlglot.errors.SqlglotError) as exc:
+                response = DashboardAiSqlGenerateResponse(success=False, sql="", chart_type="table",
+                    message="留存 SQL 编译失败。", issues=[str(exc)], advice="请检查留存配置；不会调用 LLM 改写。")
+    elif analysis_model == "property":
+        plan = state.get("property_plan")
+        if plan is None or state.get("property_input_issues"):
+            response = DashboardAiSqlGenerateResponse(success=False, sql="", chart_type="table",
+                message="属性配置无法编译。", issues=state.get("property_input_issues") or ["属性查询计划缺失。"],
+                advice="请修正当前工作空间属性元数据或配置后重试。")
+        else:
+            response = DashboardAiSqlGenerateResponse(success=True, sql=compile_property_sql(plan), chart_type="table",
+                message="已按属性配置生成 SQL。", suggestions=list(plan.suggestions))
+    elif analysis_model == "path":
+        try:
+            if state.get("path_input_issues") or state.get("path_plan") is None:
+                raise ValueError("；".join(state.get("path_input_issues") or ["路径查询计划缺失。 "]))
+            response = DashboardAiSqlGenerateResponse(success=True, sql=compile_path_sql(state["path_plan"]),
+                chart_type="sankey", message="已按路径配置编译 SQL。")
+            AppLogUtil.info("Path SQL compiled: model=path, compiler_version=1")
+        except (ValueError, sqlglot.errors.SqlglotError) as exc:
+            response = DashboardAiSqlGenerateResponse(success=False, sql="", chart_type="sankey",
+                message="路径配置无法编译。", issues=[str(exc)], advice="请修正对应配置或工作空间元数据；不会调用 LLM 改写。")
+    elif analysis_model == "interval":
+        try:
+            if state.get("interval_input_issues") or state.get("interval_plan") is None:
+                raise ValueError("；".join(state.get("interval_input_issues") or ["间隔查询计划缺失。"]))
+            sql = compile_interval_sql(state["interval_plan"])
             response = DashboardAiSqlGenerateResponse(success=True, sql=sql, chart_type="table",
                 message="已按事件配置编译间隔 SQL。")
         except (ValueError, sqlglot.errors.SqlglotError) as exc:
@@ -5224,16 +5735,20 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
             SystemMessage(content=_dashboard_sql_system_prompt(analysis_model)),
             HumanMessage(content=_dashboard_sql_user_prompt(state)),
         ], node="generate_sql")
-    response.sql, binding_issues = bind_output_columns(
-        response.sql, (state.get("sql_plan") or {}).get("output_bindings") or {},
-        get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
-    )
+    binding_issues = []
+    if analysis_model != "event":
+        response.sql, binding_issues = bind_output_columns(
+            response.sql, (state.get("sql_plan") or {}).get("output_bindings") or {},
+            get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
+        )
     response.analysis_model = analysis_model if analysis_model in ANALYSIS_MODEL_LABELS else "event"
     validation = state.get("validation_result")
     if validation:
         response.intent = response.intent or validation.intent
     return {
         "response": response,
+        **({"interval_compiled_sql": response.sql} if analysis_model == "interval" else {}),
+        **({"path_compiled_sql": response.sql} if analysis_model == "path" else {}),
         "output_binding_issues": binding_issues,
         "graph_trace": _append_trace(state, "generate_sql"),
         "last_node": "generate_sql",
@@ -5293,6 +5808,11 @@ def _dashboard_sql_repair_user_prompt(state: DashboardManualChartGraphState) -> 
 
 async def _async_node_repair_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
+    if analysis_model in DETERMINISTIC_SQL_MODELS:
+        response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
+        response.success = False
+        response.message = "配置 SQL 校验失败，请修正配置后重新生成。"
+        return {"response": response, "last_node": "validate_sql"}
     if analysis_model not in ANALYSIS_MODEL_LABELS:
         analysis_model = "event"
     analysis_label = ANALYSIS_MODEL_LABELS[analysis_model]
@@ -5327,29 +5847,82 @@ async def _async_node_validate_sql(state: DashboardManualChartGraphState) -> dic
 def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
     normalized = state.get("normalized_config") or {}
-    if (
-        str(normalized.get("analysis_model") or "event") == "interval"
-        and "tracking_metadata" in state
-    ):
-        try:
-            response.sql = compile_interval_sql(
-                normalized,
-                state.get("tracking_metadata"),
-                state.get("schema") or "",
-                get_sqlglot_dialect(state.get("sql_dialect") or "") or "",
-                _dashboard_sql_dialect_text(state.get("sql_dialect"), state.get("datasource")),
-                state.get("allowed_tables") or [],
-                state.get("allowed_fields_by_table") or {},
-            )
-            response.chart_type = "table"
-            response.analysis_model = "interval"
-        except (ValueError, sqlglot.errors.SqlglotError) as exc:
-            response.success = False
+    if normalized.get("analysis_model") == "event" and (state.get("event_plan") is not None or state.get("event_input_issues")):
+        if response.success:
+            issues = event_compiled_contract_issues(response.sql, state.get("event_plan"))
+            try:
+                validate_sql_for_generation(response.sql, getattr(state.get("datasource"), "type", None) or state.get("sql_dialect"))
+            except (ValueError, SqlStructureValidationError) as exc:
+                issues.append(str(exc))
+            response.success = not issues
+            response.issues = issues
+        if not response.success:
             response.sql = ""
-            response.message = "间隔配置无法编译。"
-            response.issues = [str(exc)]
-            response.advice = "请修正当前工作空间事件元数据或间隔配置后重试；不会调用 LLM 猜测或改写口径。"
-            return _sql_validation_result(state, response)
+            response.message = "事件 SQL 未通过配置及结构校验。"
+        return _sql_validation_result(state, response)
+    if normalized.get("analysis_model") == "ranking":
+        if response.success:
+            issues = ranking_result_contract_issues(response.sql, state.get("ranking_plan"))
+            try:
+                validate_sql_for_generation(response.sql, getattr(state.get("datasource"), "type", None) or state.get("sql_dialect"))
+            except (ValueError, SqlStructureValidationError) as exc:
+                issues.append(str(exc))
+            response.success = not issues
+            response.issues = issues
+        if not response.success:
+            response.sql = ""
+            response.message = "排行榜 SQL 未通过配置及结构校验。"
+        return _sql_validation_result(state, response)
+    if normalized.get("analysis_model") == "attribution":
+        if response.success:
+            issues = attribution_result_contract_issues(response.sql, state.get("attribution_plan"))
+            try:
+                validate_sql_for_generation(response.sql, getattr(state.get("datasource"), "type", None) or state.get("sql_dialect"))
+            except (ValueError, SqlStructureValidationError) as exc:
+                issues.append(str(exc))
+            response.success = not issues
+            response.issues = issues
+        if not response.success:
+            response.sql = ""
+            response.message = "归因 SQL 未通过配置及结构校验。"
+        return _sql_validation_result(state, response)
+    if normalized.get("analysis_model") == "revenue":
+        if response.success:
+            issues = revenue_result_contract_issues(response.sql, state.get("revenue_plan"))
+            try:
+                validate_sql_for_generation(response.sql, getattr(state.get("datasource"), "type", None) or state.get("sql_dialect"))
+            except (ValueError, SqlStructureValidationError) as exc:
+                issues.append(str(exc))
+            response.success = not issues
+            response.issues = issues
+        if not response.success:
+            response.sql = ""
+            response.message = "收入 SQL 未通过配置及结构校验。"
+        return _sql_validation_result(state, response)
+    if normalized.get("analysis_model") == "path":
+        if response.success:
+            issues = path_result_contract_issues(response.sql, state.get("path_plan"), compiled_sql=state.get("path_compiled_sql"))
+            try:
+                validate_sql_for_generation(response.sql, getattr(state.get("datasource"), "type", None) or state.get("sql_dialect"))
+            except (ValueError, SqlStructureValidationError) as exc:
+                issues.append(str(exc))
+            response.success = not issues
+            response.issues = issues
+        if not response.success:
+            response.sql = ""
+            response.message = "路径 SQL 未通过配置及结构校验。"
+        return _sql_validation_result(state, response)
+    if normalized.get("analysis_model") == "interval" and state.get("interval_plan") is not None:
+        issues = interval_result_contract_issues(response.sql, state["interval_plan"], state.get("interval_compiled_sql"))
+        try:
+            validate_sql_for_generation(response.sql, getattr(state.get("datasource"), "type", None) or state.get("sql_dialect"))
+        except (ValueError, SqlStructureValidationError) as exc:
+            issues.append(str(exc))
+        response.success = not issues
+        response.issues = issues
+        if issues:
+            response.message = "间隔 SQL 未通过配置及结构校验。"
+        return _sql_validation_result(state, response)
     sql = (response.sql or "").strip()
     datasource = state.get("datasource")
     datasource_type = getattr(datasource, "type", None) or state.get("sql_dialect")
@@ -5396,29 +5969,13 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
                 sql_dialect=state.get("sql_dialect"),
             )
         if analysis_model == "property":
-            return _property_sql_result_issues(sql, normalized)
+            return _property_sql_result_issues(sql, normalized, state.get("property_plan"))
         if analysis_model == "retention":
-            return _retention_sql_result_issues(
-                sql,
-                normalized,
-                sql_dialect=state.get("sql_dialect"),
-                datasource=state.get("datasource"),
-            )
+            return retention_result_contract_issues(sql, state.get("retention_plan"))
         if analysis_model == "funnel":
-            return _funnel_sql_result_issues(
-                sql,
-                normalized,
-                schema=str(state.get("schema") or ""),
-                sql_dialect=state.get("sql_dialect"),
-                datasource=state.get("datasource"),
-            )
+            return funnel_result_contract_issues(sql, state.get("funnel_plan"))
         if analysis_model == "distribution":
-            return _distribution_sql_result_issues(
-                sql,
-                normalized,
-                sql_dialect=state.get("sql_dialect"),
-                datasource=state.get("datasource"),
-            )
+            return distribution_result_contract_issues(sql, state.get("distribution_plan"))
         if analysis_model == "interval":
             return _interval_sql_result_issues(
                 sql,
@@ -5538,38 +6095,26 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     elif property_issues := _property_sql_result_issues(
         sql,
         state.get("normalized_config") or {},
+        state.get("property_plan"),
     ):
         response.success = False
         response.message = "生成 SQL 未满足属性分析生成要求。"
         response.advice = "请按属性字段、聚合方式和固定结果列重新生成属性查询。"
         response.issues = _unique_text_items(list(response.issues or []) + property_issues)
-    elif retention_issues := _retention_sql_result_issues(
-        sql,
-        state.get("normalized_config") or {},
-        sql_dialect=state.get("sql_dialect"),
-        datasource=state.get("datasource"),
-    ):
+    elif retention_issues := (retention_result_contract_issues(sql, state.get("retention_plan"))
+                              if normalized.get("analysis_model") == "retention" else []):
         response.success = False
         response.message = "生成 SQL 未满足留存分析生成要求。"
         response.advice = "请按当前日期类型、SQL 方言和留存周期重新生成 Cohort 查询。"
         response.issues = _unique_text_items(list(response.issues or []) + retention_issues)
-    elif funnel_issues := _funnel_sql_result_issues(
-        sql,
-        state.get("normalized_config") or {},
-        schema=str(state.get("schema") or ""),
-        sql_dialect=state.get("sql_dialect"),
-        datasource=state.get("datasource"),
-    ):
+    elif funnel_issues := (funnel_result_contract_issues(sql, state.get("funnel_plan"))
+                           if normalized.get("analysis_model") == "funnel" else []):
         response.success = False
         response.message = "生成 SQL 未满足漏斗分析生成要求。"
         response.advice = "请按当前漏斗步骤顺序和固定结果列重新生成漏斗查询。"
         response.issues = _unique_text_items(list(response.issues or []) + funnel_issues)
-    elif distribution_issues := _distribution_sql_result_issues(
-        sql,
-        state.get("normalized_config") or {},
-        sql_dialect=state.get("sql_dialect"),
-        datasource=state.get("datasource"),
-    ):
+    elif distribution_issues := (distribution_result_contract_issues(sql, state.get("distribution_plan"))
+                                if normalized.get("analysis_model") == "distribution" else []):
         response.success = False
         response.message = "生成 SQL 未满足分布分析生成要求。"
         response.advice = "请按主体聚合、区间划分和固定结果列重新生成分布查询。"
@@ -5663,6 +6208,8 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     # Gather independent deterministic failures together, so a repair has the
     # complete contract rather than discovering one restriction per LLM call.
     additional_issues = _model_sql_result_issues() + list(state.get("output_binding_issues") or [])
+    if normalized.get("analysis_model") == "property" and state.get("property_plan") is None:
+        additional_issues.append("属性查询计划缺失，无法验证 SQL。")
     additional_issues.extend(_json_subfield_sql_issues(
         sql, state.get("json_subfield_requirements") or [], dialect=state.get("sql_dialect") or "",
     ))
@@ -5708,7 +6255,7 @@ def _sql_validation_result(state: DashboardManualChartGraphState, response: Dash
 def _route_after_sql_validate(state: DashboardManualChartGraphState) -> str:
     response = state.get("response")
     analysis_model = str((state.get("normalized_config") or {}).get("analysis_model") or "event")
-    if analysis_model == "interval":
+    if analysis_model in DETERMINISTIC_SQL_MODELS:
         return "explain_advice"
     if (
         response is not None
@@ -5755,7 +6302,7 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         response.result_config = {
             "type": "property_table",
             "group_mode": str((normalized_config.get("property") or {}).get("groupMode") or "property"),
-            "date_field": "property_date",
+            "date_field": "property_date" if (normalized_config.get("time") or {}).get("grain") != "none" else "",
             "group_fields": _property_result_group_fields(normalized_config),
             "metric_fields": [f"property_metric_{index + 1}" for index, _ in enumerate(metrics)],
         }
@@ -5810,6 +6357,7 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         response.chart_type = "table"
         response.result_config = {
             "type": "interval_table",
+            "execution_contract": None,
             "date_field": "interval_date",
             "group_fields": [f"group_{index + 1}" for index, _ in enumerate(normalized_config.get("groups") or [])],
             "start_event_alias": str(interval.get("startEventAlias") or "").strip(),
@@ -5825,6 +6373,10 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "duration_unit": "seconds",
             "limit_seconds": int(interval.get("limitSeconds") or interval.get("limit_seconds") or 3600),
         }
+        if response.success and state.get("interval_plan") is not None:
+            response.sql = attach_interval_contract(response.sql, state["interval_plan"], tenant_id=state.get("tenant_id"),
+                datasource_id=state["request"].datasource, tracking_metadata=state.get("tracking_metadata"))
+            response.result_config["execution_contract"] = read_interval_contract(response.sql)
     elif response.analysis_model == "path":
         response.chart_type = "sankey"
         response.result_config = {
@@ -5836,6 +6388,10 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "session_count_field": "session_count",
             "max_steps": 10,
         }
+        if response.success and state.get("path_plan") is not None:
+            response.sql = attach_path_contract(response.sql, state["path_plan"], tenant_id=state.get("tenant_id"),
+                datasource_id=state["request"].datasource, tracking_metadata=state.get("tracking_metadata"))
+            response.result_config["execution_contract"] = read_path_contract(response.sql)
     elif response.analysis_model == "revenue":
         revenue = normalized_config.get("revenue") if isinstance(normalized_config.get("revenue"), dict) else {}
         cost = revenue.get("cost") if isinstance(revenue.get("cost"), dict) else {}
@@ -5894,6 +6450,8 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             ],
             "tie_handling": str(ranking.get("tieHandling") or ranking.get("tie_handling") or "default"),
         }
+        if response.success and response.sql:
+            response.result_config["execution_contract"] = read_ranking_contract(response.sql)
     elif response.analysis_model == "heatmap":
         heatmap = normalized_config.get("heatmap") if isinstance(normalized_config.get("heatmap"), dict) else {}
         comparison_groups = _list_dict_items(heatmap.get("comparisonGroups") or heatmap.get("comparison_groups"))
@@ -5912,6 +6470,12 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             "map_coordinates": heatmap.get("mapCoordinates") or heatmap.get("map_coordinates") or {},
         }
     display_names = _analysis_result_display_names(normalized_config, response.analysis_model)
+    if response.analysis_model == "property" and state.get("property_plan") is not None:
+        plan = state["property_plan"]
+        response.result_config["date_field"] = "property_date" if plan.date_expression else ""
+        response.result_config["group_fields"] = [name for name in plan.required_columns if name.startswith("group_")]
+        response.result_config["metric_fields"] = [m.alias for m in plan.metrics]
+        display_names = dict(plan.display_names)
     if display_names:
         response.result_config = {
             **dict(response.result_config or {}),
@@ -5963,9 +6527,63 @@ async def generate_dashboard_ai_sql(
     谁调用：dashboard AI 生成 SQL 接口调用。
     做了什么：按 collect_context -> normalize_manual_config -> build_formula_ir -> deterministic_validate -> build_sql_plan -> generate_sql -> validate_sql -> explain_advice -> finalize_response 编排。
     """
+    raw = request.context or {}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "distribution":
+        return await compile_distribution_dashboard_sql(session, current_user, request)
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "path":
+        return await compile_path_dashboard_sql(session, current_user, request)
+    if requested_analysis_model(raw) in DETERMINISTIC_SQL_MODELS:
+        return await compile_dashboard_sql(session, current_user, request)
+    if current_generation_run() is None:
+        return await run_sql_generation(_execute_manual_chart_graph(session, current_user, request))
+    return await _execute_manual_chart_graph(session, current_user, request)
+
+
+async def compile_dashboard_sql(
+        session: SessionDep, current_user: CurrentUser, request: DashboardAiSqlGenerateRequest,
+) -> DashboardAiSqlGenerateResponse:
+    """Dedicated configuration compiler. A generative model cannot enter this route."""
+    raw = request.context or {}
+    model = requested_analysis_model(raw)
+    if model not in DETERMINISTIC_SQL_MODELS:
+        raise HTTPException(status_code=400, detail="此接口仅支持事件、属性、间隔、留存、漏斗、分布、路径、收入、归因和排行榜配置编译。")
+    if current_generation_run() is None:
+        return await run_sql_generation(compile_dashboard_sql(session, current_user, request), timeout_seconds=60)
+    graph_task = asyncio.create_task(_execute_manual_chart_graph(session, current_user, request))
     try:
-        if current_generation_run() is None:
-            return await run_sql_generation(generate_dashboard_ai_sql(session, current_user, request))
+        return await asyncio.shield(graph_task)
+    except asyncio.CancelledError:
+        # A synchronous metadata node cannot be killed by cancelling its await.
+        # Expire the shared deadline so no following node can begin, and drain
+        # the in-flight read before FastAPI closes the request-owned Session.
+        run = current_generation_run()
+        if run is not None:
+            run.deadline = min(run.deadline, time.monotonic())
+        await asyncio.gather(graph_task, return_exceptions=True)
+        raise
+
+
+async def compile_distribution_dashboard_sql(
+        session: SessionDep, current_user: CurrentUser, request: DashboardAiSqlGenerateRequest,
+) -> DashboardAiSqlGenerateResponse:
+    """Distribution-only public service; existing clients need no new payload fields."""
+    raw = request.context or {}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() != "distribution":
+        raise HTTPException(status_code=400, detail="此接口仅支持分布分析配置编译。")
+    return await compile_dashboard_sql(session, current_user, request)
+
+
+async def compile_path_dashboard_sql(session, current_user, request):
+    """Compile an existing path payload without any model dependency."""
+    raw = request.context or {}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() != "path":
+        raise HTTPException(status_code=400, detail="此接口仅支持路径分析配置编译。")
+    return await compile_dashboard_sql(session, current_user, request)
+
+
+async def _execute_manual_chart_graph(session, current_user, request):
+    """Shared validation/output orchestration; the selected model determines the producer."""
+    try:
         final_state = await MANUAL_CHART_GRAPH.ainvoke({
             "session": session,
             "current_user": current_user,
@@ -5976,7 +6594,7 @@ async def generate_dashboard_ai_sql(
         if isinstance(exc, (SqlGenerationTimeout, HTTPException)):
             raise
         AppLogUtil.error(f"Dashboard manual chart graph failed: {exc}")
-        raise HTTPException(status_code=500, detail=f"AI 生成 SQL 失败：{exc}") from exc
+        raise HTTPException(status_code=500, detail=f"SQL 生成失败：{exc}") from exc
 
     trace = final_state.get("graph_trace") or []
     AppLogUtil.info(f"Dashboard manual chart graph trace: {trace}")

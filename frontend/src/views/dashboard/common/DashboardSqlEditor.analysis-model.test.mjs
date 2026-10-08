@@ -240,7 +240,7 @@ test('persists and restores retention configuration in the SQL builder', () => {
   assert.match(saveBody, /sqlBuilder\.funnel\.steps\.map/)
   assert.match(saveBody, /window:\s*normalizeFunnelWindow\(sqlBuilder\.funnel\.window\)/)
   assert.doesNotMatch(saveBody, /windowDays/, '新配置不能继续保存旧 windowDays 字段')
-  assert.match(restoreBody, /normalizeFunnelWindow\(funnel\.window, funnel\.windowDays\)/)
+  assert.match(restoreBody, /parseStoredFunnelWindow\(funnel\.window, funnel\.windowDays\)\.value/)
 })
 
 test('includes retention in AI context and preview signature', () => {

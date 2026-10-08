@@ -14,7 +14,7 @@ from apps.dashboard.crud.dashboard_service import list_resource, load_resource, 
     copy_dashboard_to_platform_template, list_platform_dashboard_templates, load_platform_dashboard_template, \
     update_platform_dashboard_template, delete_platform_dashboard_template, copy_platform_template_to_workspace_dashboard, \
     refresh_platform_dashboard_template, list_chart_execution_datasources, get_chart_execution_datasource_metadata
-from apps.dashboard.crud.ai_sql_generator import generate_dashboard_ai_sql
+from apps.dashboard.crud.ai_sql_generator import generate_dashboard_ai_sql, compile_dashboard_sql, compile_distribution_dashboard_sql, compile_path_dashboard_sql, requested_analysis_model, DETERMINISTIC_SQL_MODELS
 from apps.dashboard.crud.sql_generation_lifecycle import (
     SqlGenerationDisconnected, SqlGenerationTimeout, run_sql_generation,
 )
@@ -465,6 +465,50 @@ async def execution_datasource_metadata_api(
     return get_chart_execution_datasource_metadata(session, current_user, datasource_id)
 
 
+SQL_COMPILATION_TIMEOUT_SECONDS = 60
+
+
+@router.post("/sql_compile", response_model=DashboardAiSqlGenerateResponse, summary="按图表配置编译 SQL")
+@require_permissions(permission=AppPermission(type='ds', keyExpression="request.datasource"))
+async def sql_compile_api(
+        session: SessionDep, current_user: CurrentUser,
+        request: DashboardAiSqlGenerateRequest, http_request: Request,
+):
+    return await _run_compilation_api(compile_dashboard_sql, session, current_user, request, http_request)
+
+
+@router.post("/distribution/sql_compile", response_model=DashboardAiSqlGenerateResponse, summary="按分布分析配置编译 SQL")
+@require_permissions(permission=AppPermission(type='ds', keyExpression="request.datasource"))
+async def distribution_sql_compile_api(
+        session: SessionDep, current_user: CurrentUser,
+        request: DashboardAiSqlGenerateRequest, http_request: Request,
+):
+    return await _run_compilation_api(compile_distribution_dashboard_sql, session, current_user, request, http_request)
+
+
+@router.post("/path/sql_compile", response_model=DashboardAiSqlGenerateResponse, summary="按路径分析配置编译 SQL")
+@require_permissions(permission=AppPermission(type='ds', keyExpression="request.datasource"))
+async def path_sql_compile_api(session: SessionDep, current_user: CurrentUser,
+        request: DashboardAiSqlGenerateRequest, http_request: Request):
+    return await _run_compilation_api(compile_path_dashboard_sql, session, current_user, request, http_request)
+
+
+async def _run_compilation_api(compiler, session, current_user, request, http_request):
+    """One authenticated caller-owned compilation lifetime for all compiler routes."""
+    async def wait_for_disconnect():
+        while (await http_request.receive())["type"] != "http.disconnect":
+            pass
+    try:
+        return await run_sql_generation(
+            compiler(session=session, current_user=current_user, request=request),
+            timeout_seconds=SQL_COMPILATION_TIMEOUT_SECONDS, wait_for_disconnect=wait_for_disconnect,
+        )
+    except SqlGenerationTimeout as exc:
+        raise HTTPException(status_code=504, detail="读取配置或 SQL 编译超时，已停止，请重试。") from exc
+    except SqlGenerationDisconnected as exc:
+        raise HTTPException(status_code=499, detail="请求已取消，SQL 编译已停止。") from exc
+
+
 @router.get("/ai_sql_generation_limits")
 async def ai_sql_generation_limits_api(current_user: CurrentUser):
     """向已认证的业务用户提供 SQL 生成总时限，供客户端对齐请求超时。"""
@@ -480,8 +524,16 @@ async def ai_sql_generate_api(
     """
     是什么：ai_sql_generate_api 是手动看板 AI 生成 SQL 的接口入口。
     谁调用：前端手动看板配置器点击计算/生成时调用。
-    做了什么：把用户在配置器中选择的字段、指标、筛选和意图交给 AI 生成 SQL，不直接执行 SQL。
+    做了什么：所有确定性分析模型统一转入编译生命周期，其余类型沿用现有生成流程；不直接执行 SQL。
     """
+    raw = request.context or {}
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "distribution":
+        return await _run_compilation_api(compile_distribution_dashboard_sql, session, current_user, request, http_request)
+    if str(raw.get("analysisModel") or raw.get("analysis_model") or "").strip().lower() == "path":
+        return await _run_compilation_api(compile_path_dashboard_sql, session, current_user, request, http_request)
+    if requested_analysis_model(raw) in DETERMINISTIC_SQL_MODELS:
+        return await _run_compilation_api(compile_dashboard_sql, session, current_user, request, http_request)
+
     async def wait_for_disconnect():
         # FastAPI has consumed the body. Awaiting receive survives BaseHTTPMiddleware's
         # cancellation checkpoints, unlike Request.is_disconnected's cancelled polling scope.

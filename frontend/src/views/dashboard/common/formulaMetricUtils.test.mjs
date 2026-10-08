@@ -136,7 +136,7 @@ assert.deepEqual(
     new Map()
   ),
   [
-    { type: 'atomicMetric', metric: atomicMetric },
+    { type: 'atomicMetric', metric: { ...atomicMetric, filters: { logic: 'and', rules: [] } } },
     { type: 'operator', value: '*' },
     { type: 'number', value: '100' },
   ],

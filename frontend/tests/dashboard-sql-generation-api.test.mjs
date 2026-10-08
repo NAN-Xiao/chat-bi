@@ -13,6 +13,20 @@ function api(request) {
   return context.dashboardApi
 }
 
+test('compiler posts directly without AI limits or replay and preserves cancellation', async () => {
+  const calls = []
+  const controller = new AbortController()
+  const client = api({
+    get: async () => { throw new Error('compiler must not load AI limits') },
+    post: async (...args) => { calls.push(args); return { success: true, sql: 'SELECT 1' } },
+  })
+  const result = await client.compile_sql({ datasource: 7 }, { signal: controller.signal, requestOptions: { retryCount: 4 } })
+  assert.equal(result.success, true)
+  assert.equal(calls[0][0], '/dashboard/sql_compile')
+  assert.equal(calls[0][2].signal, controller.signal)
+  assert.equal(calls[0][2].requestOptions.retryCount, 0)
+})
+
 test('generation derives HTTP timeout from server budget and disables replay', async () => {
   const controller = new AbortController()
   const calls = []

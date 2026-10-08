@@ -177,6 +177,7 @@ def test_dashboard_generation_and_repair_receive_skills_without_knowledge(node_n
     monkeypatch.setattr(dashboard, "_write_llm_output_debug_file", lambda **kwargs: None)
     state = {
         "request": dashboard.DashboardAiSqlGenerateRequest(datasource=1),
+        "normalized_config": {"analysis_model": "heatmap"},
         "datasource": SimpleNamespace(name="业务库", type="mysql", type_name="MySQL"),
         "knowledge_context": KNOWLEDGE,
         "data_skill": "<Data-Skills>平台查询规则</Data-Skills>",

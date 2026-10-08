@@ -35,33 +35,35 @@ export function isValidFunnelWindow(value: unknown): value is FunnelWindowConfig
   const config = value as Partial<FunnelWindowConfig>
   if (config.mode === 'same_day') return true
   if (config.mode !== 'duration' || !config.unit || !(config.unit in UNIT_SECONDS)) return false
-  const numericValue = Number(config.value)
-  return Number.isInteger(numericValue)
+  const numericValue = config.value
+  return typeof numericValue === 'number' && Number.isInteger(numericValue)
     && numericValue >= 1
     && numericValue <= maxFunnelWindowValue(config.unit)
 }
 
-export function normalizeFunnelWindow(value: unknown, legacyWindowDays?: unknown): FunnelWindowConfig {
+export function parseStoredFunnelWindow(value: unknown, legacyWindowDays?: unknown): {
+  value: FunnelWindowConfig | null; issue: string | null
+} {
   if (isValidFunnelWindow(value)) {
-    if (value.mode === 'same_day') return { mode: 'same_day', value: 1, unit: 'day' }
-    return { mode: 'duration', value: Number(value.value), unit: value.unit }
+    return { value: value.mode === 'same_day'
+      ? { mode: 'same_day', value: 1, unit: 'day' }
+      : { mode: 'duration', value: value.value, unit: value.unit }, issue: null }
   }
-
-  // Known legacy migration: older dashboard configs stored only a 1-365 day value.
-  const legacyDays = Number(legacyWindowDays)
-  if (Number.isFinite(legacyDays)) {
-    return {
-      mode: 'duration',
-      value: Math.min(365, Math.max(1, Math.trunc(legacyDays))),
-      unit: 'day',
-    }
+  // A present invalid current configuration must never be overridden by legacy data.
+  if (value === undefined && typeof legacyWindowDays === 'number'
+    && Number.isInteger(legacyWindowDays) && legacyWindowDays >= 1 && legacyWindowDays <= 365) {
+    return { value: { mode: 'duration', value: legacyWindowDays, unit: 'day' }, issue: null }
   }
-
-  return { ...DEFAULT_FUNNEL_WINDOW }
+  return { value: null, issue: '漏斗分析窗口期配置无效，请重新设置。' }
 }
 
-export function formatFunnelWindow(value: FunnelWindowConfig) {
+export function normalizeFunnelWindow(value: unknown, legacyWindowDays?: unknown): FunnelWindowConfig | null {
+  return parseStoredFunnelWindow(value, legacyWindowDays).value
+}
+
+export function formatFunnelWindow(value: unknown) {
   const normalized = normalizeFunnelWindow(value)
+  if (!normalized) return '窗口配置无效'
   if (normalized.mode === 'same_day') return '当天'
   return `${normalized.value}${UNIT_LABELS[normalized.unit]}`
 }

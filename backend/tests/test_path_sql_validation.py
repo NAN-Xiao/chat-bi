@@ -156,19 +156,18 @@ def test_same_select_row_number_and_lead_timestamp_order_is_not_sequence_reuse()
 
 
 @pytest.mark.parametrize("valid", [False, True])
-def test_generation_routes_timestamp_resorting_to_repair(valid):
-    normalized = {"analysis_model": "path", "path": PATH_CONFIG}
+def test_compiled_path_sequence_failure_never_routes_to_repair(valid):
+    from path_compiler_fixture import plan, config
+    from apps.dashboard.crud.path_sql_compiler import compile_path_sql
+    p = plan(); compiled = compile_path_sql(p)
+    sql = compiled if valid else compiled.replace("ORDER BY step_in_session ASC", "ORDER BY event_time ASC")
+    normalized = config()
     response = ai_sql_generator._node_validate_sql({
-        "response": ai_sql_generator.DashboardAiSqlGenerateResponse(
-            success=True, sql=path_sql(edge_order="step_in_session" if valid else "event_time"),
-            chart_type="sankey", analysis_model="path",
-        ),
-        "normalized_config": normalized,
-        "sql_dialect": "mysql",
-        "schema": PATH_SCHEMA,
-        "graph_trace": [],
+        "response": ai_sql_generator.DashboardAiSqlGenerateResponse(success=True, sql=sql),
+        "normalized_config": normalized, "path_plan": p, "path_compiled_sql": compiled,
+        "sql_dialect": "postgres", "graph_trace": [],
     })["response"]
     assert response.success is valid, response.issues
     if not valid:
-        assert any("不能再次按时间排序" in issue for issue in response.issues)
-        assert ai_sql_generator._route_after_sql_validate({"response": response, "normalized_config": normalized, "sql_repair_attempts": 0}) == "repair_sql"
+        assert response.issues and not response.sql
+    assert ai_sql_generator._route_after_sql_validate({"response": response, "normalized_config": normalized}) == "explain_advice"

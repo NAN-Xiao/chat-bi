@@ -11,6 +11,19 @@ def _text(value) -> str:
     return str(value or "").strip()
 
 
+def normalize_tracking_property_type(value) -> str:
+    """Use the same declared value-type vocabulary for schema and SQL expressions."""
+    normalized = _text(value).lower().removesuffix("类型").replace("_", "").replace("-", "").replace(" ", "")
+    if normalized in {"int", "integer", "bigint", "smallint", "float", "double", "decimal",
+                      "number", "numeric", "real", "数值", "数字", "整数", "小数"}:
+        return "number"
+    if normalized in {"bool", "boolean", "布尔", "布尔值"}:
+        return "boolean"
+    if normalized in {"date", "datetime", "timestamp", "日期", "时间", "日期时间"}:
+        return "datetime"
+    return "text"
+
+
 def normalize_json_path(value: str | None) -> str:
     return _normalize_json_path(value)
 
@@ -78,7 +91,7 @@ def compile_tracking_json_expression(
 
     column = qualified_field(table_name, source_field, family)
     path = normalize_json_path(json_path)
-    semantic = _text(semantic_type).lower()
+    semantic = normalize_tracking_property_type(semantic_type)
     if family == "postgres":
         typed_segments = _json_path_segments(path)
         if typed_segments is None or not typed_segments:

@@ -334,7 +334,7 @@ class DashboardSqlPreviewCacheKey:
     """
     类说明：DashboardSqlPreviewCacheKey 把仪表盘相关的数据和行为放在一起，便于其他代码直接复用。
     """
-    def __init__(self, tenant_id: int, user_id: str, datasource_id: int, fingerprint: str):
+    def __init__(self, tenant_id: int, user_id: str, datasource_id: int, fingerprint: str, interval_contract=None, path_contract=None, ranking_contract=None):
         """
         是什么：DashboardSqlPreviewCacheKey.__init__ 是 DashboardSqlPreviewCacheKey 里的一个步骤，帮它完成仪表盘相关的一件事。
         谁调用：创建 DashboardSqlPreviewCacheKey 这个对象时，Python 会先调用它。
@@ -344,6 +344,9 @@ class DashboardSqlPreviewCacheKey:
         self.user_id = user_id
         self.datasource_id = datasource_id
         self.fingerprint = fingerprint
+        self.interval_contract = interval_contract
+        self.path_contract = path_contract
+        self.ranking_contract = ranking_contract
 
     @property
     def memory_key(self) -> str:
@@ -2136,10 +2139,14 @@ def _prepare_dashboard_chart_item_query(
             date_filter_capability={"status": "unconfigured", "reason": resolution.reason},
             date_filter_error_type=resolution.error_type,
         )
+    pivot = item.get("pivot")
+    contract = (source_config.get("sql") or {}).get("execution_contract")
+    if contract is not None:
+        pivot = {**dict(pivot or {}), "execution_contract": contract}
     return _prepare_dashboard_chart_query(
         datasource,
         str(item.get("sql") or ""),
-        item.get("pivot"),
+        pivot,
         date_filter=resolution.date_filter,
         require_time_field=require_time_field,
     )
@@ -2393,6 +2400,9 @@ def _dashboard_chart_permission_audit(
             datasource_access_checked=datasource_access_checked,
             row_permission_policy="deny_on_overlap",
         )
+        from apps.dashboard.crud.analysis_execution_contract import validate_analysis_workspace_contract
+        expected_contract = pivot.get("execution_contract") if isinstance(pivot, dict) else getattr(pivot, "execution_contract", None)
+        validate_analysis_workspace_contract(session, current_user, datasource_id, sql, expected_contract)
     except Exception as exc:
         error_type = safe_query_error_type(current_user, exc)
         failure = _failed_chart_result(
@@ -2558,6 +2568,9 @@ def _dashboard_sql_preview_cache_key(
     user_id = _user_id(current_user)
     date_filter_context = date_filter_capability if isinstance(date_filter_capability, dict) else {}
     payload = {
+        # Version 2 preserves explicit driver aliases without additional short
+        # names. Old cached results must expire under their original keys.
+        "result_format_version": 2,
         "tenant_id": tenant_id,
         "user_id": user_id,
         "datasource_id": datasource_id,
@@ -2578,11 +2591,17 @@ def _dashboard_sql_preview_cache_key(
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     fingerprint = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    from apps.dashboard.crud.interval_execution_contract import read_interval_contract
+    from apps.dashboard.crud.path_execution_contract import read_path_contract
+    from apps.dashboard.crud.ranking_execution_contract import read_ranking_contract
     return DashboardSqlPreviewCacheKey(
         tenant_id=tenant_id,
         user_id=user_id,
         datasource_id=datasource_id,
         fingerprint=fingerprint,
+        interval_contract=read_interval_contract(sql),
+        path_contract=read_path_contract(sql),
+        ranking_contract=read_ranking_contract(sql),
     )
 
 
@@ -2715,6 +2734,8 @@ def _dashboard_sql_preview_cache_get(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    if allow_expired and (cache_key.interval_contract or cache_key.path_contract or cache_key.ranking_contract):
+        return None
     ttl = _dashboard_sql_preview_cache_ttl()
     if ttl <= 0:
         return None
@@ -2725,6 +2746,9 @@ def _dashboard_sql_preview_cache_get(
             if raw:
                 decoded = json.loads(raw)
                 if isinstance(decoded, dict):
+                    if not _interval_cached_result_valid(cache_key, decoded):
+                        client.delete(_dashboard_sql_preview_redis_key(cache_key))
+                        return None
                     if not _dashboard_sql_preview_result_has_rows(decoded):
                         client.delete(_dashboard_sql_preview_redis_key(cache_key))
                         return None
@@ -2736,7 +2760,19 @@ def _dashboard_sql_preview_cache_get(
                 AppLogUtil.exception("Dashboard SQL preview Redis cache read failed; falling back to memory cache")
                 _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED = True
             _DASHBOARD_SQL_PREVIEW_REDIS_DISABLED_UNTIL = time.monotonic() + 30
-    return _dashboard_sql_preview_memory_get(cache_key, allow_expired=allow_expired)
+    result = _dashboard_sql_preview_memory_get(cache_key, allow_expired=allow_expired)
+    return result if result is not None and _interval_cached_result_valid(cache_key, result) else None
+
+
+def _interval_cached_result_valid(cache_key, result):
+    contract = cache_key.ranking_contract or cache_key.path_contract or cache_key.interval_contract
+    if not contract:
+        return True
+    evidence_key = {"path": "_path_contract", "ranking": "_ranking_contract"}.get(contract.get("kind"), "_interval_contract")
+    evidence = result.get(evidence_key) or {}
+    return (evidence.get("version") == 1 and evidence.get("guard_status") == "passed"
+            and evidence.get("fingerprint") == contract["fingerprint"]
+            and evidence.get("metadata_digest") == contract["metadata_digest"])
 
 
 def _dashboard_sql_preview_cache_set(cache_key: DashboardSqlPreviewCacheKey, result: dict[str, Any]) -> None:
@@ -2745,6 +2781,16 @@ def _dashboard_sql_preview_cache_set(cache_key: DashboardSqlPreviewCacheKey, res
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    if (cache_key.interval_contract or cache_key.path_contract or cache_key.ranking_contract) and (result.get("status") == "failed" or not _interval_cached_result_valid(cache_key, result)):
+        with _DASHBOARD_SQL_PREVIEW_CACHE_LOCK:
+            _DASHBOARD_SQL_PREVIEW_CACHE.pop(cache_key.memory_key, None)
+        client = _dashboard_sql_preview_redis_client()
+        if client is not None:
+            try:
+                client.delete(_dashboard_sql_preview_redis_key(cache_key))
+            except RedisError:
+                AppLogUtil.warning("Failed to invalidate interval result cache")
+        return
     ttl = _dashboard_sql_preview_cache_ttl()
     if ttl <= 0 or result.get("status") == "failed" or not _dashboard_sql_preview_result_has_rows(result):
         return
@@ -2968,6 +3014,12 @@ def _execute_dashboard_chart_sql(
     做了什么：把仪表盘的主要流程跑起来，一步步调用需要的处理。
     """
     datasource_id = resolve_chart_execution_datasource(session, current_user, datasource_id)
+    from apps.dashboard.crud.analysis_execution_contract import require_analysis_contract
+    try:
+        expected = pivot.get("execution_contract") if isinstance(pivot, dict) else getattr(pivot, "execution_contract", None)
+        require_analysis_contract(sql, expected)
+    except ValueError as exc:
+        return _failed_chart_result(str(exc), "analysis_contract_invalid")
     configured_roles = dict(_configured_chart_execution_datasources(session, current_user))
     datasource_access_checked = configured_roles.get(datasource_id) == "roi"
     if _dashboard_pivot_enabled(pivot):
@@ -3998,7 +4050,7 @@ def _load_share_preview_payload(
                     item.get("pivot"),
                 )
             else:
-                data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item["sql"])
+                data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item["sql"], prepared_query.pivot)
         if not isinstance(item.get("data"), dict):
             item["data"] = {}
         item["data"]["data"] = data_result["data"]
@@ -4285,6 +4337,7 @@ def _dashboard_payload(
                     current_user,
                     item_datasource,
                     prepared_query.source_sql,
+                    prepared_query.pivot,
                 )
             if data_result.get("error_type") == PERMISSION_DENIED_ERROR_TYPE:
                 item["dateFilterCapability"] = {
@@ -5504,6 +5557,11 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
             },
             {"status": "unconfigured", "reason": "missing_sql"},
         )
+    from apps.dashboard.crud.analysis_execution_contract import require_analysis_contract
+    try:
+        require_analysis_contract(request.sql, request.execution_contract)
+    except ValueError as exc:
+        return _failed_chart_result(str(exc), "analysis_contract_invalid")
     datasource_id = resolve_chart_execution_datasource(session, current_user, request.datasource)
     request.datasource = datasource_id
     normalized_sql = request.sql.strip()

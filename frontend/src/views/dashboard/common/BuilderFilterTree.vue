@@ -91,7 +91,7 @@ function updateNodeLogic(node: FilterNode, value: FilterLogic) {
 }
 
 function isGroup(node: FilterNode) {
-  return node.type === 'group' || Array.isArray(node.children)
+  return node.type === 'group'
 }
 </script>
 

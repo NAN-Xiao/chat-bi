@@ -1748,7 +1748,7 @@ def test_distribution_validation_rejects_hidden_descriptive_entity_dimension() -
     assert any("最终结果缺少分析主体字段 country" in issue for issue in issues)
 
 
-def test_distribution_result_contract_exposes_descriptive_entity_field() -> None:
+def test_distribution_result_contract_does_not_infer_dimension_from_entity_name() -> None:
     normalized = ai_sql_generator._normalize_manual_config(_distribution_request())
     normalized["distribution"]["entityField"] = {
         "table": "event",
@@ -1763,8 +1763,8 @@ def test_distribution_result_contract_exposes_descriptive_entity_field() -> None
         ai_sql_generator._build_formula_ir(normalized),
     )
 
-    assert "mediasource" in plan["result_contract"]["required_columns"]
-    assert plan["result_contract"]["final_grain"][:2] == ["distribution_date", "mediasource"]
+    assert "mediasource" not in plan["result_contract"]["required_columns"]
+    assert plan["result_contract"]["final_grain"] == ["distribution_date", "interval_order", "interval_label"]
 
 
 @pytest.mark.parametrize(
@@ -1812,8 +1812,12 @@ def test_sql_validation_rejects_same_select_output_alias_references_for_all_mode
     })["response"]
 
     assert validated.success is False
-    assert validated.message == "生成 SQL 存在查询列别名作用域错误。"
-    assert any("interval_label" in issue and "interval_order" in issue for issue in validated.issues)
+    assert validated.message == ({"ranking":"排行榜 SQL 未通过配置及结构校验。", "path":"路径 SQL 未通过配置及结构校验。", "revenue":"收入 SQL 未通过配置及结构校验。", "attribution":"归因 SQL 未通过配置及结构校验。"}.get(analysis_model, "生成 SQL 存在查询列别名作用域错误。"))
+    if analysis_model == "attribution":
+        assert validated.sql == "" and "归因查询计划缺失。" in validated.issues
+        assert ai_sql_generator._same_select_alias_reference_issues("SELECT 1 AS interval_order, interval_order + 1 AS interval_label FROM event","mysql")
+    else:
+        assert any("interval_label" in issue and "interval_order" in issue for issue in validated.issues)
 
 
 def test_sql_validation_allows_qualified_source_columns_with_same_names() -> None:
@@ -1900,7 +1904,7 @@ def test_sql_validation_rejects_aggregate_alias_in_postgres_having() -> None:
     assert any("row_count" in issue and "HAVING" in issue for issue in issues)
 
 
-def test_node_validate_routes_same_select_window_alias_to_repair() -> None:
+def test_node_validate_rejects_path_window_alias_without_repair() -> None:
     response = ai_sql_generator.DashboardAiSqlGenerateResponse(
         success=True,
         sql=(
@@ -1920,12 +1924,13 @@ def test_node_validate_routes_same_select_window_alias_to_repair() -> None:
     })["response"]
 
     assert validated.success is False
-    assert validated.message == "生成 SQL 存在查询列别名作用域错误。"
+    assert any("step_in_session" in issue for issue in validated.issues)
+    assert not validated.sql
     assert ai_sql_generator._route_after_sql_validate({
         "response": validated,
         "normalized_config": {"analysis_model": "path"},
         "sql_repair_attempts": 0,
-    }) == "repair_sql"
+    }) == "explain_advice"
 
 
 @pytest.mark.parametrize(
@@ -1951,7 +1956,7 @@ def test_sql_validation_uses_configured_repair_attempt_limit(
 
     route = ai_sql_generator._route_after_sql_validate({
         "response": response,
-        "normalized_config": {"analysis_model": "event"},
+        "normalized_config": {"analysis_model": "heatmap"},
         "sql_repair_attempts": attempts,
     })
 
@@ -3316,7 +3321,9 @@ def test_retention_prompt_and_sql_validation_require_fixed_cohort_columns() -> N
     assert "固定 Cohort 宽表" in prompt
     assert "day_0 到 day_7" in prompt
     assert validated.success is False
-    assert "day_7" in validated.issues[0]
+    # The compiler contract requires a resolved plan, even if a supplied SQL
+    # happens to contain some of the expected cohort aliases.
+    assert any("留存查询计划缺失" in issue for issue in validated.issues)
 
 
 def test_retention_system_prompt_uses_wide_result_without_changing_event_prompt() -> None:
@@ -3379,7 +3386,7 @@ def test_sql_validation_keeps_model_contract_issues_with_dialect_issues() -> Non
 
     assert validated.success is False
     assert any("WITH RECURSIVE" in issue for issue in validated.issues)
-    assert any("simultaneous_value" in issue for issue in validated.issues)
+    assert any("留存查询计划缺失" in issue for issue in validated.issues)
 
 
 @pytest.mark.parametrize(
@@ -3464,7 +3471,7 @@ def test_sql_validation_routes_failures_by_generation_strategy(
         issues=["SQL 未通过当前分析模型的结果契约。"],
     )
 
-    expected_route = "explain_advice" if analysis_model == "interval" else "repair_sql"
+    expected_route = "explain_advice" if analysis_model in {"event", "interval", "property", "retention", "funnel", "distribution", "path", "revenue", "attribution", "ranking"} else "repair_sql"
     assert ai_sql_generator._route_after_sql_validate({
         "normalized_config": {"analysis_model": analysis_model},
         "response": failed_response,
@@ -3477,7 +3484,7 @@ def test_sql_validation_routes_failures_by_generation_strategy(
     }) == "explain_advice"
 
 
-def test_funnel_join_subquery_dialect_failure_routes_to_repair() -> None:
+def test_funnel_join_subquery_dialect_failure_is_reported_without_model_repair() -> None:
     request = _funnel_request()
     normalized = ai_sql_generator._normalize_manual_config(request)
     sql = """
@@ -3522,10 +3529,13 @@ def test_funnel_join_subquery_dialect_failure_routes_to_repair() -> None:
         "normalized_config": normalized,
         "response": validated,
         "sql_repair_attempts": 0,
-    }) == "repair_sql"
+    }) == "explain_advice"
 
 
-@pytest.mark.parametrize("analysis_model, analysis_label", ai_sql_generator.ANALYSIS_MODEL_LABELS.items())
+@pytest.mark.parametrize("analysis_model, analysis_label", [
+    (model, label) for model, label in ai_sql_generator.ANALYSIS_MODEL_LABELS.items()
+    if model not in {"event", "retention", "property", "interval", "funnel", "distribution", "path", "revenue", "attribution", "ranking"}
+])
 def test_repair_node_uses_current_analysis_model_contract(
     analysis_model: str,
     analysis_label: str,
@@ -3755,10 +3765,10 @@ FROM matched
     assert validated.success is False
     assert any("FROM_DAYS" in issue for issue in validated.issues)
     assert any("直接加减 INTERVAL" in issue for issue in validated.issues)
-    assert any("DATEDIFF 参数顺序错误" in issue for issue in validated.issues)
+    assert any("留存查询计划缺失" in issue for issue in validated.issues)
 
 
-def test_retention_sql_validation_allows_typed_yyyymmdd_date_operations() -> None:
+def test_retention_sql_validation_rejects_unplanned_sql_even_with_typed_dates() -> None:
     valid_sql = """
 WITH event_dates AS (
     SELECT
@@ -3802,8 +3812,8 @@ GROUP BY cohort_date
         "graph_trace": [],
     })["response"]
 
-    assert validated.success is True
-    assert not validated.issues
+    assert validated.success is False
+    assert any("留存查询计划缺失" in issue for issue in validated.issues)
 
 
 def test_retention_simultaneous_and_related_property_are_validated() -> None:
@@ -4286,7 +4296,7 @@ def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.M
         datasource=1,
         intent="看登录人数",
         chart_type="line",
-        context={"selectedFields": []},
+        context={"analysisModel": "heatmap", "selectedFields": []},
     )
     datasource = SimpleNamespace(id=1, name="业务库", type="postgresql", type_name="PostgreSQL")
     business_context = SimpleNamespace(
@@ -4348,7 +4358,7 @@ def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.M
     assert calls[0]["tenant_id"] == 2001
     assert calls[0]["datasource_id"] == 1
     assert calls[0]["target_scope"] == ai_sql_generator.CustomPromptTargetScopeEnum.SMART_QA
-    assert calls[0]["analysis_model"] == "event"
+    assert calls[0]["analysis_model"] == "heatmap"
     assert calls[0]["table_list"] is None
     assert result["event_scope"]["mode"] == "general"
 
@@ -4360,7 +4370,8 @@ def test_collect_context_limits_business_schema_to_workspace_default_event_table
         datasource=6,
         intent="看登录人数",
         chart_type="line",
-        context={"selectedFields": []},
+        context={"analysisModel": "event", "selectedFields": [], "metrics": [
+            {"id": "m1", "alias": "次数", "field": {"table": "event", "field": "event"}, "aggregation": "count"}]},
     )
     datasource = SimpleNamespace(id=6, name="业务库", type="mysql", type_name="MySQL")
     business_context = SimpleNamespace(
@@ -4398,7 +4409,8 @@ def test_collect_context_limits_business_schema_to_workspace_default_event_table
         )
 
     monkeypatch.setattr(ai_sql_generator, "get_tracking_config", _tracking_config)
-    monkeypatch.setattr(ai_sql_generator.BusinessSqlContextService, "build", staticmethod(_build))
+    monkeypatch.setattr(ai_sql_generator.BusinessSqlContextService, "build_for_compilation", staticmethod(_build))
+    monkeypatch.setattr(ai_sql_generator.BusinessSqlContextService, "build", lambda **kw: pytest.fail("事件不应构造生成上下文"))
 
     result = ai_sql_generator._node_collect_context({
         "session": _Session(),

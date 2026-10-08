@@ -12,6 +12,11 @@ export const dashboardApi = {
     request.post('/dashboard/sql_preview', params, { timeout: 180000, ...config }),
   execution_datasources: () => request.get('/dashboard/execution-datasources'),
   execution_datasource_metadata: (id: number) => request.get(`/dashboard/execution-datasource-metadata/${id}`),
+  compile_sql: (params: any, config?: any) => request.post('/dashboard/sql_compile', params, {
+    ...config,
+    timeout: 65000,
+    requestOptions: { ...config?.requestOptions, retryCount: 0 },
+  }),
   generate_ai_sql: async (params: any, config?: any) => {
     const requestOptions = { ...config?.requestOptions, retryCount: 0 }
     const limits = await request.get('/dashboard/ai_sql_generation_limits', {

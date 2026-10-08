@@ -198,6 +198,14 @@ def build_date_scaffold(time_config: dict[str, Any], dialect: str) -> dict[str, 
     return result
 
 
+def build_daily_date_scaffold(start_day_sql: str, end_day_sql: str, dialect: str) -> dict[str, Any]:
+    """Internal adapter for trusted DATE bounds; preserves existing public scaffold behavior."""
+    result = build_date_scaffold({"grain": "day", "date_parameter_type": "date"}, dialect)
+    for key in ("cte_sql", "select_sql"):
+        result[key] = result[key].replace("{{dashboard_start_date}}", start_day_sql).replace("{{dashboard_end_date}}", end_day_sql)
+    return result
+
+
 def _scaffold_ast(sql: str, dialect: str) -> exp.Query:
     # Named placeholders remain distinct AST leaves. Replacing both endpoints
     # with a single sample date would incorrectly accept reversed/same bounds.
