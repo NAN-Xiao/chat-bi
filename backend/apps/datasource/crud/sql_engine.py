@@ -55,6 +55,21 @@ def get_ai_table_schema(*args, **kwargs):
     return _get_ai_table_schema(*args, **kwargs)
 
 
+def get_compilation_table_schema(*args, **kwargs):
+    """Lazy import of the metadata-only schema interface."""
+    from apps.datasource.crud.datasource import get_compilation_table_schema as load_schema
+    return load_schema(*args, **kwargs)
+
+
+def _authorized_datasource(session, current_user, datasource_id):
+    datasource = session.get(CoreDatasource, int(datasource_id))
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    if not has_datasource_access(session, current_user, int(datasource_id)):
+        raise HTTPException(status_code=403, detail=f"当前用户无权访问项目 {datasource_id}")
+    return datasource
+
+
 @dataclass
 class BusinessSqlContext:
     """
@@ -107,6 +122,30 @@ class BusinessSqlContextService:
     """
 
     @staticmethod
+    def build_for_compilation(
+        *, session: SessionDep, current_user: CurrentUser, tenant_id: int,
+        datasource_id: int, configuration: dict[str, Any], table_list: list[str] | None = None,
+    ) -> BusinessSqlContext:
+        """Build only the authorized metadata consumed by configuration compilers.
+
+        No prompt, Data Skill, model, embedding, or generation-mode option is
+        accepted by this interface. Both entry points share access enforcement.
+        """
+        datasource = _authorized_datasource(session, current_user, datasource_id)
+        datasource_type = getattr(datasource, "type", None) or getattr(datasource, "type_name", None)
+        schema, tables = get_compilation_table_schema(
+            session=session, current_user=current_user, ds=datasource,
+            tenant_id=tenant_id, table_list=table_list, configuration=configuration,
+        )
+        return BusinessSqlContext(
+            tenant_id=int(tenant_id), datasource_id=int(datasource_id), target_scope="configuration_compilation",
+            datasource=datasource, datasource_type=datasource_type,
+            sql_dialect=get_sqlglot_dialect(datasource_type), schema=schema, allowed_tables=list(tables),
+            business_context_hash=_stable_digest({"purpose": "compilation", "tenant_id": tenant_id,
+                "datasource_id": datasource_id, "schema": schema, "allowed_tables": tables}),
+        )
+
+    @staticmethod
     def build(
         *,
         session: SessionDep,
@@ -129,11 +168,7 @@ class BusinessSqlContextService:
         是什么：构建 Agent 生成 SQL 需要的唯一业务库上下文。
         做了什么：确认当前数据源、读取 AI schema、数据字典、Data Skills 和 SQL 方言。
         """
-        datasource = session.get(CoreDatasource, int(datasource_id))
-        if datasource is None:
-            raise HTTPException(status_code=404, detail="项目不存在")
-        if not has_datasource_access(session, current_user, int(datasource_id)):
-            raise HTTPException(status_code=403, detail=f"当前用户无权访问项目 {datasource_id}")
+        datasource = _authorized_datasource(session, current_user, datasource_id)
         datasource_type = getattr(datasource, "type", None) or getattr(datasource, "type_name", None)
         sql_dialect = get_sqlglot_dialect(datasource_type)
 

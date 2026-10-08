@@ -11,6 +11,7 @@ import {
 const props = defineProps<{
   modelValue: RevenueMetricConfig
   disabled?: boolean
+  label?: string
 }>()
 
 const emits = defineEmits<{
@@ -54,8 +55,8 @@ function chooseMethod(method: RevenueMetricMethod) {
         type="button"
         class="revenue-metric-trigger"
         :disabled="disabled"
-        aria-label="选择收入口径"
-        title="选择收入口径"
+        :aria-label="`选择${label || '收入口径'}`"
+        :title="`选择${label || '收入口径'}`"
       >
         <span>{{ activeLabel }}</span>
         <el-icon><ArrowDown /></el-icon>
@@ -65,7 +66,7 @@ function chooseMethod(method: RevenueMetricMethod) {
     <div class="revenue-metric-panel">
       <div class="revenue-metric-search">
         <el-icon><Search /></el-icon>
-        <input v-model="keyword" type="search" placeholder="请输入搜索" aria-label="搜索收入口径" />
+        <input v-model="keyword" type="search" placeholder="请输入搜索" :aria-label="`搜索${label || '收入口径'}`" />
       </div>
       <div class="revenue-metric-group-title">预置计算方法</div>
       <div class="revenue-metric-list">

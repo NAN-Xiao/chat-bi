@@ -3,6 +3,7 @@ node_modules/
 .codex-runtime/
 .codegraph/
 learning-docs/
+/docs/superpowers/
 /test-results/
 /playwright-report/
 /blob-report/

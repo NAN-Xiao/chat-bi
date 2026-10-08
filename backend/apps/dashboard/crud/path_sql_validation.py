@@ -12,6 +12,38 @@ from apps.dashboard.crud.sql_generation_validation import _conjuncts, _metric_no
 from apps.dashboard.crud.funnel_sql_validation import _configured_entity, _input_aliases, _metadata, _time_kind
 
 
+def path_result_contract_issues(sql, plan, *, compiled_sql):
+    """Pin the authorized compile snapshot and independently verify the edge lineage."""
+    from apps.dashboard.crud.path_sql_compiler import PATH_GUARD_COLUMN
+    if plan is None or not compiled_sql:
+        return ["路径查询计划或编译快照缺失。"]
+    def parse(value):
+        tokens = set(re.findall(r"\{\{dashboard_[a-z0-9_]+\}\}", value))
+        text, _ = _scan_sql_tokens(value, {t: ":" + t[2:-2] for t in tokens})
+        trees = sqlglot.parse(text, read=plan.dialect)
+        if len(trees) != 1 or not isinstance(trees[0], exp.Query):
+            raise ValueError("必须为单条只读路径查询。")
+        return trees[0]
+    try:
+        tree = parse(sql)
+        if tree != parse(compiled_sql): return ["路径 SQL 偏离已授权配置的编译结果。"]
+        expected = [*plan.required_columns, PATH_GUARD_COLUMN]
+        if not isinstance(tree, exp.Union) or tree.args.get("distinct") or any(
+                list(branch.named_selects) != expected for branch in (tree.this, tree.expression)):
+            return ["路径结果缺少业务列或互斥排序错误分支。"]
+        ctes = list(tree.args["with_"].expressions)
+        result = next(c.this.copy() for c in ctes if c.alias == "path_result")
+        result.set("with_", exp.With(expressions=[c.copy() for c in ctes if c.alias != "path_result"]))
+        # The typed plan already validates the source time and unit. Verify the
+        # actual ordering lineage against its precise absolute-time expression.
+        return path_sequence_issues(result.sql(dialect=plan.dialect), plan.dialect,
+            path_config={"initialEvent": {"eventTable": plan.table,
+                "eventNameField": sqlglot.parse_one(plan.event_key_expression, read=plan.dialect).name,
+                "eventName": plan.initial_event_name}}, compiled_time_expression=plan.time.instant)
+    except (ValueError, KeyError, StopIteration, sqlglot.errors.SqlglotError) as exc:
+        return [f"路径 SQL 结构无法验证：{exc}"]
+
+
 PATH_SEQUENCE_RULE = (
     "路径边顺序协议：session_steps 先以 Schema 中明确 role=event_time 的完整事件时间 ASC 作为首排序，生成一次会话内 ROW_NUMBER() AS step_in_session；"
     "事件时间必须保留声明的时间单位和精度，不能用日期截断、倒序、事件名称或常量生成初始序号。"
@@ -162,7 +194,8 @@ def _gated_projection(node: exp.Expression, scope: Scope, window: exp.Window,
                for child in value.iter_expressions())
 
 
-def path_sequence_issues(sql: str, dialect: str = "mysql", *, schema: str = "", path_config: dict | None = None) -> list[str]:
+def path_sequence_issues(sql: str, dialect: str = "mysql", *, schema: str = "", path_config: dict | None = None,
+                         compiled_time_expression: str | None = None) -> list[str]:
     tokens = set(re.findall(r"\{\{dashboard_[a-z0-9_]+\}\}", sql, flags=re.I))
     source, _ = _scan_sql_tokens(sql, {token: ":" + token[2:-2] for token in tokens})
     try:
@@ -185,11 +218,30 @@ def path_sequence_issues(sql: str, dialect: str = "mysql", *, schema: str = "", 
             initial = {}
         sequence_window, sequence_scope, _ = sequence
         original_order = (sequence_window.args.get("order") or exp.Order()).expressions
+        if compiled_time_expression and original_order:
+            prior = _sequence(original_order[0].this, sequence_scope)
+            if prior is not None and prior[2] == 0 and not original_order[0].args.get("desc"):
+                sequence_scope = prior[1]
+                original_order = (prior[0].args.get("order") or exp.Order()).expressions
+        compiled_time_matches = False
+        if compiled_time_expression and original_order:
+            # Expand through source projections, retaining actual expressions;
+            # do not accept aliases or a query merely containing a correct CTE.
+            from apps.dashboard.crud.interval_sql_validation import _expanded
+            actual = _expanded(original_order[0].this, sequence_scope)
+            expected_time = sqlglot.parse_one(compiled_time_expression, read=dialect)
+            for value in (actual, expected_time):
+                for column in value.find_all(exp.Column):
+                    column.set("table", None); column.set("db", None); column.set("catalog", None)
+                    column.set("this", exp.to_identifier(column.name, quoted=True))
+            actual = actual.transform(lambda node: node.unnest() if isinstance(node, exp.Paren) else node)
+            expected_time = expected_time.transform(lambda node: node.unnest() if isinstance(node, exp.Paren) else node)
+            compiled_time_matches = actual == expected_time
         fields = _metadata(schema)
-        if not fields:
+        if not fields and not compiled_time_matches:
             issues.append("路径初始序号缺少当前授权表的事件时间元数据：请声明 role=event_time；数值时间还必须声明 epoch_seconds/epoch_milliseconds。")
         elif (not original_order or original_order[0].args.get("desc")
-              or _time_kind(original_order[0].this, sequence_scope, fields, allow_aggregate=False) is None):
+              or not compiled_time_matches and _time_kind(original_order[0].this, sequence_scope, fields, allow_aggregate=False) is None):
             issues.append("路径初始 ROW_NUMBER 必须以配置声明的完整事件时间 ASC 作为首排序；不能按事件名称、常量、日期截断或时间倒序生成步骤。")
         windows = [(name, window, scope)
                    for name in ("path_source", "path_target") if name in outputs

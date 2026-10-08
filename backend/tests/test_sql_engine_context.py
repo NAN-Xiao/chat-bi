@@ -26,6 +26,73 @@ class _Session:
         return None
 
 
+@pytest.mark.parametrize("model", ["property", "interval", "retention", "funnel"])
+def test_compilation_context_preserves_authorized_schema_without_semantic_models(monkeypatch, model):
+    calls = []
+    def forbidden(*args, **kwargs):
+        pytest.fail("configuration compilation must not retrieve/rank Data Skills or build model prompts")
+    monkeypatch.setattr(sql_engine, "find_data_skills", forbidden)
+    monkeypatch.setattr(sql_engine, "find_tracking_prompt_context", forbidden)
+    monkeypatch.setattr(sql_engine, "has_datasource_access", lambda *args: calls.append("permission") or True)
+    def schema(**kwargs):
+        calls.append("schema")
+        assert "embedding" not in kwargs
+        assert kwargs["tenant_id"] == 2001
+        assert kwargs["table_list"] == ["events"]
+        assert "data_skill_text" not in kwargs
+        return "# Table: events\n[(uid:varchar)]", ["events"]
+    monkeypatch.setattr(sql_engine, "get_compilation_table_schema", schema)
+    context = sql_engine.BusinessSqlContextService.build_for_compilation(
+        session=_Session(), current_user=SimpleNamespace(id=1001), tenant_id=2001,
+        datasource_id=1, configuration={"analysisModel": model, "eventName": "Open"}, table_list=["events"],
+    )
+    assert calls == ["permission", "schema"]
+    assert context.allowed_tables == ["events"] and "uid" in context.schema
+    assert context.sql_dialect == "postgres" and context.business_context_hash
+    assert context.data_skill == "" and context.skill_model_id is None
+    assert context.semantic_context == ""
+
+
+def test_compilation_context_still_denies_datasource_access(monkeypatch):
+    from fastapi import HTTPException
+    monkeypatch.setattr(sql_engine, "has_datasource_access", lambda *args: False)
+    monkeypatch.setattr(sql_engine, "get_compilation_table_schema", lambda **kw: pytest.fail("unauthorized schema read"))
+    with pytest.raises(HTTPException) as error:
+        sql_engine.BusinessSqlContextService.build_for_compilation(session=_Session(), current_user=SimpleNamespace(id=1001),
+            tenant_id=2001, datasource_id=1, configuration={})
+    assert error.value.status_code == 403
+
+
+def test_compilation_context_interface_has_no_model_options():
+    import inspect
+    parameters = inspect.signature(sql_engine.BusinessSqlContextService.build_for_compilation).parameters
+    assert not ({"embedding", "purpose", "data_skill_id", "analysis_model"} & set(parameters))
+
+
+@pytest.mark.parametrize("configured", [True, False])
+def test_compilation_schema_never_enters_ai_or_embedding_with_dictionary_or_cache(monkeypatch, configured):
+    from apps.datasource.crud import datasource as datasource_crud
+    from apps.ai_model.embedding import EmbeddingModelCache
+    def forbidden(*args, **kwargs):
+        pytest.fail("compilation schema called AI schema, table ranking, or embedding")
+    monkeypatch.setattr(datasource_crud, "get_ai_table_schema", forbidden)
+    monkeypatch.setattr(datasource_crud, "get_table_schema", forbidden)
+    monkeypatch.setattr(datasource_crud, "calc_table_embedding", forbidden)
+    monkeypatch.setattr(datasource_crud, "run_save_table_embeddings", forbidden)
+    monkeypatch.setattr(EmbeddingModelCache, "get_model", forbidden)
+    monkeypatch.setattr(datasource_crud, "_authorized_dictionary_schema", lambda *a: (
+        "# Table: events\n[(uid:varchar)]" if configured else "", ["events"] if configured else [], configured, 2001))
+    monkeypatch.setattr(datasource_crud, "_schema_metadata_tenant_id", lambda *a: 2001)
+    monkeypatch.setattr(datasource_crud, "get_table_obj_by_ds", lambda **kw: [SimpleNamespace(
+        schema="public", table=SimpleNamespace(id=1, table_name="events", custom_comment="", embedding=None),
+        fields=[SimpleNamespace(id=1, field_name="uid", field_type="varchar", custom_comment="")])])
+    schema, tables = datasource_crud.get_compilation_table_schema(
+        session=object(), current_user=SimpleNamespace(id=1), ds=SimpleNamespace(type="postgresql", table_relation=[]),
+        configuration={"analysisModel": "retention"}, table_list=["events"], tenant_id=2001,
+    )
+    assert tables == ["events"] and "uid:varchar" in schema
+
+
 @pytest.mark.parametrize("platform_only", [False, True])
 def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monkeypatch, platform_only):
     """

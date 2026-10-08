@@ -28,6 +28,7 @@ import {
   DEFAULT_FUNNEL_WINDOW,
   isValidFunnelWindow,
   normalizeFunnelWindow,
+  parseStoredFunnelWindow,
   type FunnelWindowConfig,
 } from '@/views/dashboard/common/funnelAnalysis.ts'
 import {
@@ -50,6 +51,10 @@ import {
   REVENUE_OBSERVATION_MIN_DAYS,
   clampRevenueObservationDays,
   revenueMetricUsesProperty,
+  setRevenuePaymentEvent,
+  setRevenueMetricEvent,
+  setRevenueCostEvent,
+  setRevenueCostMetric,
   type RevenueMetricConfig,
 } from '@/views/dashboard/common/revenueAnalysis.ts'
 import DashboardDateExpressionPicker from '@/views/dashboard/common/DashboardDateExpressionPicker.vue'
@@ -235,7 +240,7 @@ type SqlBuilderRetentionConfig = {
 type SqlBuilderFunnelConfig = {
   entityField: string
   steps: SqlBuilderFunnelStep[]
-  window: FunnelWindowConfig
+  window: FunnelWindowConfig | null
   relatedPropertyEnabled: boolean
   relatedProperty: string
 }
@@ -279,8 +284,11 @@ type SqlBuilderRevenueConfig = {
   entityField: string
   initialEvent: string
   paymentEvent: string
+  metricEvent: string
   metric: RevenueMetricConfig
   costEnabled: boolean
+  costEvent: string
+  costMethod: RevenueMetricConfig['method']
   costField: string
   observationDays: number
 }
@@ -586,8 +594,11 @@ const sqlBuilder = reactive({
     entityField: '',
     initialEvent: '',
     paymentEvent: '',
+    metricEvent: '',
     metric: { method: 'count', field: '' },
     costEnabled: false,
+    costEvent: '',
+    costMethod: 'count',
     costField: '',
     observationDays: DEFAULT_REVENUE_OBSERVATION_DAYS,
   } as SqlBuilderRevenueConfig,
@@ -1231,6 +1242,17 @@ const propertyGroupTimeGrainOptions = builderTimeGrainOptions.filter((option) =>
 const isPropertyAnalysis = computed(() => sqlBuilder.analysisModel === 'property')
 const isRetentionAnalysis = computed(() => sqlBuilder.analysisModel === 'retention')
 const isFunnelAnalysis = computed(() => sqlBuilder.analysisModel === 'funnel')
+const funnelRelatedToggleIssue = ref('')
+
+function restoreFunnelRelatedToggle(value: unknown) {
+  if (value === undefined || typeof value === 'boolean') return { value: value === true, issue: null }
+  return { value: false, issue: '保存的关联属性开关无效，请重新选择是否使用关联属性。' }
+}
+
+function confirmFunnelRelatedToggle() {
+  funnelRelatedToggleIssue.value = ''
+}
+
 const isDistributionAnalysis = computed(() => sqlBuilder.analysisModel === 'distribution')
 const isIntervalAnalysis = computed(() => sqlBuilder.analysisModel === 'interval')
 const isPathAnalysis = computed(() => sqlBuilder.analysisModel === 'path')
@@ -1278,8 +1300,8 @@ const pathEventOptions = computed(() => trackingEventCatalogOptions.value)
 const pathEventPropertyOptions = (eventValue: string) => eventFilterFieldOptions(eventValue)
 const revenueEntityFieldOptions = computed(() => builderFieldOptions.value)
 const revenueEventOptions = computed(() => trackingEventCatalogOptions.value)
-const revenuePaymentPropertyOptions = computed(() => eventFilterFieldOptions(sqlBuilder.revenue.paymentEvent))
-const revenueNumericPropertyOptions = computed(() => revenuePaymentPropertyOptions.value.filter(isNumericFieldOption))
+const revenueCostFieldOptions = computed(() => eventFilterFieldOptions(sqlBuilder.revenue.costEvent).filter(isNumericFieldOption))
+const revenueNumericPropertyOptions = computed(() => eventFilterFieldOptions(sqlBuilder.revenue.metricEvent).filter(isNumericFieldOption))
 const pathInitialEventOptions = computed(() => {
   const selectedEvents = new Set(
     sqlBuilder.path.events
@@ -2435,7 +2457,7 @@ function filterRuleNodes(filters: SqlBuilderFilter[]) {
   const rules: SqlBuilderFilter[] = []
   const visit = (nodes: SqlBuilderFilter[]) => {
     nodes.forEach((node) => {
-      if (node.type === 'group' || Array.isArray(node.children)) {
+      if (node.type === 'group') {
         visit(node.children || [])
       } else if (isEffectiveBuilderFilter(node)) {
         rules.push(node)
@@ -2473,7 +2495,7 @@ function isEffectiveBuilderFilter(node?: SqlBuilderFilter | null): node is SqlBu
   if (!node) {
     return false
   }
-  if (node.type === 'group' || Array.isArray(node.children)) {
+  if (node.type === 'group') {
     return (node.children || []).some((child) => isEffectiveBuilderFilter(child))
   }
   return Boolean(node.field && builderFilterRuleHasValue(node))
@@ -2512,9 +2534,6 @@ function cloneBuilderFilterForSave(node: SqlBuilderFilter): SqlBuilderFilter | n
   const isGroup = node.type === 'group'
   if (isGroup) {
     const children = (node.children || []).map(cloneBuilderFilterForSave).filter(Boolean) as SqlBuilderFilter[]
-    if (!children.length) {
-      return null
-    }
     return {
       id: node.id || nodeId('group'),
       type: 'group',
@@ -2524,9 +2543,6 @@ function cloneBuilderFilterForSave(node: SqlBuilderFilter): SqlBuilderFilter | n
       logic: builderLogic(node.logic),
       children,
     }
-  }
-  if (!node.field || !builderFilterRuleHasValue(node)) {
-    return null
   }
   return {
     id: node.id || nodeId('filter'),
@@ -2548,9 +2564,6 @@ function restoreBuilderFilter(node: any): SqlBuilderFilter | null {
     const children = Array.isArray(node?.children)
       ? (node.children.map(restoreBuilderFilter).filter(Boolean) as SqlBuilderFilter[])
       : []
-    if (!children.length) {
-      return null
-    }
     return {
       id: typeof node?.id === 'string' && node.id ? node.id : nodeId('group'),
       type: 'group',
@@ -2569,9 +2582,6 @@ function restoreBuilderFilter(node: any): SqlBuilderFilter | null {
     value: node?.value === undefined || node?.value === null ? '' : String(node.value),
     logic: builderLogic(node?.logic),
     children: [],
-  }
-  if (!isEffectiveBuilderFilter(restoredRule)) {
-    return null
   }
   return {
     ...restoredRule,
@@ -2674,7 +2684,7 @@ function builderConfigForSave() {
     funnel: sqlBuilder.analysisModel === 'funnel' ? {
       entityField: sqlBuilder.funnel.entityField,
       window: normalizeFunnelWindow(sqlBuilder.funnel.window),
-      relatedPropertyEnabled: sqlBuilder.funnel.relatedPropertyEnabled,
+      relatedPropertyEnabled: funnelRelatedToggleIssue.value ? null : sqlBuilder.funnel.relatedPropertyEnabled,
       relatedProperty: sqlBuilder.funnel.relatedPropertyEnabled ? sqlBuilder.funnel.relatedProperty : '',
       steps: sqlBuilder.funnel.steps.map((step) => ({
         id: step.id,
@@ -2752,12 +2762,15 @@ function builderConfigForSave() {
       entityField: sqlBuilder.revenue.entityField,
       initialEvent: sqlBuilder.revenue.initialEvent,
       paymentEvent: sqlBuilder.revenue.paymentEvent,
+      metricEvent: sqlBuilder.revenue.metricEvent,
       metric: {
         method: sqlBuilder.revenue.metric.method,
         field: revenueMetricUsesProperty(sqlBuilder.revenue.metric.method) ? sqlBuilder.revenue.metric.field : '',
       },
       costEnabled: sqlBuilder.revenue.costEnabled,
-      costField: sqlBuilder.revenue.costEnabled ? sqlBuilder.revenue.costField : '',
+      costEvent: sqlBuilder.revenue.costEnabled ? sqlBuilder.revenue.costEvent : '',
+      costMethod: sqlBuilder.revenue.costEnabled ? sqlBuilder.revenue.costMethod : '',
+      costField: sqlBuilder.revenue.costEnabled && revenueMetricUsesProperty(sqlBuilder.revenue.costMethod) ? sqlBuilder.revenue.costField : '',
       observationDays: clampRevenueObservationDays(sqlBuilder.revenue.observationDays),
     } : null,
     attribution: sqlBuilder.analysisModel === 'attribution' ? {
@@ -2918,8 +2931,10 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.retention.relatedProperty.asGroup = sqlBuilder.retention.relatedProperty.enabled && relatedProperty.asGroup === true
   const funnel = value.funnel && typeof value.funnel === 'object' ? value.funnel : {}
   sqlBuilder.funnel.entityField = typeof funnel.entityField === 'string' ? funnel.entityField : ''
-  sqlBuilder.funnel.window = normalizeFunnelWindow(funnel.window, funnel.windowDays)
-  sqlBuilder.funnel.relatedPropertyEnabled = funnel.relatedPropertyEnabled === true
+  sqlBuilder.funnel.window = parseStoredFunnelWindow(funnel.window, funnel.windowDays).value
+  const relatedToggle = restoreFunnelRelatedToggle(funnel.relatedPropertyEnabled)
+  sqlBuilder.funnel.relatedPropertyEnabled = relatedToggle.value
+  funnelRelatedToggleIssue.value = relatedToggle.issue || ''
   const restoredFunnelSteps = Array.isArray(funnel.steps)
     ? funnel.steps.map((step: any) => {
         const restored = createFunnelStep()
@@ -2931,7 +2946,7 @@ function restoreSqlBuilderState(value: any) {
         return restored
       })
     : []
-  sqlBuilder.funnel.steps = restoredFunnelSteps.length >= 2
+  sqlBuilder.funnel.steps = sqlBuilder.analysisModel === 'funnel'
     ? restoredFunnelSteps
     : [createFunnelStep(), createFunnelStep(), createFunnelStep()]
   sqlBuilder.funnel.relatedProperty = restoreFunnelRelatedProperty(funnel, funnel.steps)
@@ -3040,6 +3055,7 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.revenue.entityField = typeof revenue.entityField === 'string' ? revenue.entityField : ''
   sqlBuilder.revenue.initialEvent = typeof revenue.initialEvent === 'string' ? revenue.initialEvent : ''
   sqlBuilder.revenue.paymentEvent = typeof revenue.paymentEvent === 'string' ? revenue.paymentEvent : ''
+  sqlBuilder.revenue.metricEvent = typeof revenue.metricEvent === 'string' ? revenue.metricEvent : ''
   sqlBuilder.revenue.metric.method = revenueMetricMethods.includes(revenueMetric.method)
     ? revenueMetric.method
     : 'count'
@@ -3048,7 +3064,9 @@ function restoreSqlBuilderState(value: any) {
     ? revenueMetric.field
     : ''
   sqlBuilder.revenue.costEnabled = revenue.costEnabled === true
-  sqlBuilder.revenue.costField = sqlBuilder.revenue.costEnabled && typeof revenue.costField === 'string'
+  sqlBuilder.revenue.costEvent = sqlBuilder.revenue.costEnabled && typeof revenue.costEvent === 'string' ? revenue.costEvent : ''
+  sqlBuilder.revenue.costMethod = !sqlBuilder.revenue.costEnabled ? 'count' : revenueMetricMethods.includes(revenue.costMethod) ? revenue.costMethod : ''
+  sqlBuilder.revenue.costField = sqlBuilder.revenue.costEnabled && revenueMetricUsesProperty(sqlBuilder.revenue.costMethod) && typeof revenue.costField === 'string'
     ? revenue.costField
     : ''
   sqlBuilder.revenue.observationDays = clampRevenueObservationDays(revenue.observationDays)
@@ -3618,7 +3636,7 @@ function appendEventScopeFilterIssues(
 ) {
   ;(filters || []).forEach((filter, index) => {
     const location = `${prefix}[${index}]`
-    if (filter.type === 'group' || Array.isArray(filter.children)) {
+    if (filter.type === 'group') {
       appendEventScopeFilterIssues(filter.children || [], `${location}.children`, issues)
       return
     }
@@ -3939,16 +3957,20 @@ function restoreFunnelRelatedProperty(funnel: any, legacySteps: any) {
     && typeof funnel.relatedProperty.value === 'string') {
     return funnel.relatedProperty.value.trim()
   }
+  if (funnel && Object.prototype.hasOwnProperty.call(funnel, 'relatedProperty')) return ''
   // Legacy configs stored one property on every step. Migrate only when all values agree.
   const legacyValues = Array.isArray(legacySteps)
     ? [...new Set(legacySteps
       .map((step) => typeof step?.relatedProperty === 'string' ? step.relatedProperty.trim() : '')
       .filter(Boolean))]
     : []
-  return legacyValues.length === 1 ? legacyValues[0] : ''
+  const complete = Array.isArray(legacySteps) && legacySteps.length >= 2
+    && legacySteps.every((step) => typeof step?.relatedProperty === 'string' && step.relatedProperty.trim())
+  return complete && legacyValues.length === 1 ? legacyValues[0] : ''
 }
 
 function resetFunnelConfig() {
+  funnelRelatedToggleIssue.value = ''
   sqlBuilder.funnel.entityField = preferredAnalysisEntityField(funnelEntityFieldOptions.value)
   sqlBuilder.funnel.steps = [createFunnelStep(), createFunnelStep(), createFunnelStep()]
   sqlBuilder.funnel.window = { ...DEFAULT_FUNNEL_WINDOW }
@@ -4010,8 +4032,11 @@ function resetRevenueConfig() {
   sqlBuilder.revenue.entityField = preferredAnalysisEntityField(revenueEntityFieldOptions.value)
   sqlBuilder.revenue.initialEvent = ''
   sqlBuilder.revenue.paymentEvent = ''
+  sqlBuilder.revenue.metricEvent = ''
   sqlBuilder.revenue.metric = { method: 'count', field: '' }
   sqlBuilder.revenue.costEnabled = false
+  sqlBuilder.revenue.costEvent = ''
+  sqlBuilder.revenue.costMethod = 'count'
   sqlBuilder.revenue.costField = ''
   sqlBuilder.revenue.observationDays = DEFAULT_REVENUE_OBSERVATION_DAYS
 }
@@ -4301,7 +4326,7 @@ function propertyBlockingIssues() {
         }
       })
       const visit = (nodes: SqlBuilderFilter[]) => nodes.forEach((node) => {
-        if (node.type === 'group' || Array.isArray(node.children)) {
+        if (node.type === 'group') {
           visit(node.children || [])
         } else if (node.field && !builderFilterRuleHasValue(node)) {
           issues.push(`人群${index + 1}筛选条件的值不能为空。`)
@@ -4498,11 +4523,11 @@ function handleAnalysisModelChange(model: AnalysisModel) {
 }
 
 function handleRevenuePaymentEventChange(eventValue: string) {
-  const changed = sqlBuilder.revenue.paymentEvent !== eventValue
-  sqlBuilder.revenue.paymentEvent = eventValue
-  if (!changed) return
-  sqlBuilder.revenue.metric.field = ''
-  sqlBuilder.revenue.costField = ''
+  setRevenuePaymentEvent(sqlBuilder.revenue, eventValue)
+}
+
+function handleRevenueMetricEventChange(eventValue: string) {
+  setRevenueMetricEvent(sqlBuilder.revenue, eventValue)
 }
 
 function updateRevenueMetric(metric: RevenueMetricConfig) {
@@ -4513,7 +4538,19 @@ function updateRevenueMetric(metric: RevenueMetricConfig) {
 }
 
 function handleRevenueCostToggle(enabled: boolean) {
-  if (!enabled) sqlBuilder.revenue.costField = ''
+  if (!enabled) {
+    sqlBuilder.revenue.costEvent = ''
+    sqlBuilder.revenue.costMethod = 'count'
+    sqlBuilder.revenue.costField = ''
+  }
+}
+
+function handleRevenueCostEventChange(eventValue: string) {
+  setRevenueCostEvent(sqlBuilder.revenue, eventValue)
+}
+
+function updateRevenueCostMetric(metric: RevenueMetricConfig) {
+  setRevenueCostMetric(sqlBuilder.revenue, metric)
 }
 
 function revenueBlockingIssues() {
@@ -4523,10 +4560,13 @@ function revenueBlockingIssues() {
   if (!revenue.entityField) issues.push('收入分析请先选择分析主体。')
   if (!revenue.initialEvent) issues.push('收入分析请先选择同期初始事件。')
   if (!revenue.paymentEvent) issues.push('收入分析请先选择付费事件。')
+  if (!revenue.metricEvent) issues.push('收入分析请先选择收入口径事件。')
   if (revenueMetricUsesProperty(revenue.metric.method) && !revenue.metric.field) {
     issues.push('收入分析使用事件属性口径时，请先选择数值属性。')
   }
-  if (revenue.costEnabled && !revenue.costField) issues.push('收入分析启用成本数据时，请先选择成本字段。')
+  if (revenue.costEnabled && !revenue.costEvent) issues.push('收入分析启用成本数据时，请先选择成本事件。')
+  if (revenue.costEnabled && !revenue.costMethod) issues.push('收入分析请先选择成本计算方式。')
+  if (revenue.costEnabled && revenueMetricUsesProperty(revenue.costMethod) && !revenue.costField) issues.push('收入分析请先选择成本数值属性。')
   if (revenue.observationDays < REVENUE_OBSERVATION_MIN_DAYS
     || revenue.observationDays > REVENUE_OBSERVATION_MAX_DAYS) {
     issues.push('收入分析观察时长必须在 1 到 365 天之间。')
@@ -4547,15 +4587,23 @@ function sanitizeRevenueConfig() {
   }
   if (revenue.paymentEvent && !optionExists(revenue.paymentEvent, revenueEventOptions.value)) {
     revenue.paymentEvent = ''
-    revenue.metric.field = ''
-    revenue.costField = ''
     cleared.push('付费事件')
+  }
+  if (revenue.metricEvent && !optionExists(revenue.metricEvent, revenueEventOptions.value)) {
+    revenue.metricEvent = ''
+    revenue.metric.field = ''
+    cleared.push('收入口径事件')
   }
   if (revenue.metric.field && !optionExists(revenue.metric.field, revenueNumericPropertyOptions.value)) {
     revenue.metric.field = ''
     cleared.push('收入口径属性')
   }
-  if (revenue.costField && !optionExists(revenue.costField, revenueNumericPropertyOptions.value)) {
+  if (revenue.costEvent && !optionExists(revenue.costEvent, revenueEventOptions.value)) {
+    revenue.costEvent = ''
+    revenue.costField = ''
+    cleared.push('成本事件')
+  }
+  if (revenue.costField && !optionExists(revenue.costField, revenueCostFieldOptions.value)) {
     revenue.costField = ''
     cleared.push('成本字段')
   }
@@ -5301,6 +5349,7 @@ function handleFunnelStepEventChange(step: SqlBuilderFunnelStep, eventValue: str
 }
 
 function handleFunnelRelatedPropertyToggle(enabled: boolean) {
+  confirmFunnelRelatedToggle()
   if (enabled) return
   sqlBuilder.funnel.relatedProperty = ''
 }
@@ -5390,10 +5439,13 @@ function sanitizeFunnelConfig() {
 function funnelBlockingIssues() {
   if (!isFunnelAnalysis.value) return []
   const issues: string[] = []
+  if (funnelRelatedToggleIssue.value) issues.push(funnelRelatedToggleIssue.value)
   if (!sqlBuilder.funnel.entityField) issues.push('漏斗分析请先选择分析主体。')
   if (!sqlBuilder.timeField) issues.push('漏斗分析请先选择时间字段。')
   if (!isValidFunnelWindow(sqlBuilder.funnel.window)) issues.push('漏斗分析窗口期配置无效，请重新设置。')
   if (sqlBuilder.funnel.steps.length < 2) issues.push('漏斗分析至少需要配置两个步骤。')
+  if (sqlBuilder.funnel.steps.length > 10) issues.push('漏斗分析最多支持十个步骤。')
+  if (sqlBuilder.groups.length) issues.push('漏斗固定步骤结果不支持普通分组，请移除分组配置后生成。')
   sqlBuilder.funnel.steps.forEach((step, index) => {
     if (!step.event) issues.push(`漏斗分析请先选择步骤${index + 1}事件。`)
   })
@@ -5486,6 +5538,45 @@ function filterContext(nodes: SqlBuilderFilter[]): any[] {
   })
 }
 
+function builderConfiguredFilterIssues() {
+  const issues: string[] = []
+  const operators = new Set(builderFilterOperatorOptions.map((item) => item.value))
+  const inspectTree = (nodes: SqlBuilderFilter[], path: string) => {
+    ;(nodes || []).forEach((node, index) => {
+      const location = `${path}[${index + 1}]`
+      if (node.type === 'group') {
+        if (!node.children?.length) issues.push(`${location}：筛选组为空，请添加条件或删除该组。`)
+        else inspectTree(node.children, `${location}.children`)
+        return
+      }
+      if (!node.field) issues.push(`${location}：请选择筛选字段，或删除该条件。`)
+      if (!operators.has(node.operator)) issues.push(`${location}：请选择有效的筛选操作符。`)
+      if (!['is_null', 'is_not_null'].includes(node.operator) && String(node.value ?? '').trim() === '') {
+        issues.push(`${location}：请填写筛选值；判断空值请使用“为空”或“非空”。`)
+      }
+    })
+  }
+  // Visit only the active model's raw filter trees, before request/save
+  // serializers can prune incomplete rules. Other model drafts are irrelevant.
+  const inspectScopes = (value: unknown, path: string) => {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => inspectScopes(item, `${path}[${index + 1}]`))
+    } else if (value && typeof value === 'object') {
+      Object.entries(value).forEach(([key, child]) => {
+        if (/filters$/i.test(key) && Array.isArray(child)) inspectTree(child, `${path}.${key}`)
+        else inspectScopes(child, `${path}.${key}`)
+      })
+    }
+  }
+  inspectTree(sqlBuilder.globalFilters || [], '全局筛选')
+  inspectScopes((sqlBuilder as Record<string, unknown>)[sqlBuilder.analysisModel], sqlBuilder.analysisModel)
+  if (['event', 'property'].includes(sqlBuilder.analysisModel)) {
+    inspectScopes(sqlBuilder.metricItems, '分析指标')
+    inspectScopes(sqlBuilder.calculatedMetrics, '公式指标')
+  }
+  return issues
+}
+
 function selectedBuilderFieldValues() {
   const formulaFields = sqlBuilder.calculatedMetrics.flatMap((item) =>
     item.tokens.flatMap((token) => {
@@ -5544,8 +5635,10 @@ function selectedBuilderFieldValues() {
       sqlBuilder.revenue.entityField,
       sqlBuilder.revenue.initialEvent,
       sqlBuilder.revenue.paymentEvent,
+      sqlBuilder.revenue.metricEvent,
       sqlBuilder.revenue.metric.field,
       sqlBuilder.revenue.costField,
+      sqlBuilder.revenue.costEvent,
     ] : []),
     ...(sqlBuilder.analysisModel === 'attribution' ? [
       sqlBuilder.attribution.entityField,
@@ -5655,7 +5748,7 @@ function collectBuilderAiContext() {
       content: '以某段时间做过步骤1的用户为样本，查看窗口期内，指定步骤下用户的转化情况',
       entityField: fieldOptionPayload(sqlBuilder.funnel.entityField),
       window: normalizeFunnelWindow(sqlBuilder.funnel.window),
-      relatedPropertyEnabled: sqlBuilder.funnel.relatedPropertyEnabled,
+      relatedPropertyEnabled: funnelRelatedToggleIssue.value ? null : sqlBuilder.funnel.relatedPropertyEnabled,
       relatedProperty: sqlBuilder.funnel.relatedPropertyEnabled
         ? fieldOptionPayload(sqlBuilder.funnel.relatedProperty)
         : null,
@@ -5794,6 +5887,7 @@ function collectBuilderAiContext() {
       entityField: fieldOptionPayload(sqlBuilder.revenue.entityField),
       initialEvent: fieldOptionPayload(sqlBuilder.revenue.initialEvent),
       paymentEvent: fieldOptionPayload(sqlBuilder.revenue.paymentEvent),
+      metricEvent: fieldOptionPayload(sqlBuilder.revenue.metricEvent),
       metric: {
         method: sqlBuilder.revenue.metric.method,
         field: revenueMetricUsesProperty(sqlBuilder.revenue.metric.method)
@@ -5802,7 +5896,9 @@ function collectBuilderAiContext() {
       },
       cost: {
         enabled: sqlBuilder.revenue.costEnabled,
-        field: sqlBuilder.revenue.costEnabled ? fieldOptionPayload(sqlBuilder.revenue.costField) : null,
+        event: sqlBuilder.revenue.costEnabled ? fieldOptionPayload(sqlBuilder.revenue.costEvent) : null,
+        method: sqlBuilder.revenue.costEnabled ? sqlBuilder.revenue.costMethod : null,
+        field: sqlBuilder.revenue.costEnabled && revenueMetricUsesProperty(sqlBuilder.revenue.costMethod) ? fieldOptionPayload(sqlBuilder.revenue.costField) : null,
       },
       observationDays: clampRevenueObservationDays(sqlBuilder.revenue.observationDays),
     } : null,
@@ -5908,6 +6004,7 @@ function collectLocalBuilderConfigIssues() {
   const rankingIssues = rankingBlockingIssues()
   const heatmapIssues = heatmapBlockingIssues()
   const issues: string[] = [
+    ...builderConfiguredFilterIssues(),
     ...eventScopeIssues,
     ...propertyIssues,
     ...retentionIssues,
@@ -6103,6 +6200,15 @@ async function generateBuilderAiSql() {
     invalidateBuilderSqlResult('请先配置有效的时间字段。')
     return false
   }
+  const filterIssues = builderConfiguredFilterIssues()
+  if (filterIssues.length) {
+    const message = filterIssues[0]
+    setBuilderAgentAdvice({ severity: 'warning', intent: inferBuilderIntentText(), message,
+      advice: '请补全或删除未完成的筛选条件后重新生成。', issues: filterIssues, suggestions: [], raw: '' })
+    invalidateBuilderSqlResult(message)
+    ElMessage.warning(message)
+    return false
+  }
   const usesDashboardDateParameters = shouldUseDashboardDateParameters()
   if (usesDashboardDateParameters) {
     const validation = validateDashboardDateExpression(
@@ -6211,13 +6317,15 @@ async function generateBuilderAiSql() {
 
 async function generateAndPreviewBuilderSql(execution: EditorExecution) {
   let result: any = null
+  const compilation = ['property', 'interval', 'retention', 'funnel'].includes(sqlBuilder.analysisModel)
   try {
     await setLoadingPhase('正在分析')
     if (!execution.isCurrent()) return false
     showLocalBuilderAgentAdvice()
     await setLoadingPhase('正在生成建议')
     if (!execution.isCurrent()) return false
-    result = await dashboardApi.generate_ai_sql({
+    const generateSql = compilation ? dashboardApi.compile_sql : dashboardApi.generate_ai_sql
+    result = await generateSql({
       datasource: selectedExecutionDatasourceId.value,
       intent: '',
       chart_type: form.chartType,
@@ -8820,7 +8928,7 @@ const analysisModelFormContext = {
   handleIntervalStartPropertyChange, handlePropertyGroupFieldChange, handlePropertyGroupModeChange, handleRankingMetricChange,
   handleMetricEventChange,
   handleRetentionEventPropertyChange, handleRetentionRelatedPropertyToggle, handleRetentionSimultaneousToggle, handleRevenueCostToggle,
-  handleRevenuePaymentEventChange, hasEffectiveBuilderFilters, heatmapComparisonGroupAliasDraft, heatmapComparisonGroupAliasEditing,
+  handleRevenuePaymentEventChange, handleRevenueMetricEventChange, handleRevenueCostEventChange, hasEffectiveBuilderFilters, heatmapComparisonGroupAliasDraft, heatmapComparisonGroupAliasEditing,
   heatmapFilterExpanded, heatmapMapFileName, intervalAliasDraft, intervalAliasEditing, intervalEndPropertyOptions,
   intervalEntityFieldOptions, intervalEventDefaultDisplayName, intervalEventFilterFieldOptions, intervalEventOptions,
   intervalFilterExpanded, intervalStartPropertyOptions,
@@ -8835,13 +8943,13 @@ const analysisModelFormContext = {
   removeHeatmapComparisonGroup, removeMetricItem, removePropertyAudience, removePropertyGroup, removeRankingMetric,
   retentionAliasDraft, retentionAliasEditing, retentionEntityFieldOptions, retentionEventDefaultDisplayName,
   retentionEventFilterFieldOptions, retentionEventOptions, retentionFilterExpanded, retentionPropertyOptions,
-  retentionSimultaneousMetricFieldOptions, revenueEntityFieldOptions, revenueEventOptions, revenueNumericPropertyOptions,
+  retentionSimultaneousMetricFieldOptions, revenueEntityFieldOptions, revenueEventOptions, revenueNumericPropertyOptions, revenueCostFieldOptions,
   schemaLoading, setFormulaCursor, sqlBuilder, startEditFormulaAtomicMetric, syncAttributionTargetMetricField,
   syncDistributionSimultaneousMetricField, syncFormulaAtomicMetric, syncPropertyMetric, syncRankingMetricField,
   syncRetentionSimultaneousMetricField, toggleAttributionEventFilter, toggleAttributionTargetFilter, toggleDistributionEventFilter,
   toggleFormulaAtomicMetricFilter, toggleFunnelStepFilter, toggleIntervalEventFilter, toggleRetentionEventFilter,
   trackingEventCatalogOptions, updateDistributionInterval, updateDistributionMetric, updatePropertyGroupSetting,
-  updateRevenueMetric, visible,
+  updateRevenueMetric, updateRevenueCostMetric, visible,
 }
 </script>
 

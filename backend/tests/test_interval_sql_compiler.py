@@ -2,6 +2,12 @@ import asyncio
 import copy
 import sqlite3
 from types import SimpleNamespace
+from dataclasses import replace
+from sqlglot import exp
+from apps.dashboard.crud.interval_sql_plan import build_interval_plan
+from apps.dashboard.crud.interval_sql_time import build_interval_time_plan
+from apps.dashboard.crud.property_sql_plan import property_metadata_fields
+from test_interval_sql_plan import FIELDS as DEFINITIONS, TRACKING as BASE_TRACKING
 
 import pytest
 import sqlglot
@@ -11,12 +17,14 @@ from apps.dashboard.crud.interval_sql_compiler import compile_interval_sql, Inte
 from apps.dashboard.crud.interval_sql_validation import interval_start_date_issues, has_exact_interval_percentiles
 
 
-FIELDS = {"events": {"subject", "action", "occurred_at", "day", "sequence", "category", "link", "payload"}}
-SCHEMA = "# Table: events\n[\n" + ",\n".join(f"({name}:bigint, physical)" for name in sorted(FIELDS["events"])) + "\n]"
-TRACKING = {"enabled": True, "fields": [
-    {"table_name": "events", "field_name": "occurred_at", "field_role": "event_time", "extra_properties": {"encoding": "epoch_milliseconds"}},
-    {"table_name": "events", "field_name": "sequence", "field_role": "event_sequence"},
+FIELDS = {"events": set(DEFINITIONS)}
+SCHEMA = "# Table: events\n[\n" + ",\n".join(f"({name}:{value['type']}, physical)" for name, value in DEFINITIONS.items()) + "\n]"
+TRACKING = {**copy.deepcopy(BASE_TRACKING), "fields": [
+    {"table_name": "events", "field_name": name, **copy.deepcopy(definition)}
+    for name, definition in DEFINITIONS.items()
 ]}
+TRACKING.pop("default_event_time_field", None)
+
 
 
 def field(name):
@@ -31,13 +39,32 @@ def config():
                          "endEvent": {"kind": "tracking-event", "eventTable": "events", "eventNameField": "action", "eventName": "close"}}}
 
 
+def build_plan(configuration=None, tracking=None, dialect="mysql", engine="mysql", fields=None):
+    c, t = configuration or config(), TRACKING if tracking is None else tracking
+    metadata = property_metadata_fields(SCHEMA, t)
+    time = build_interval_time_plan(c, metadata_fields=metadata, dialect=dialect, engine=engine,
+        business_timezone="Asia/Shanghai", tracking_metadata=t)
+    return build_interval_plan(c, time_plan=time, metadata_fields=metadata, tracking_metadata=t,
+        allowed_fields_by_table=FIELDS if fields is None else fields, dialect=dialect, engine=engine, table_filters={})
+
+
 def compile_sql(configuration=None, tracking=None, dialect="mysql", engine="mysql", fields=None):
-    return compile_interval_sql(configuration or config(), TRACKING if tracking is None else tracking,
-                                SCHEMA, dialect, engine, ["events"], FIELDS if fields is None else fields)
+    return compile_interval_sql(build_plan(configuration, tracking, dialect, engine, fields))
+
+
+def lineage_sql(sql, dialect="mysql"):
+    from apps.dashboard.crud.interval_execution_contract import interval_tree
+    tree = interval_tree(sql, dialect)
+    ctes = list(tree.args["with_"].expressions)
+    normal = next(c.this.copy() for c in ctes if c.alias == "interval_result")
+    normal.set("with_", exp.With(expressions=[c.copy() for c in ctes if c.alias != "interval_result"]))
+    return normal.sql(dialect=dialect)
 
 
 def execute(rows, configuration=None):
-    sql = compile_sql(configuration).replace("{{dashboard_start_date}}", "'2026-09-01'").replace("{{dashboard_end_date}}", "'2026-09-03'")
+    p = build_plan(configuration)
+    p = replace(p, time=replace(p.time, scaffold="dashboard_dates AS (SELECT '2026-09-01' AS calendar_date UNION ALL SELECT '2026-09-02' UNION ALL SELECT '2026-09-03')"))
+    sql = compile_interval_sql(p).replace("{{dashboard_start_date}}", "'2026-09-01'").replace("{{dashboard_end_date}}", "'2026-09-03'")
     with sqlite3.connect(":memory:") as connection:
         connection.row_factory = sqlite3.Row
         connection.execute("CREATE TABLE events(subject TEXT,action TEXT,occurred_at INT,day TEXT,sequence INT,category TEXT,link TEXT,payload TEXT)")
@@ -72,7 +99,7 @@ def test_cross_midnight_and_changed_group_use_start_row():
     configuration = config()
     configuration["groups"] = [field("category")]
     result = execute([event(1, "open", 86399000), event(2, "close", 86401000, day="2026-09-02", category="second")], configuration)
-    assert len(result) == 1
+    assert len(result) == 3
     assert (result[0]["interval_date"], result[0]["group_1"], result[0]["avg_interval_seconds"]) == ("2026-09-01", "first", 2)
 
 
@@ -88,7 +115,7 @@ def test_null_entities_times_and_limit_boundaries():
 
 
 def test_equal_timestamps_follow_configured_sequence_not_event_label():
-    assert execute([event(2, "open", 0), event(1, "close", 0)]) == []
+    assert all(r["interval_count"] == 0 for r in execute([event(2, "open", 0), event(1, "close", 0)]))
     assert execute([event(1, "open", 0), event(2, "close", 0)])[0]["interval_count"] == 1
 
 
@@ -121,16 +148,17 @@ def test_compiled_sql_passes_existing_validators(grain, dialect, engine):
     sql = compile_sql(configuration, dialect=dialect, engine=engine)
     state = {"normalized_config": configuration, "sql_dialect": dialect, "schema": SCHEMA, "graph_trace": [],
              "datasource": SimpleNamespace(type=dialect, type_name=engine),
-             "response": generator.DashboardAiSqlGenerateResponse(success=True, sql=sql, chart_type="table")}
+             "response": generator.DashboardAiSqlGenerateResponse(success=True, sql=sql, chart_type="table"),
+             "interval_plan": build_plan(configuration, dialect=dialect, engine=engine), "interval_compiled_sql": sql}
     result = generator._node_validate_sql(state)["response"]
     assert result.success, result.issues
-    assert interval_start_date_issues(sql.replace("LAG(event_date) OVER", "LAG(event_date, 2) OVER"), dialect)
+    assert interval_start_date_issues(lineage_sql(sql.replace("LAG(event_date) OVER", "LAG(event_date, 2) OVER"), dialect), dialect)
 
 
 def test_calendar_join_cannot_hide_wrong_date_lineage():
     configuration = config()
     configuration["time"]["grain"] = "day"
-    sql = compile_sql(configuration)
+    sql = lineage_sql(compile_sql(configuration))
     assert not interval_start_date_issues(sql)
     assert interval_start_date_issues(sql.replace("calendar.calendar_date = stats.interval_date", "calendar.calendar_date > stats.interval_date"))
     assert interval_start_date_issues(sql.replace("calendar.calendar_date = stats.interval_date", "(calendar.calendar_date = stats.interval_date OR 1=1)"))
@@ -149,23 +177,24 @@ def test_metadata_errors_are_explicit(mutation):
     if mutation == "disabled":
         tracking["enabled"] = False
     elif mutation == "missing_time":
-        tracking["fields"] = tracking["fields"][1:]
+        tracking["fields"] = [f for f in tracking["fields"] if f.get("field_role") != "event_time"]
     elif mutation == "unknown_encoding":
-        tracking["fields"][0]["extra_properties"] = {}
+        next(f for f in tracking["fields"] if f.get("field_role") == "event_time")["extra_properties"] = {}
     else:
         tracking["field_role_mappings"] = [{"table": "events", "field": "day", "role": "event_time"}]
     with pytest.raises(IntervalConfigurationError):
         compile_sql(tracking=tracking)
 
 
-def test_missing_order_role_does_not_block_interval_sql_generation():
+def test_missing_order_roles_use_time_order_with_runtime_ambiguity_guard():
     tracking = copy.deepcopy(TRACKING)
-    tracking["fields"] = tracking["fields"][:1]
+    tracking["fields"] = [f for f in tracking["fields"] if f.get("field_role") not in {"event_sequence", "event_id"}]
 
     sql = compile_sql(tracking=tracking)
 
     assert "event_order_1" not in sql
     assert "ORDER BY event_time)" in sql
+    assert "interval_order_conflicts" in sql
 
 
 @pytest.mark.parametrize("expression", ["(SELECT occurred_at FROM secret)", "occurred_at; DELETE FROM events", "secret.value", "SUM(occurred_at)"])
@@ -190,6 +219,8 @@ def test_generation_and_validation_never_call_llm(monkeypatch, valid):
     monkeypatch.setattr(generator, "_create_dashboard_ai_sql_llm", forbidden)
     state = {"normalized_config": config(), "tracking_metadata": TRACKING if valid else {}, "schema": SCHEMA,
              "sql_dialect": "mysql", "allowed_tables": ["events"], "allowed_fields_by_table": FIELDS, "graph_trace": []}
+    if valid:
+        state["interval_plan"] = build_plan()
     for _ in range(5):
         state.update(asyncio.run(generator._async_node_generate_sql(state)))
         state.update(generator._node_validate_sql(state))
@@ -197,25 +228,10 @@ def test_generation_and_validation_never_call_llm(monkeypatch, valid):
         assert generator._route_after_sql_validate(state) == "explain_advice"
 
 
-def test_interval_validation_recompiles_stale_sql_before_contract_checks():
-    state = {
-        "normalized_config": config(),
-        "tracking_metadata": TRACKING,
-        "schema": SCHEMA,
-        "sql_dialect": "mysql",
-        "allowed_tables": ["events"],
-        "allowed_fields_by_table": FIELDS,
-        "datasource": SimpleNamespace(type="mysql", type_name="mysql"),
-        "response": generator.DashboardAiSqlGenerateResponse(
-            success=True,
-            sql="SELECT stale_sql",
-            chart_type="table",
-        ),
-        "graph_trace": [],
-    }
-
+def test_interval_validation_rejects_stale_sql_without_rewriting():
+    p = build_plan()
+    state = {"normalized_config": config(), "interval_plan": p, "interval_compiled_sql": compile_interval_sql(p),
+             "sql_dialect": "mysql", "response": generator.DashboardAiSqlGenerateResponse(success=True, sql="SELECT stale_sql"), "graph_trace": []}
     result = generator._node_validate_sql(state)["response"]
-
-    assert result.success is True, result.issues
-    assert "stale_sql" not in result.sql
-    assert "interval_date" in result.sql
+    assert result.success is False
+    assert result.sql == "SELECT stale_sql"

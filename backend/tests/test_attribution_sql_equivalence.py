@@ -91,7 +91,7 @@ def test_unused_valid_counter_does_not_mask_wrong_denominator():
     assert any("分区或分组" in issue for issue in generator._attribution_sql_result_issues(sql, config(), sql_dialect="mysql"))
 
 
-def test_repair_revalidates_equivalent_grouped_count():
+def test_equivalent_grouped_count_is_structurally_valid_but_not_model_repaired():
     sql = attribution_sql(count_style="grouped").replace(
         "WHERE kind = 'conversion'",
         "WHERE kind = 'conversion' AND dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}",
@@ -101,8 +101,8 @@ def test_repair_revalidates_equivalent_grouped_count():
              "response": DashboardAiSqlGenerateResponse(success=True, sql=invalid)}
     rejected = generator._node_validate_sql(state)
     assert not rejected["response"].success
-    assert generator._route_after_sql_validate({**state, **rejected}) == "repair_sql"
+    assert generator._route_after_sql_validate({**state, **rejected}) == "explain_advice"
     repaired = generator._node_validate_sql({**state, "sql_repair_attempts": 1,
         "response": DashboardAiSqlGenerateResponse(success=True, sql=sql)})
-    assert repaired["response"].success
-    assert not repaired["response"].issues
+    assert not repaired["response"].success
+    assert repaired["response"].sql == ""

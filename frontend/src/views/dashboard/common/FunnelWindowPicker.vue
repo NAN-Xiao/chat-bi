@@ -11,7 +11,7 @@ import {
 } from './funnelAnalysis'
 
 const props = defineProps<{
-  modelValue: FunnelWindowConfig
+  modelValue: FunnelWindowConfig | null
   disabled?: boolean
 }>()
 
@@ -39,7 +39,7 @@ const maxDraftValue = computed(() => maxFunnelWindowValue(selectedUnit.value))
 
 function syncDraft() {
   const current = normalizedValue.value
-  if (current.mode === 'duration') {
+  if (current?.mode === 'duration') {
     selectedUnit.value = current.unit
     draftValue.value = current.value
   } else {
@@ -60,7 +60,7 @@ function selectSameDay() {
 function selectUnit(unit: FunnelWindowUnit) {
   selectedUnit.value = unit
   const current = normalizedValue.value
-  draftValue.value = current.mode === 'duration' && current.unit === unit ? current.value : presets[unit][0]
+  draftValue.value = current?.mode === 'duration' && current.unit === unit ? current.value : presets[unit][0]
 }
 
 function selectPreset(value: number) {
@@ -80,7 +80,7 @@ function applyCustomValue() {
 
 function isPresetActive(value: number) {
   const current = normalizedValue.value
-  return current.mode === 'duration' && current.unit === selectedUnit.value && current.value === value
+  return current?.mode === 'duration' && current.unit === selectedUnit.value && current.value === value
 }
 </script>
 
@@ -116,7 +116,7 @@ function isPresetActive(value: number) {
         </div>
         <button
           type="button"
-          :class="{ 'is-active': normalizedValue.mode === 'same_day' }"
+          :class="{ 'is-active': normalizedValue?.mode === 'same_day' }"
           @click="selectSameDay"
         >
           <span>当天</span>
@@ -125,7 +125,7 @@ function isPresetActive(value: number) {
           v-for="unit in unitOptions"
           :key="unit.value"
           type="button"
-          :class="{ 'is-active': normalizedValue.mode === 'duration' && selectedUnit === unit.value }"
+          :class="{ 'is-active': normalizedValue?.mode === 'duration' && selectedUnit === unit.value }"
           @click="selectUnit(unit.value)"
         >
           <span>{{ unit.label }}</span>

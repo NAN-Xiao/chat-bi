@@ -2,6 +2,8 @@
 脚本说明：这个脚本放数据库连接相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
 """
 import base64
+from contextlib import nullcontext
+from apps.db.interval_time_zone import interval_mysql_time_zone
 import json
 import os
 import platform
@@ -790,6 +792,8 @@ def _unsafe_exec_sql_after_validation(
         max_result_rows: int | None | object = _USE_CONFIGURED_RESULT_LIMIT,
         require_controlled_timeout: bool = False,
         skip_read_validation: bool = False,
+        interval_timezones: tuple[str, ...] | None = None,
+        interval_timezone_verify_only: bool = False,
 ):
     """底层数据源执行适配器。
 
@@ -812,36 +816,40 @@ def _unsafe_exec_sql_after_validation(
     if db.connect_type == ConnectType.sqlalchemy:
         session = get_session(ds, timeout=timeout_seconds)
         try:
-            if normalize_sql_safety_ds_type(ds.type) == "mysql":
-                _apply_sqlalchemy_statement_timeout(
-                    session,
-                    ds.type,
-                    timeout_seconds,
-                    strict=require_controlled_timeout,
-                )
-                _apply_sqlalchemy_read_only_guard(session, ds.type)
-            else:
-                _apply_sqlalchemy_read_only_guard(session, ds.type)
-                _apply_sqlalchemy_statement_timeout(
-                    session,
-                    ds.type,
-                    timeout_seconds,
-                    strict=require_controlled_timeout,
-                )
-            # The SQL has already passed read/permission validation and contains
-            # application placeholders resolved before reaching this adapter.
-            # Use the driver's raw execution path so SQLAlchemy does not scan
-            # literal colons such as CONCAT(..., ':00') as bind parameters.
-            with session.connection().exec_driver_sql(
-                    sql,
-                    execution_options={"no_parameters": True},
-            ) as result:
-                try:
-                    columns = result.keys()._keys if origin_column else [item.lower() for item in result.keys()._keys]
-                    res = _limited_fetchmany(result, max_result_rows)
-                    return _build_query_result(columns, res, sql)
-                except Exception as ex:
-                    raise ParseSQLResultError(str(ex)) from ex
+            timezone_context = (interval_mysql_time_zone(session.connection(), interval_timezones, enforce_utc=not interval_timezone_verify_only)
+                                if interval_timezones is not None and normalize_sql_safety_ds_type(ds.type) == "mysql"
+                                else nullcontext())
+            with timezone_context:
+                if normalize_sql_safety_ds_type(ds.type) == "mysql":
+                    _apply_sqlalchemy_statement_timeout(
+                        session,
+                        ds.type,
+                        timeout_seconds,
+                        strict=require_controlled_timeout,
+                    )
+                    _apply_sqlalchemy_read_only_guard(session, ds.type)
+                else:
+                    _apply_sqlalchemy_read_only_guard(session, ds.type)
+                    _apply_sqlalchemy_statement_timeout(
+                        session,
+                        ds.type,
+                        timeout_seconds,
+                        strict=require_controlled_timeout,
+                    )
+                # The SQL has already passed read/permission validation and contains
+                # application placeholders resolved before reaching this adapter.
+                # Use the driver's raw execution path so SQLAlchemy does not scan
+                # literal colons such as CONCAT(..., ':00') as bind parameters.
+                with session.connection().exec_driver_sql(
+                        sql,
+                        execution_options={"no_parameters": True},
+                ) as result:
+                    try:
+                        columns = result.keys()._keys if origin_column else [item.lower() for item in result.keys()._keys]
+                        res = _limited_fetchmany(result, max_result_rows)
+                        return _build_query_result(columns, res, sql)
+                    except Exception as ex:
+                        raise ParseSQLResultError(str(ex)) from ex
         except Exception:
             session.rollback()
             raise
@@ -871,6 +879,13 @@ def _unsafe_exec_sql_after_validation(
                                   **ssl_args) as conn, conn.cursor() as cursor:
                 try:
                     _apply_dbapi_read_only_guard(conn, cursor, ds.type)
+                    if interval_timezones is not None:
+                        if not interval_timezone_verify_only:
+                            cursor.execute("SET time_zone = '+00:00'")
+                        for zone in interval_timezones:
+                            cursor.execute("SELECT CONVERT_TZ('2026-01-01 00:00:00', '+00:00', %s)", (zone,))
+                            if cursor.fetchone()[0] is None:
+                                raise ValueError("间隔查询缺少时区转换能力。")
                     cursor.execute(sql)
                     res = _limited_fetchmany(cursor, max_result_rows)
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
@@ -1100,8 +1115,15 @@ def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema) -> tuple
     做了什么：检查数据库连接里的数据、权限或配置是否合法，不对就及时拦住。
     """
     try:
-        normalized_sql = sql.strip().lstrip("(").strip()
-        first_keyword = normalized_sql.split(None, 1)[0].upper() if normalized_sql else ""
+        dialect = get_sqlglot_dialect(ds.type)
+        tokens = sqlglot.tokenize(sql, dialect=dialect)
+        # Comments are not SQL commands. Use the dialect lexer so quoted strings
+        # and normal comments cannot confuse the command boundary. MySQL/MariaDB
+        # executable comments must never be discarded as ordinary comments.
+        if any(comment.lstrip().startswith(("!", "M!")) for token in tokens for comment in token.comments):
+            return False, "Executable SQL comments are not allowed"
+        first_token = next((token for token in tokens if token.text != "("), None)
+        first_keyword = first_token.text.upper() if first_token else ""
 
         # 根据配置决定是否允许元数据查询
         if settings.SHUZHI_ALLOW_METADATA_QUERIES:
@@ -1125,7 +1147,6 @@ def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema) -> tuple
             if re.search(pattern, sql, re.IGNORECASE):
                 return False, f"SQL contains dangerous pattern: {pattern}"
 
-        dialect = get_sqlglot_dialect(ds.type)
         statements = sqlglot.parse(sql, dialect=dialect)
 
         if not statements:
@@ -1151,7 +1172,7 @@ def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema) -> tuple
         )
 
         for stmt in executable_statements:
-            if isinstance(stmt, write_types):
+            if any(isinstance(node, write_types) for node in stmt.walk()):
                 return False, f"SQL contains write operation: {type(stmt).__name__}"
 
         if first_keyword not in allowed_read_commands:

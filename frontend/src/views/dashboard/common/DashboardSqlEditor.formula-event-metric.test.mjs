@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path'
 const currentDir = dirname(fileURLToPath(import.meta.url))
 const componentPath = join(currentDir, 'DashboardSqlEditor.vue')
 const source = readFileSync(componentPath, 'utf8')
+const modelFormSource = readFileSync(join(currentDir, 'DashboardAnalysisModelForm.vue'), 'utf8')
 
 assert.match(
   source,
@@ -36,7 +37,7 @@ assert.match(
 )
 
 assert.match(
-  source,
+  modelFormSource,
   /:options="metricMeasureFieldOptions\(token\.metric as any\)"/,
   '公式内事件指标的计算字段候选应优先使用当前事件参数，避免显示 event:PayBuyRet'
 )

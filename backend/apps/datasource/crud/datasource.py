@@ -1276,14 +1276,7 @@ def _dictionary_schema_from_workspace(
     return schema_str, table_name_list, dictionary_configured
 
 
-def get_ai_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,
-                        embedding: bool = True, table_list: list[str] = None,
-                        data_skill_text: str | None = None,
-                        tenant_id: int | None = None) -> tuple[str, list]:
-    """
-    是什么：为 AI 生成 SQL/分析计划提供结构上下文。
-    做了什么：优先读取工作空间数据字典和字段注释；物理库只在执行 SQL 时使用，不在这里探测结构。
-    """
+def _authorized_dictionary_schema(session, current_user, ds, table_list, tenant_id, question="", data_skill_text=None):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     db_name = effective_db_schema(ds.type, conf)
     metadata_tenant_id = _schema_metadata_tenant_id(session, ds, current_user, tenant_id)
@@ -1296,6 +1289,20 @@ def get_ai_table_schema(session: SessionDep, current_user: CurrentUser, ds: Core
         table_list=table_list,
         question=question,
         data_skill_text=data_skill_text,
+    )
+    return dictionary_schema, dictionary_tables, dictionary_configured, metadata_tenant_id
+
+
+def get_ai_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,
+                        embedding: bool = True, table_list: list[str] = None,
+                        data_skill_text: str | None = None,
+                        tenant_id: int | None = None) -> tuple[str, list]:
+    """
+    是什么：为 AI 生成 SQL/分析计划提供结构上下文。
+    做了什么：优先读取工作空间数据字典和字段注释；物理库只在执行 SQL 时使用，不在这里探测结构。
+    """
+    dictionary_schema, dictionary_tables, dictionary_configured, metadata_tenant_id = _authorized_dictionary_schema(
+        session, current_user, ds, table_list, tenant_id, question, data_skill_text,
     )
     if dictionary_tables or dictionary_configured:
         return dictionary_schema, dictionary_tables
@@ -1318,6 +1325,19 @@ def get_ai_table_schema(session: SessionDep, current_user: CurrentUser, ds: Core
     return schema, tables
 
 
+def get_compilation_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource,
+                                 configuration: dict, table_list: list[str] | None = None,
+                                 tenant_id: int | None = None) -> tuple[str, list]:
+    """Authorized workspace/cached metadata only; no AI retrieval interface."""
+    references = json.dumps(configuration, ensure_ascii=False, sort_keys=True, default=str)
+    schema, tables, configured, metadata_tenant_id = _authorized_dictionary_schema(
+        session, current_user, ds, table_list, tenant_id, references,
+    )
+    if tables or configured:
+        return schema, tables
+    return _render_cached_table_schema(session, current_user, ds, table_list, metadata_tenant_id)
+
+
 def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,
                      embedding: bool = True, table_list: list[str] = None,
                      tenant_id: int | None = None) -> tuple[str, list]:
@@ -1326,6 +1346,19 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
+    def select_tables(tables, metadata_tenant_id):
+        missing = [int(table["id"]) for table in tables if not embedding_payload_is_current(table.get("embedding"))]
+        if missing:
+            run_save_table_embeddings(missing, tenant_id=metadata_tenant_id)
+        return calc_table_embedding(tables, question,
+            stale_embedding_callback=lambda ids: run_save_table_embeddings(ids, tenant_id=metadata_tenant_id))
+
+    return _render_cached_table_schema(session, current_user, ds, table_list, tenant_id,
+        table_selector=select_tables if embedding and settings.TABLE_EMBEDDING_ENABLED else None)
+
+
+def _render_cached_table_schema(session, current_user, ds, table_list, tenant_id, table_selector=None):
+    """Common permission-scoped cached schema rendering; selection is supplied by the AI caller only."""
     schema_str = ""
     metadata_tenant_id = _schema_metadata_tenant_id(session, ds, current_user, tenant_id)
     table_objs = get_table_obj_by_ds(
@@ -1391,20 +1424,8 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
     if not tables:
         return schema_str, []
 
-    # 执行表向量化
-    if embedding and tables and settings.TABLE_EMBEDDING_ENABLED:
-        missing_embedding_table_ids = [
-            int(table["id"])
-            for table in tables
-            if not embedding_payload_is_current(table.get("embedding"))
-        ]
-        if missing_embedding_table_ids:
-            run_save_table_embeddings(missing_embedding_table_ids, tenant_id=metadata_tenant_id)
-        tables = calc_table_embedding(
-            tables,
-            question,
-            stale_embedding_callback=lambda ids: run_save_table_embeddings(ids, tenant_id=metadata_tenant_id),
-        )
+    if table_selector is not None:
+        tables = table_selector(tables, metadata_tenant_id)
     # 拼接结构信息
     if tables:
         for s in tables:

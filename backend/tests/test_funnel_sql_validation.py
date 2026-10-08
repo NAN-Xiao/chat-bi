@@ -292,9 +292,10 @@ def test_unused_valid_steps_cannot_validate_unrelated_output():
 
 
 @pytest.mark.parametrize("valid", [True, False])
-def test_generation_validation_passes_metadata_and_routes_bad_timing_to_repair(valid):
+def test_generation_requires_compiler_plan_and_never_repairs_handwritten_timing(valid):
     sql = funnel_sql(third_bound=None if valid else "e.event_time - p.step_time <= 86400")
     sql = sql.replace("FROM events e", "FROM events e WHERE e.dt >= {{dashboard_start_yyyymmdd}} AND e.dt <= {{dashboard_end_yyyymmdd}}")
+    assert bool(issues(sql)) is not valid
     response = ai_sql_generator._node_validate_sql({
         "response": ai_sql_generator.DashboardAiSqlGenerateResponse(success=True, sql=sql, chart_type="funnel", analysis_model="funnel"),
         "normalized_config": CONFIG,
@@ -302,10 +303,9 @@ def test_generation_validation_passes_metadata_and_routes_bad_timing_to_repair(v
         "schema": schema(),
         "graph_trace": [],
     })["response"]
-    assert response.success is valid, response.issues
-    if not valid:
-        assert any("first_step_time" in issue for issue in response.issues)
-        assert ai_sql_generator._route_after_sql_validate({"response": response, "normalized_config": CONFIG, "sql_repair_attempts": 0}) == "repair_sql"
+    assert response.success is False
+    assert any("查询计划缺失" in issue for issue in response.issues)
+    assert ai_sql_generator._route_after_sql_validate({"response": response, "normalized_config": CONFIG, "sql_repair_attempts": 0}) == "explain_advice"
 
 
 def test_analyticdb_window_funnel_reference_uses_event_time_and_dashboard_partition_filter():

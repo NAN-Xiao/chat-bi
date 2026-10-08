@@ -24,6 +24,7 @@ try {
     isValidFunnelWindow,
     maxFunnelWindowValue,
     normalizeFunnelWindow,
+    parseStoredFunnelWindow,
   } = await import(pathToFileURL(compiledPath).href)
 
   test('supports same-day and duration funnel windows', () => {
@@ -46,6 +47,28 @@ try {
     assert.equal(isValidFunnelWindow({ mode: 'duration', value: 366, unit: 'day' }), false)
     assert.equal(isValidFunnelWindow({ mode: 'duration', value: 24, unit: 'hour' }), true)
     assert.equal(maxFunnelWindowValue('minute'), 525600)
+  })
+
+  test('restoring an invalid current window never substitutes legacy or default values', () => {
+    for (const value of [null, {}, { mode: 'duration', value: 0, unit: 'day' },
+      { mode: 'duration', value: true, unit: 'day' }, { mode: 'duration', value: '7', unit: 'day' }]) {
+      const restored = parseStoredFunnelWindow(value, 7)
+      assert.equal(restored.value, null)
+      assert.ok(restored.issue)
+      assert.equal(formatFunnelWindow(value), '窗口配置无效')
+    }
+  })
+
+  test('only valid missing-current legacy windows migrate without clamping', () => {
+    assert.deepEqual(parseStoredFunnelWindow(undefined, 14), {
+      value: { mode: 'duration', value: 14, unit: 'day' }, issue: null,
+    })
+    for (const legacy of [undefined, null, 0, 366, 1.5, true, '7']) {
+      assert.equal(parseStoredFunnelWindow(undefined, legacy).value, null)
+    }
+    assert.deepEqual(parseStoredFunnelWindow({ mode: 'duration', value: 2, unit: 'hour' }, 7), {
+      value: { mode: 'duration', value: 2, unit: 'hour' }, issue: null,
+    })
   })
 } finally {
   rmSync(tempDir, { recursive: true, force: true })

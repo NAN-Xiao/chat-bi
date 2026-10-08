@@ -42,7 +42,7 @@ const {
   handleFunnelRelatedPropertyToggle, handleFunnelStepEventChange, handleIntervalEventChange, handleIntervalRelatedPropertyToggle,
   handleIntervalStartPropertyChange, handleMetricEventChange, handlePropertyGroupFieldChange, handlePropertyGroupModeChange, handleRankingMetricChange,
   handleRetentionEventPropertyChange, handleRetentionRelatedPropertyToggle, handleRetentionSimultaneousToggle, handleRevenueCostToggle,
-  handleRevenuePaymentEventChange, hasEffectiveBuilderFilters, heatmapComparisonGroupAliasDraft, heatmapComparisonGroupAliasEditing,
+  handleRevenuePaymentEventChange, handleRevenueMetricEventChange, handleRevenueCostEventChange, hasEffectiveBuilderFilters, heatmapComparisonGroupAliasDraft, heatmapComparisonGroupAliasEditing,
   heatmapFilterExpanded, heatmapMapFileName, intervalEndPropertyOptions, intervalEntityFieldOptions,
   intervalAliasDraft, intervalAliasEditing, intervalEventDefaultDisplayName, intervalEventFilterFieldOptions, intervalEventOptions,
   intervalFilterExpanded, intervalStartPropertyOptions,
@@ -57,13 +57,13 @@ const {
   removeHeatmapComparisonGroup, removeMetricItem, removePropertyAudience, removePropertyGroup, removeRankingMetric,
   retentionAliasDraft, retentionAliasEditing, retentionEntityFieldOptions, retentionEventDefaultDisplayName,
   retentionEventFilterFieldOptions, retentionEventOptions, retentionFilterExpanded, retentionPropertyOptions,
-  retentionSimultaneousMetricFieldOptions, revenueEntityFieldOptions, revenueEventOptions, revenueNumericPropertyOptions,
+  retentionSimultaneousMetricFieldOptions, revenueEntityFieldOptions, revenueEventOptions, revenueNumericPropertyOptions, revenueCostFieldOptions,
   schemaLoading, setFormulaCursor, sqlBuilder, startEditFormulaAtomicMetric, syncAttributionTargetMetricField,
   syncDistributionSimultaneousMetricField, syncFormulaAtomicMetric, syncPropertyMetric, syncRankingMetricField,
   syncRetentionSimultaneousMetricField, toggleAttributionEventFilter, toggleAttributionTargetFilter, toggleDistributionEventFilter,
   toggleFormulaAtomicMetricFilter, toggleFunnelStepFilter, toggleIntervalEventFilter, toggleRetentionEventFilter,
   trackingEventCatalogOptions, updateDistributionInterval, updateDistributionMetric, updatePropertyGroupSetting,
-  updateRevenueMetric,
+  updateRevenueMetric, updateRevenueCostMetric,
 } = props.context
 </script>
 
@@ -1144,17 +1144,17 @@ const {
                   <span class="revenue-config-label">收入口径</span>
                   <div class="revenue-metric-flow">
                     <BuilderFieldPicker
-                      :model-value="sqlBuilder.revenue.paymentEvent"
+                      :model-value="sqlBuilder.revenue.metricEvent"
                       :options="revenueEventOptions"
                       :loading="schemaLoading"
                       mode="tracking-event"
-                      placeholder="选择付费事件"
-                      @update:modelValue="handleRevenuePaymentEventChange"
+                      placeholder="选择收入口径事件"
+                      @update:modelValue="handleRevenueMetricEventChange"
                     />
                     <span>的</span>
                     <RevenueMetricPicker
                       :model-value="sqlBuilder.revenue.metric"
-                      :disabled="!sqlBuilder.revenue.paymentEvent"
+                      :disabled="!sqlBuilder.revenue.metricEvent"
                       @update:modelValue="updateRevenueMetric"
                     />
                     <BuilderFieldPicker
@@ -1176,14 +1176,29 @@ const {
                       @change="handleRevenueCostToggle"
                     />
                   </div>
-                  <div v-if="sqlBuilder.revenue.costEnabled" class="revenue-cost-field-row">
-                    <span>成本字段</span>
+                  <div v-if="sqlBuilder.revenue.costEnabled" class="revenue-metric-flow">
                     <BuilderFieldPicker
+                      :model-value="sqlBuilder.revenue.costEvent"
+                      :options="revenueEventOptions"
+                      :loading="schemaLoading"
+                      mode="tracking-event"
+                      placeholder="选择成本事件"
+                      @update:modelValue="handleRevenueCostEventChange"
+                    />
+                    <span>的</span>
+                    <RevenueMetricPicker
+                      :model-value="{ method: sqlBuilder.revenue.costMethod, field: sqlBuilder.revenue.costField }"
+                      :disabled="!sqlBuilder.revenue.costEvent"
+                      label="成本口径"
+                      @update:modelValue="updateRevenueCostMetric"
+                    />
+                    <BuilderFieldPicker
+                      v-if="revenueMetricUsesProperty(sqlBuilder.revenue.costMethod)"
                       v-model="sqlBuilder.revenue.costField"
-                      :options="revenueNumericPropertyOptions"
+                      :options="revenueCostFieldOptions"
                       :loading="schemaLoading"
                       mode="metric"
-                      placeholder="选择成本字段"
+                      placeholder="选择成本数值属性"
                     />
                   </div>
                 </div>
@@ -1840,7 +1855,7 @@ const {
               />
             </section>
 
-            <section v-if="!isPathAnalysis" class="builder-section">
+            <section v-if="!isPathAnalysis && !isAttributionAnalysis" class="builder-section">
               <div class="builder-section-head">
                   <div class="builder-section-title">
                     <BuilderSectionIcon class="builder-section-icon" />

@@ -36,6 +36,61 @@ from common.utils.time import get_timestamp
 
 TRACKING_EVENT_MAPPING_PROMPT_BUDGET = 16_000
 TRACKING_FIELD_PROMPT_BUDGET = 16_000
+
+
+def required_table_filters(config: Any, *, tenant_id: int, datasource_id: int) -> dict[str, dict]:
+    """Read executable table constraints from this workspace's metadata.
+
+    Natural-language sql_rules remain prompt context. Executable constraints
+    must be explicitly configured as tables[].extra_properties.required_filters;
+    never infer a column, product value or table scope from prose.
+    """
+    def mapping(value):
+        return value.model_dump() if hasattr(value, "model_dump") else dict(value or {})
+
+    data = mapping(config)
+    result = {}
+    for raw_table in data.get("tables") or []:
+        table = mapping(raw_table)
+        extra = table.get("extra_properties") or {}
+        if "required_filters" not in extra:
+            continue
+        if data.get("tenant_id") != tenant_id or data.get("datasource_id") != datasource_id:
+            raise ValueError("强制表筛选配置不属于当前工作空间或数据源。")
+        for scope, expected in (("tenant_id", tenant_id), ("datasource_id", datasource_id)):
+            if table.get(scope) is not None and table[scope] != expected:
+                raise ValueError("强制表筛选的表记录与当前工作空间或数据源不一致。")
+        name = table.get("table_name")
+        if not isinstance(name, str) or not name or name in result:
+            raise ValueError("强制表筛选缺少唯一表名。")
+
+        def normalize_group(value):
+            if not isinstance(value, dict) or value.get("logic", "and") not in ("and", "or"):
+                raise ValueError(f"表 {name} 的强制筛选逻辑无效。")
+            rules = value.get("rules") if "rules" in value else value.get("children")
+            if not isinstance(rules, list) or not rules:
+                raise ValueError(f"表 {name} 的强制筛选必须包含非空条件列表。")
+            normalized = []
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    raise ValueError(f"表 {name} 的强制筛选条件无效。")
+                if "rules" in rule or "children" in rule:
+                    normalized.append(normalize_group(rule))
+                    continue
+                field = rule.get("field")
+                operator = rule.get("operator")
+                if not isinstance(field, str) or not field.strip() or operator not in (
+                    "eq", "ne", "gt", "lt", "contains", "between", "is_null", "is_not_null"
+                ):
+                    raise ValueError(f"表 {name} 的强制筛选字段或操作符无效。")
+                if operator not in ("is_null", "is_not_null") and rule.get("value") in (None, ""):
+                    raise ValueError(f"表 {name} 的强制筛选缺少条件值。")
+                normalized.append({"type": "rule", "field": {"table": name, "field": field},
+                                   "operator": operator, "value": copy.deepcopy(rule.get("value"))})
+            return {"type": "group", "logic": value.get("logic", "and"), "children": normalized}
+
+        result[name] = normalize_group(extra["required_filters"])
+    return result
 _DATASOURCE_REFERENCE_PATTERN = re.compile(
     r"\bdatasource[\s_-]*id[`'\"]?\s*(?:=|:|：)\s*[`'\"]?(\d+)\b",
     flags=re.IGNORECASE,
@@ -1330,6 +1385,8 @@ def build_tracking_prompt_context(
                 parts.append(f"aliases={aliases}")
             if item.ai_notes:
                 parts.append(f"notes={item.ai_notes}")
+            if "required_filters" in (item.extra_properties or {}):
+                parts.append("required_filters=" + _format_json_for_prompt(item.extra_properties["required_filters"]))
             line = "; ".join(parts)
             lines.append(line)
             summary_parts.append(line)

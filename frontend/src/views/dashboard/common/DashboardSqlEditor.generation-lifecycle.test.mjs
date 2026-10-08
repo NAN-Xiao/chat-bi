@@ -11,7 +11,7 @@ const names = new Set(['generateBuilderAiSql', 'generateAndPreviewBuilderSql', '
   'finishEditorExecution', 'cancelBuilderSqlGeneration', 'clearBuilderLoading', 'closeDrawer', 'generatedSqlMatchesBuilderMetrics',
   'invalidateBuilderSqlResult', 'stopBuilderExecutionWithAdvice', 'resultAdviceItems', 'resultWarningItems',
   'resultBlockingIssueItems', 'resultNonBlockingIssueItems', 'isNonBlockingBuilderAdviceItem',
-  'setSourceResult', 'previewResultSnapshot', 'getPreviewResultFields', 'updateSourcePreviewResult', 'updatePreviewResult'])
+  'setSourceResult', 'previewResultSnapshot', 'getPreviewResultFields', 'updateSourcePreviewResult', 'updatePreviewResult', 'builderConfiguredFilterIssues'])
 const previewNames = ['previewAndPersistBuilderDraft', 'previewSqlSource', 'previewMcpSource', 'runPreview',
   'applyPreviewSnapshot', 'updatePreviewResult', 'updateSourcePreviewResult', 'previewResultSnapshot',
   'getPreviewResultFields', 'setSourceResult', 'persistEditorDraftToViewInfo', 'writeEditorStateToViewInfo',
@@ -31,6 +31,7 @@ function editor({ realPreview = false, pivot = false, mixed = false } = {}) {
   const applied = []
   const unmountCallbacks = []
   const warnings = []
+  const phases = []
   let previews = 0
   const context = vm.createContext({
     AbortController,
@@ -43,10 +44,15 @@ function editor({ realPreview = false, pivot = false, mixed = false } = {}) {
     builderLoading: { value: false }, loadingText: { value: '' }, loading: { value: false },
     blockMissingFixedTimeField: () => false, shouldUseDashboardDateParameters: () => false,
     sqlBuilder: { analysisModel: 'event', activeTab: 'builder', metricItems: [] },
+    builderFilterOperatorOptions: ['eq','ne','gt','lt','contains','between','is_null','is_not_null'].map(value => ({ value })),
+    isRetentionAnalysis: { get value() { return context.sqlBuilder.analysisModel === 'retention' } },
     form: { sql: 'previous SQL', title: 'existing', chartType: 'table', sourceTypes: ['sql'], pivotEnabled: pivot, mcpTool: 'fixture' },
-    setLoadingPhase: async () => { context.builderLoading.value = true },
+    setLoadingPhase: async (phase) => { context.builderLoading.value = true; phases.push(phase) },
     showLocalBuilderAgentAdvice: () => {}, collectBuilderAiContext: () => ({}),
     dashboardApi: {
+      compile_sql: (_payload, options) => new Promise((resolve, reject) => {
+        pending.push({ options, resolve, reject, kind: 'compiler' })
+      }),
       generate_ai_sql: (_payload, options) => new Promise((resolve, reject) => {
         pending.push({ options, resolve, reject })
       }),
@@ -91,7 +97,7 @@ function editor({ realPreview = false, pivot = false, mixed = false } = {}) {
     'distributionBlockingIssues', 'intervalBlockingIssues', 'pathBlockingIssues', 'attributionBlockingIssues',
     'rankingBlockingIssues', 'heatmapBlockingIssues', 'invalidFormulaMetricItems']) context[name] = () => []
   vm.runInContext(ts.transpileModule(declarations(realPreview), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
-  return { context, pending, pendingPreviews, applied, warnings, unmountCallbacks, previews: () => previews }
+  return { context, pending, pendingPreviews, applied, warnings, phases, unmountCallbacks, previews: () => previews }
 }
 
 async function start(editor) {
@@ -107,6 +113,29 @@ test('backend-approved conditional SUM count reaches preview', async () => {
   const { promise, request } = await start(e)
   request.resolve({ success: true, sql: "SELECT SUM(CASE WHEN action='Open' THEN 1 ELSE 0 END) AS count FROM activity" })
   await promise
+  assert.equal(e.previews(), 1)
+})
+
+for (const model of ['funnel', 'retention', 'property', 'event']) test(`${model}: incomplete configured filter never reaches API or preview`, async () => {
+  const e = editor()
+  e.context.sqlBuilder.analysisModel = model
+  e.context.sqlBuilder.globalFilters = [{ type: 'rule', field: 'events.uid', operator: 'eq', value: '', children: [] }]
+  const result = e.context.generateBuilderAiSql()
+  for (let i = 0; i < 10; i++) await Promise.resolve()
+  assert.equal(e.pending.length, 0)
+  assert.equal(await result, false)
+  assert.equal(e.previews(), 0)
+  assert.equal(e.context.form.sql, '')
+})
+
+for (const model of ['property', 'interval', 'retention', 'funnel']) test(`${model} uses dedicated compilation without the AI API`, async () => {
+  const e = editor()
+  e.context.sqlBuilder.analysisModel = model
+  const { promise, request } = await start(e)
+  assert.equal(request.kind, 'compiler')
+  request.resolve({ success: true, sql: 'SELECT cohort_date, cohort_size FROM fixture', analysis_model: model })
+  await promise
+  assert.equal(e.phases[0], '正在分析')
   assert.equal(e.previews(), 1)
 })
 

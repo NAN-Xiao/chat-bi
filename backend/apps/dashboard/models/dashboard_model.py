@@ -409,6 +409,7 @@ class DashboardPivotRequest(BaseModel):
     类说明：DashboardPivotRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
     """
     enabled: bool = False
+    execution_contract: Dict[str, Any] | None = None
     client_filter_only: bool = False
     time_field: str = ''
     metric_field: str = ''
@@ -448,6 +449,7 @@ class DashboardSqlPreview(BaseModel):
     """
     datasource: int
     sql: str = ''
+    execution_contract: Dict[str, Any] | None = None
     pivot: Optional[DashboardPivotRequest] = None
     date_filter: DashboardDateFilterRequest | None = None
     cache_only: bool = False

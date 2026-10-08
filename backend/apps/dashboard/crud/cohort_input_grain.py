@@ -153,7 +153,7 @@ def cohort_input_grain_issues(sql: str, config: dict, dialect="mysql") -> list[s
     model = config.get("analysis_model")
     settings = config.get(model) or {}
     initial = settings.get("initialEvent") or settings.get("initial_event") or {}
-    observation = settings.get("paymentEvent" if model == "revenue" else "returnEvent") or {}
+    observation = settings.get("metricEvent" if model == "revenue" else "returnEvent") or {}
     time = config.get("time") or {}
     tokens = dashboard_date_parameter_tokens(time.get("date_parameter_type") or time.get("dateParameterType") or "") or ()
     prepared, _ = _scan_sql_tokens(sql, {token: ":" + token[2:-2] for token in tokens})

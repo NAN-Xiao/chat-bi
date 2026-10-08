@@ -271,7 +271,10 @@ export function serializeFormulaTokensForContext(
         ...token.metric,
         field: resolveField(token.metric.field),
         metric: resolveField(token.metric.metric),
-        filters: token.metric.filters.map((filter) => serializeFormulaFilterForContext(filter, resolveField)),
+        filters: {
+          logic: token.metric.filterLogic,
+          rules: token.metric.filters.map((filter) => serializeFormulaFilterForContext(filter, resolveField)),
+        },
       },
     }
   })

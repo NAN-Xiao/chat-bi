@@ -169,14 +169,17 @@ def test_encoded_date_still_traces_value_branches_and_date_window_outputs(projec
     assert encoded_date_issues(sqlglot.parse_one(sql, read="mysql"), {"table": "events", "field": "dt"}, "yyyymmdd_number")
 
 
-def test_missing_cte_field_routes_to_repair_with_accurate_issue():
+def test_missing_cte_field_reports_structure_and_never_routes_to_llm_repair():
     sql = attribution_sql().replace("SELECT target_id, target_value, group_1,", "SELECT target_id, group_1,")
     state = {"normalized_config": config(), "sql_dialect": "mysql",
              "response": DashboardAiSqlGenerateResponse(success=True, sql=sql)}
     result = generator._node_validate_sql(state)
     assert result["response"].success is False
-    assert any("target_value" in issue for issue in result["response"].issues)
-    assert generator._route_after_sql_validate({**state, **result}) == "repair_sql"
+    # Historic SQL remains covered by its structural validator; generation now
+    # requires an authorized compilation plan and cannot repair via a model.
+    assert any("target_value" in issue for issue in derived_column_issues(sqlglot.parse_one(sql,read="mysql")))
+    assert result["response"].sql == ""
+    assert generator._route_after_sql_validate({**state, **result}) == "explain_advice"
     assert generator._route_after_sql_validate({
         **state, **result,
         "sql_repair_attempts": generator.settings.DASHBOARD_SQL_MAX_REPAIR_ATTEMPTS,

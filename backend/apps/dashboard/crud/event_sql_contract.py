@@ -26,7 +26,24 @@ def _unquoted(node: exp.Expression) -> str:
     for cast in list(node.find_all(exp.Cast)):
         if isinstance(cast.this, exp.Placeholder):
             cast.replace(cast.this)
-    return node.sql(normalize=True, comments=False)
+    def canonical(expression):
+        # Lineage expansion removes syntactic Paren nodes. Rebuild grouping
+        # from the operator tree on both sides: redundant parentheses around
+        # JSON/function arguments disappear, but a*(b+c) stays distinct from
+        # (a*b)+c. Dropping parentheses from rendered SQL would be unsafe.
+        while isinstance(expression, exp.Paren):
+            expression = expression.this
+        result = expression.copy()
+        def child(value):
+            value = canonical(value)
+            return exp.Paren(this=value) if isinstance(value, exp.Binary) else value
+        for key, value in expression.args.items():
+            if isinstance(value, exp.Expression):
+                result.set(key, child(value))
+            elif isinstance(value, list):
+                result.set(key, [child(item) if isinstance(item, exp.Expression) else item for item in value])
+        return result
+    return canonical(node).sql(normalize=True, comments=False)
 
 
 def _implies(actual: exp.Expression, expected: exp.Expression) -> bool:

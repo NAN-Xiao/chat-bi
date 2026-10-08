@@ -148,6 +148,9 @@ class SqlEngineResult:
     message: str = ""
     sql: str | None = None
     execution_time_ms: int | None = None
+    interval_contract: dict[str, Any] | None = None
+    path_contract: dict[str, Any] | None = None
+    ranking_contract: dict[str, Any] | None = None
 
     @classmethod
     def from_query_execution(cls, query_result: QueryExecutionResult) -> "SqlEngineResult":
@@ -164,6 +167,9 @@ class SqlEngineResult:
             message=str(result.get("message") or ""),
             sql=result.get("sql"),
             execution_time_ms=query_result.execution_time_ms,
+            interval_contract=result.get("_interval_contract"),
+            path_contract=result.get("_path_contract"),
+            ranking_contract=result.get("_ranking_contract"),
         )
 
     @classmethod
@@ -205,6 +211,12 @@ class SqlEngineResult:
         }
         if self.error_type is None:
             result.pop("error_type", None)
+        if self.status == "success" and self.interval_contract is not None:
+            result["_interval_contract"] = dict(self.interval_contract)
+        if self.status == "success" and self.path_contract is not None:
+            result["_path_contract"] = dict(self.path_contract)
+        if self.status == "success" and self.ranking_contract is not None:
+            result["_ranking_contract"] = dict(self.ranking_contract)
         if include_execution_meta:
             result["_execution_meta"] = {
                 "requested_sql": self.requested_sql,
@@ -437,7 +449,11 @@ def _normalize_query_result(result: dict[str, Any], origin_column: bool) -> dict
     做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     data = DataFormat.convert_large_numbers_in_object_array(result.get("data"))
-    data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(data)
+    # A dotted output alias can be a configured JSON dimension name. Callers
+    # requesting original columns must receive exactly the driver's keys;
+    # adding the last segment invents extra columns and can mix distinct fields.
+    if not origin_column:
+        data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(data)
     result["data"] = data
     if data:
         result["fields"] = list(data[0].keys())
@@ -470,6 +486,8 @@ def _execute_after_validation(
         max_result_rows: int | None | object = _UNSET_EXECUTION_CONTROL,
         require_controlled_timeout: bool = False,
         skip_read_validation: bool = False,
+        interval_timezones: tuple[str, ...] | None = None,
+        interval_timezone_verify_only: bool = False,
 ) -> dict[str, Any]:
     """
     是什么：_execute_after_validation 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -504,6 +522,14 @@ def _execute_after_validation(
             return accepts_extra_keywords or keyword in parameters
 
         requested_controls: dict[str, object] = {}
+        if interval_timezones is not None:
+            if not accepts("interval_timezones"):
+                raise ValueError("执行器缺少间隔查询时区控制能力。")
+            requested_controls["interval_timezones"] = interval_timezones
+        if interval_timezone_verify_only:
+            if not accepts("interval_timezone_verify_only"):
+                raise ValueError("执行器缺少显式时区转换能力验证。")
+            requested_controls["interval_timezone_verify_only"] = True
         if query_timeout and query_timeout > 0:
             requested_controls["query_timeout"] = query_timeout
         if max_result_rows_requested:
@@ -727,6 +753,9 @@ def execute_user_query_or_raise(
         row_permission_policy=row_permission_policy,
     )
     datasource_for_query = _copy_datasource_for_query(datasource)
+    from apps.dashboard.crud.analysis_execution_contract import validate_analysis_workspace_contract, validate_analysis_execution_result
+    from common.core.config import settings
+    analysis_contract = validate_analysis_workspace_contract(session, current_user, datasource.id, sql)
     if close_system_transaction_before_query:
         try:
             session.rollback()
@@ -738,9 +767,14 @@ def execute_user_query_or_raise(
         sql=executed_sql,
         origin_column=origin_column,
         query_timeout=query_timeout,
+        **({"max_result_rows": max(1, int(settings.SHUZHI_QUERY_RESULT_MAX_ROWS)) + 1} if analysis_contract else {}),
+        **({"interval_timezones": tuple(analysis_contract["mysql_timezones"]),
+            "interval_timezone_verify_only": not analysis_contract["mysql_utc"]} if analysis_contract and
+           (analysis_contract["mysql_utc"] or analysis_contract["mysql_timezones"]) else {}),
     )
     execution_time_ms = int((time.perf_counter() - started_at) * 1000)
     result = _normalize_query_result(result, origin_column)
+    result = validate_analysis_execution_result(result, analysis_contract)
     return QueryExecutionResult(
         result=result,
         datasource=datasource_for_query,

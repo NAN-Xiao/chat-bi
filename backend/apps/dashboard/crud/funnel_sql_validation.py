@@ -13,6 +13,30 @@ from apps.dashboard.crud.sql_generation_validation import _conjuncts, _outputs, 
 from apps.dashboard.crud.event_sql_contract import _field_expression, _unquoted
 
 
+def funnel_result_contract_issues(sql, plan) -> list[str]:
+    """Verify a compiler-owned query against the complete authorized plan.
+
+    This guards post-compilation mutation; independent result fixtures test the
+    compiler algorithm itself. Existing hand-written/native validators remain.
+    """
+    if plan is None:
+        return ["漏斗查询计划缺失，无法校验 SQL。"]
+    from apps.dashboard.crud.funnel_sql_compiler import compile_funnel_sql
+    def parse(text):
+        tokens = set(re.findall(r"\{\{dashboard_[a-z_]+\}\}", text))
+        source, _ = _scan_sql_tokens(text, {token: ":" + token[2:-2] for token in tokens})
+        statements = sqlglot.parse(source, read=plan.dialect)
+        if len(statements) != 1 or statements[0] is None:
+            raise ValueError("需要单条 SQL")
+        return statements[0]
+    try:
+        if parse(sql) == parse(compile_funnel_sql(plan)):
+            return []
+    except (ValueError, sqlglot.errors.SqlglotError):
+        pass
+    return ["漏斗 SQL 与配置的事件、字段、筛选、候选路径、时间窗口或固定结果列不一致。"]
+
+
 FUNNEL_TIMING_RULE = (
     "漏斗时间协议：步骤必须按配置顺序匹配，窗口相对每个候选首步计算，同一主体取可完成的最大深度。"
     "仅当数据源明确为支持 window_funnel 的 AnalyticDB for MySQL 时可使用原生函数；其他数据源使用 step_1 至 step_N CTE，"
