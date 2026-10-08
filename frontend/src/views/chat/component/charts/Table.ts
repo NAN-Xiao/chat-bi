@@ -1,3 +1,4 @@
+import { getTableTheme } from './tableTheme'
 import {
   axisLabel,
   BaseChart,
@@ -24,7 +25,6 @@ import {
   type TableFilters,
 } from '@/views/chat/component/charts/tableFilter.ts'
 import {
-  TABLE_HEADER_ACTION_ICON_THEME,
   resolveTableHeaderActionIconFill,
 } from '@/views/chat/component/charts/tableHeaderActions.ts'
 import { CaretBottom, CaretTop, DCaret, Filter } from '@element-plus/icons-vue'
@@ -163,6 +163,7 @@ function resolveTableDisplayValue(
 
 export class Table extends BaseChart {
   table?: TableSheet = undefined
+  private destroyed = false
 
   container: Element | null = null
 
@@ -612,7 +613,7 @@ export class Table extends BaseChart {
             container.style.alignItems = 'center'
             container.style.padding = '8px 16px'
             container.style.cursor = 'pointer'
-            container.style.color = '#606266'
+            container.style.color = 'var(--theme-text-secondary)'
             container.style.fontSize = '14px'
             container.style.whiteSpace = 'pre-wrap'
 
@@ -651,54 +652,7 @@ export class Table extends BaseChart {
 
     if (this.container) {
       this.table = new TableSheet(this.container, s2DataConfig, s2Options)
-      this.table.setThemeCfg({
-        theme: {
-          colCell: {
-            icon: TABLE_HEADER_ACTION_ICON_THEME,
-            ...(this.layoutContext?.surface === 'dashboard'
-              ? {
-                  cell: {
-                    backgroundColor: '#f2f4f7',
-                    horizontalBorderColor: '#e8edf5',
-                    verticalBorderColor: '#e8edf5',
-                  },
-                  text: {
-                    fill: '#1d2939',
-                    fontSize: 12,
-                    fontWeight: 600,
-                  },
-                }
-              : {}),
-          },
-          ...(this.layoutContext?.surface === 'dashboard'
-            ? {
-                cornerCell: {
-                  cell: {
-                    backgroundColor: '#f2f4f7',
-                    horizontalBorderColor: '#e8edf5',
-                    verticalBorderColor: '#e8edf5',
-                  },
-                  text: {
-                    fill: '#1d2939',
-                    fontSize: 12,
-                    fontWeight: 600,
-                  },
-                },
-                dataCell: {
-                  cell: {
-                    backgroundColor: '#ffffff',
-                    horizontalBorderColor: '#e8edf5',
-                    verticalBorderColor: '#e8edf5',
-                  },
-                  text: {
-                    fill: '#344054',
-                    fontSize: 12,
-                  },
-                },
-              }
-            : {}),
-        },
-      })
+      this.table.setThemeCfg(getTableTheme(this.container))
       // right click
       this.table.on(S2Event.GLOBAL_COPIED, (data) => {
         ElMessage.success(t('qa.copied'))
@@ -714,11 +668,22 @@ export class Table extends BaseChart {
     }
   }
 
+  async updateTheme() {
+    if (this.destroyed || !this.table || !this.container) return
+    const offset = this.table.facet.getScrollOffset()
+    this.table.setThemeCfg(getTableTheme(this.container))
+    await this.table.render(false)
+    if (this.destroyed) return
+    this.table.facet.setScrollOffset(offset)
+  }
+
   render() {
     return this.table?.render()
   }
 
   destroy() {
+    if (this.destroyed) return
+    this.destroyed = true
     this.closeFilterPopup()
     this.tableFilters.clear()
     this.filterSourceData = []

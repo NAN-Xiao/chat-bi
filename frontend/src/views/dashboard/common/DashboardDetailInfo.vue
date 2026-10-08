@@ -43,13 +43,13 @@ const timestampFormatDate = (value: any) => {
   line-height: 22px;
 
   .info-title {
-    color: #646a73;
+    color: var(--workspace-text-secondary);
     font-size: 14px;
     margin-bottom: 4px;
   }
 
   .info-content {
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     font-size: 14px;
     margin-bottom: 12px;
   }

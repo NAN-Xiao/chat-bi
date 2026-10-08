@@ -1,5 +1,10 @@
 import type { G2Spec } from '@antv/g2'
 
+export const chartCssPalette = Array.from(
+  { length: 20 },
+  (_, i) => `var(--theme-chart-series-${i + 1})`
+)
+
 const chartFontFamily = 'Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif'
 
 export const chartPalette = [
@@ -124,13 +129,69 @@ export const chartTheme = {
 } as const
 
 export function withChartThemeOptions(options: G2Spec): G2Spec {
+  // Let G2's current theme supply default colors; an explicit scale remains authoritative.
+  return options
+}
+
+export function getChartPalette(mount: HTMLElement): string[] {
+  return getComputedStyle(mount)
+    .getPropertyValue('--theme-chart-palette')
+    .trim()
+    .split(/\s*,\s*/)
+}
+
+export function getChartTheme(mount: HTMLElement) {
+  const style = getComputedStyle(mount)
+  const color = (name: string) => style.getPropertyValue(`--theme-${name}`).trim()
+  const palette = getChartPalette(mount)
   return {
-    ...options,
-    scale: {
-      ...options.scale,
-      color: {
-        range: chartPalette,
-        ...(typeof options.scale?.color === 'object' ? options.scale.color : {}),
+    ...chartTheme,
+    color: palette[0],
+    category10: palette.slice(0, 10),
+    category20: palette,
+    axis: {
+      ...chartTheme.axis,
+      gridStroke: color('chart-grid'),
+      labelFill: color('chart-label'),
+      titleFill: color('chart-label'),
+      labelFontSize: 12,
+    },
+    legendCategory: { ...chartTheme.legendCategory, itemLabelFill: color('chart-legend') },
+    legendContinuous: {
+      ...chartTheme.legendContinuous,
+      labelFill: color('chart-legend'),
+      handleLabelFill: color('chart-legend'),
+    },
+    point: { point: { ...chartTheme.point.point, stroke: color('panel-bg') } },
+    line: { line: { ...chartTheme.line.line, lineWidth: 2 } },
+    label: {
+      ...chartTheme.label,
+      fill: color('chart-value'),
+      connectorStroke: color('overlay-border'),
+    },
+    slider: {
+      trackFill: color('control-bg'),
+      selectionFill: palette[0],
+      selectionFillOpacity: 0.18,
+      handleIconFill: color('panel-bg'),
+      handleIconStroke: color('overlay-border'),
+      handleLabelFill: color('chart-label'),
+      sparklineAreaFill: palette[0],
+      sparklineLineStroke: palette[0],
+    },
+    scrollbar: {
+      trackFill: color('control-bg'),
+      thumbFill: color('chart-label'),
+      thumbFillOpacity: 0.6,
+    },
+    tooltip: {
+      css: {
+        '.g2-tooltip': {
+          ...chartTheme.tooltip.css['.g2-tooltip'],
+          'background-color': color('overlay-bg'),
+          color: color('text-primary'),
+          border: `1px solid ${color('overlay-border')}`,
+        },
       },
     },
   }

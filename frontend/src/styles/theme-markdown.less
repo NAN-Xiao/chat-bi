@@ -1,0 +1,71 @@
+// Explicit application preference wins over github-markdown's system media queries.
+:root[data-theme] .markdown-body {
+  color-scheme: var(--theme-color-scheme);
+  --bgColor-default: var(--workspace-card-bg);
+  --bgColor-muted: var(--workspace-control-bg);
+  --bgColor-neutral-muted: var(--workspace-control-hover-bg);
+  --bgColor-attention-muted: var(--theme-warning-soft-bg);
+  --bgColor-danger-muted: var(--theme-danger-soft-bg);
+  --fgColor-default: var(--workspace-text-primary);
+  --fgColor-muted: var(--workspace-text-secondary);
+  --fgColor-accent: var(--theme-accent-text);
+  --fgColor-danger: var(--theme-danger-text);
+  --fgColor-attention: var(--theme-warning-text);
+  --fgColor-success: var(--theme-success-text);
+  --fgColor-done: var(--theme-platform-text);
+  --borderColor-default: var(--workspace-border);
+  --borderColor-muted: var(--workspace-border-soft);
+  --borderColor-neutral-muted: var(--workspace-border-soft);
+  --borderColor-accent-emphasis: var(--theme-accent-text);
+  --borderColor-attention-emphasis: var(--theme-warning-text);
+  --borderColor-danger-emphasis: var(--theme-danger-text);
+  --borderColor-success-emphasis: var(--theme-success-text);
+  --borderColor-done-emphasis: var(--theme-platform-text);
+  --focus-outlineColor: var(--theme-focus-ring);
+  --color-prettylights-syntax-comment: var(--workspace-text-secondary);
+  --color-prettylights-syntax-constant: var(--theme-accent-text);
+  --color-prettylights-syntax-constant-other-reference-link: var(--theme-accent-text);
+  --color-prettylights-syntax-entity: var(--theme-platform-text);
+  --color-prettylights-syntax-entity-tag: var(--theme-success-text);
+  --color-prettylights-syntax-keyword: var(--theme-danger-text);
+  --color-prettylights-syntax-storage-modifier-import: var(--workspace-text-primary);
+  --color-prettylights-syntax-string: var(--theme-personal-text);
+  --color-prettylights-syntax-string-regexp: var(--theme-success-text);
+  --color-prettylights-syntax-variable: var(--theme-warning-text);
+  --color-prettylights-syntax-markup-heading: var(--theme-accent-text);
+  --color-prettylights-syntax-markup-list: var(--theme-warning-text);
+  --color-prettylights-syntax-markup-bold: var(--workspace-text-primary);
+  --color-prettylights-syntax-markup-italic: var(--workspace-text-primary);
+  --color-prettylights-syntax-markup-inserted-bg: var(--theme-success-soft-bg);
+  --color-prettylights-syntax-markup-inserted-text: var(--theme-success-text);
+  --color-prettylights-syntax-markup-deleted-bg: var(--theme-danger-soft-bg);
+  --color-prettylights-syntax-markup-deleted-text: var(--theme-danger-text);
+  --color-prettylights-syntax-markup-changed-bg: var(--theme-warning-soft-bg);
+  --color-prettylights-syntax-markup-changed-text: var(--theme-warning-text);
+  --color-prettylights-syntax-meta-diff-range: var(--theme-platform-text);
+  --color-prettylights-syntax-brackethighlighter-angle: var(--workspace-text-secondary);
+  --color-prettylights-syntax-brackethighlighter-unmatched: var(--theme-danger-text);
+  --color-prettylights-syntax-invalid-illegal-text: var(--theme-danger-text);
+  --color-prettylights-syntax-invalid-illegal-bg: var(--theme-danger-soft-bg);
+  --color-prettylights-syntax-carriage-return-text: var(--workspace-text-primary);
+  --color-prettylights-syntax-carriage-return-bg: var(--theme-danger-soft-bg);
+  --color-prettylights-syntax-markup-ignored-bg: var(--theme-primary-soft-bg);
+  --color-prettylights-syntax-markup-ignored-text: var(--workspace-text-primary);
+  --color-prettylights-syntax-sublimelinter-gutter-mark: var(--workspace-border);
+  background-color: var(--bgColor-default);
+  color: var(--fgColor-default);
+}
+
+:root[data-theme='dark'] {
+  .hljs { background: var(--workspace-control-bg); color: var(--workspace-text-primary); }
+  .hljs-comment, .hljs-quote { color: var(--workspace-text-secondary); }
+  .hljs-keyword, .hljs-selector-tag, .hljs-subst { color: var(--theme-danger-text); }
+  .hljs-number, .hljs-literal, .hljs-variable, .hljs-template-variable, .hljs-attr { color: var(--theme-accent-text); }
+  .hljs-string, .hljs-regexp, .hljs-addition { color: var(--theme-personal-text); }
+  .hljs-title, .hljs-section, .hljs-selector-id, .hljs-selector-class { color: var(--theme-platform-text); }
+  .hljs-type, .hljs-class .hljs-title, .hljs-built_in, .hljs-builtin-name { color: var(--theme-warning-text); }
+  .hljs-tag, .hljs-name, .hljs-attribute { color: var(--theme-success-text); }
+  .hljs-symbol, .hljs-bullet, .hljs-link { color: var(--theme-accent-text); }
+  .hljs-deletion { color: var(--theme-danger-text); background: var(--theme-danger-soft-bg); }
+  .hljs-addition { background: var(--theme-success-soft-bg); }
+}

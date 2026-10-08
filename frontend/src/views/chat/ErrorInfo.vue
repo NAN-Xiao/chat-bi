@@ -175,7 +175,7 @@ function showTraceBack() {
   font-weight: 400;
   font-size: 16px;
   line-height: 24px;
-  color: rgba(31, 35, 41, 1);
+  color: var(--workspace-text-primary);
   white-space: pre-wrap;
   word-break: break-word;
 

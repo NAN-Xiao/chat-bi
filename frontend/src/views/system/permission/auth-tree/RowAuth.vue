@@ -329,7 +329,7 @@ const emits = defineEmits(['save'])
         stroke-linecap="round"
         :d="svgRealinePath"
         fill="none"
-        stroke="#D9DCDF"
+        stroke="var(--workspace-border)"
         stroke-width="0.5"
       ></path>
     </svg>
@@ -339,7 +339,7 @@ const emits = defineEmits(['save'])
         stroke-linecap="round"
         :d="svgDashinePath"
         fill="none"
-        stroke="#D9DCDF"
+        stroke="var(--workspace-border)"
         stroke-width="0.5"
         stroke-dasharray="4,4"
       ></path>
@@ -351,7 +351,7 @@ const emits = defineEmits(['save'])
 .rowAuth {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   text-align: center;
-  color: #2c3e50;
+  color: var(--workspace-text-primary);
   position: relative;
 }
 .real-line,

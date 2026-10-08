@@ -204,8 +204,8 @@ defineExpose({
   flex-direction: column;
   min-height: 0;
   border-radius: 8px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-  border: 1px solid #dfe8f3;
+  background: linear-gradient(180deg, var(--workspace-card-bg) 0%, var(--workspace-control-bg) 100%);
+  border: 1px solid var(--workspace-border);
   box-shadow: 0 10px 24px rgba(36, 64, 102, 0.06);
 
   &.is-table-chart {

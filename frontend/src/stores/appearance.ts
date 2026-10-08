@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { store } from '@/stores/index'
-import { setCurrentColor, setTitle } from '@/utils/utils'
+import { setTitle } from '@/utils/utils'
 import { isBtnShow } from '@/utils/utils'
 import elexDataLogoUrl from '@/assets/elex_data.png'
 import { request } from '@/utils/request'
@@ -36,7 +36,6 @@ interface AppearanceState {
 
 const DEFAULT_BRAND_NAME = '星通数智'
 const DEFAULT_APP_VERSION = 'v1.3.0'
-const DEFAULT_THEME_COLOR = '#2563EB'
 
 export const useAppearanceStore = defineStore('appearanceStore', {
   state: (): AppearanceState => {
@@ -173,7 +172,6 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       this.themeColor = 'default'
       this.customColor = ''
       this.name = DEFAULT_BRAND_NAME
-      setCurrentColor(DEFAULT_THEME_COLOR)
       document.title = DEFAULT_BRAND_NAME
       setTitle(DEFAULT_BRAND_NAME)
       setLinkIcon()

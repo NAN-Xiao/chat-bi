@@ -90,7 +90,7 @@ const handleModelClick = (item: any) => {
       align-items: center;
       padding-left: 16px;
       margin-bottom: 16px;
-      border: 1px solid #dee0e3;
+      border: 1px solid var(--workspace-border);
       border-radius: 12px;
       margin-left: 16px;
       cursor: pointer;

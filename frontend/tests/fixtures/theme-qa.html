@@ -1,0 +1,204 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>双主题渲染验证</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h, ref, nextTick } from 'vue'
+      import { store } from '/src/stores/index.ts'
+      import { i18n } from '/src/i18n/index.ts'
+      import ChartComponent from '/src/views/chat/component/ChartComponent.vue'
+      import ThemeSwitcher from '/src/components/layout/ThemeSwitcher.vue'
+      import { AuthApi } from '/src/api/login.ts'
+      import { useUserStore } from '/src/stores/user.ts'
+      import ElementPlus from 'element-plus-secondary'
+      import { ElDatePicker, ElButton } from 'element-plus-secondary'
+      import { BaseG2Chart } from '/src/views/chat/component/BaseG2Chart.ts'
+      import { Table } from '/src/views/chat/component/charts/Table.ts'
+      import { applyInitialTheme, applyTheme, getCurrentTheme } from '/src/utils/theme.ts'
+      import '/node_modules/element-plus-secondary/dist/index.css'
+      import '/src/style.less'
+      // Test-only server stand-in: real switcher/account lifecycle, no account or business APIs.
+      AuthApi.colorTheme = async () => ({ theme: localStorage.getItem('qa-account-theme') || 'light' })
+      AuthApi.saveColorTheme = async theme => {
+        localStorage.setItem('qa-account-theme', theme)
+        return { theme }
+      }
+      const user = useUserStore()
+      user.applyInfo({ id: 'theme-fixture', language: 'zh-CN' })
+      const instances = new Set()
+      const render = BaseG2Chart.prototype.render
+      BaseG2Chart.prototype.render = function () {
+        instances.add(this)
+        return render.call(this)
+      }
+      const tableRender = Table.prototype.render
+      Table.prototype.render = function () {
+        instances.add(this)
+        return tableRender.call(this)
+      }
+      applyInitialTheme()
+      const ready = new Set()
+      const types = ref(['line', 'donut', 'funnel', 'table'])
+      const dates = ref(['2026-08-01', '2026-08-28'])
+      const data = [
+        { day: '2026-08-01', value: 100, group: 'A' },
+        { day: '2026-08-02', value: 180, group: 'A' },
+        { day: '2026-08-03', value: 150, group: 'A' },
+        { day: '2026-08-01', value: 70, group: 'B' },
+        { day: '2026-08-02', value: 90, group: 'B' },
+        { day: '2026-08-03', value: 120, group: 'B' },
+      ]
+      const categorical = [
+        { day: '访问', value: 100 },
+        { day: '注册', value: 65 },
+        { day: '完成', value: 28 },
+      ]
+      function chartProps(type, i) {
+        const radial = ['pie', 'donut'].includes(type),
+          table = type === 'table'
+        const grouped = ['line', 'area', 'grouped_column', 'heatmap', 'sankey'].includes(type)
+        let rows = grouped ? data : categorical
+        if (table)
+          rows = Array.from({ length: 100 }, (_, n) => ({ day: '记录 ' + (n + 1), value: n + 1 }))
+        if (type === 'scatter') rows = categorical.map((row, n) => ({ ...row, day: n + 1 }))
+        return {
+          onRenderReady: () => ready.add(type),
+          id: i === 1 ? 0 : i,
+          type,
+          surface: 'dashboard',
+          hasOuterTitle: true,
+          showLabel: true,
+          x: table || radial ? [] : [{ value: 'day', name: '日期' }],
+          y: table ? [] : [{ value: 'value', name: '指标' }],
+          series: radial
+            ? [{ value: 'day', name: '分类' }]
+            : grouped
+              ? [{ value: 'group', name: '系列' }]
+              : [],
+          columns: table
+            ? [
+                { value: 'day', name: '日期' },
+                { value: 'value', name: '指标' },
+              ]
+            : [],
+          data: rows,
+        }
+      }
+      const App = {
+        setup() {
+          return () =>
+            h('div', { class: 'qa-shell' }, [
+              h('header', [
+                h('strong', '星通数智 · 双主题验证'),
+                h(ThemeSwitcher, { collapse: true }),
+                h(ElButton, { type: 'primary' }, () => '编辑'),
+              ]),
+              h('aside', [
+                h('p', '工作空间'),
+                h('p', { class: 'selected' }, '数据看板'),
+                h('p', '智能问答'),
+              ]),
+              h(
+                'main',
+                types.value.map((type, i) =>
+                  h('section', { class: 'qa-card' }, [
+                    h('h3', type),
+                    h('div', { class: 'qa-controls' }, [
+                      h(ElDatePicker, {
+                        modelValue: dates.value,
+                        'onUpdate:modelValue': (v) => (dates.value = v),
+                        type: 'daterange',
+                        valueFormat: 'YYYY-MM-DD',
+                      }),
+                      h(ElButton, () => '过去 30 天'),
+                    ]),
+                    h('div', { class: 'qa-chart' }, [h(ChartComponent, chartProps(type, i))]),
+                  ])
+                )
+              ),
+            ])
+        },
+      }
+      createApp(App).use(store).use(i18n).use(ElementPlus).mount('#app')
+      window.qa = { ready, instances, applyTheme, getCurrentTheme, types, data, dates, nextTick, user,
+        saveAccountTheme: theme => user.setColorTheme(theme) }
+    </script>
+    <style>
+      body {
+        display: block;
+      }
+      header {
+        height: 56px;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 0 20px;
+        background: var(--theme-header-bg);
+        border-bottom: 1px solid var(--theme-shell-border);
+      }
+      header strong {
+        flex: 1;
+      }
+      aside {
+        position: absolute;
+        top: 56px;
+        bottom: 0;
+        width: 220px;
+        background: var(--theme-sidebar-bg);
+        padding: 20px;
+        box-sizing: border-box;
+      }
+      aside p {
+        padding: 12px;
+        color: var(--theme-sidebar-text);
+      }
+      aside .selected {
+        background: var(--theme-sidebar-active-bg);
+        color: var(--theme-sidebar-active-text);
+        border-left: 2px solid var(--theme-focus-ring);
+      }
+      main {
+        margin-left: 220px;
+        padding: 20px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        background: var(--workspace-shell-bg);
+      }
+      .qa-card {
+        padding: 20px;
+        min-width: 0;
+        border: 1px solid var(--theme-shell-border);
+        border-radius: 12px;
+        background: var(--workspace-card-bg);
+      }
+      h3 {
+        color: var(--workspace-text-primary);
+        margin: 0 0 12px;
+      }
+      .qa-controls {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        min-width: 0;
+      }
+      .qa-controls .ed-date-editor {
+        min-width: 0;
+      }
+      .qa-chart {
+        height: 280px;
+        margin-top: 16px;
+      }
+      @media (max-width: 1100px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </body>
+</html>

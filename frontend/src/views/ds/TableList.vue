@@ -326,7 +326,7 @@ onMounted(() => {
       width: 246px;
       height: 100%;
       float: left;
-      border-right: 1px solid #ccc;
+      border-right: 1px solid var(--workspace-border);
       padding: 24px;
     }
 

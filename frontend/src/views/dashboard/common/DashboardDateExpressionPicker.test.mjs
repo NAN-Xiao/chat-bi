@@ -66,8 +66,8 @@ assert.match(
   /:global\(\.dashboard-date-expression-popper\)\s*{[\s\S]*?max-width:\s*calc\(100vw - 16px\)/
 )
 assert.match(source, /\.date-expression-picker--roi[\s\S]*?\.endpoint-controls[\s\S]*?display:\s*flex/)
-assert.match(source, /\.date-expression-picker--roi[\s\S]*?\.endpoint-connector[\s\S]*?color:\s*#86909c/)
-assert.match(source, /\.date-expression-picker--roi[\s\S]*?\.endpoint-static-badge[\s\S]*?background:\s*#f2f3f5/)
+assert.match(source, /\.date-expression-picker--roi[\s\S]*?\.endpoint-connector[\s\S]*?color:\s*var\(--workspace-text-tertiary\)/)
+assert.match(source, /\.date-expression-picker--roi[\s\S]*?\.endpoint-static-badge[\s\S]*?background:\s*var\(--workspace-control-bg\)/)
 assert.match(
   source,
   /@media \(max-width: 560px\)[\s\S]*?\.picker-body\s*{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/

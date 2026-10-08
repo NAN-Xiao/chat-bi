@@ -379,22 +379,22 @@ onMounted(loadRows)
 
 .mcp-name {
   font-weight: 500;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
 }
 
 .mcp-meta {
   font-size: 12px;
   line-height: 20px;
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
 }
 
 .mcp-action-btn {
-  color: #646a73;
+  color: var(--workspace-text-secondary);
   cursor: pointer;
 }
 
 .mcp-action-btn:hover {
-  color: var(--ed-color-primary);
+  color: var(--theme-accent-text);
 }
 
 .external-mcp-form {

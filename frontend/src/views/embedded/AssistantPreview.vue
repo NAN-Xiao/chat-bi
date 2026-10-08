@@ -75,13 +75,13 @@ const pageLogo = computed(() => {
   width: 460px;
   height: 100%;
   border-radius: 12px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   box-shadow: 0px 6px 24px 0px #1f232914;
-  background-color: #fff;
+  background-color: var(--workspace-card-bg);
   position: relative;
   overflow: hidden;
   .header {
-    background: var(--ed-color-primary-1a, #1cba901a);
+    background: var(--ed-color-primary-1a, var(--theme-primary-soft-bg));
     height: 56px;
     padding: 0 16px;
     display: flex;
@@ -105,7 +105,7 @@ const pageLogo = computed(() => {
 
       &::after {
         content: '';
-        background-color: #1f23291a;
+        background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
         position: absolute;
         border-radius: 6px;
         width: 28px;
@@ -153,7 +153,7 @@ const pageLogo = computed(() => {
       font-weight: 400;
       font-size: 14px;
       line-height: 24px;
-      color: #646a73;
+      color: var(--workspace-text-secondary);
       max-width: 88%;
       word-break: break-all;
       padding: 0 20px;
@@ -185,9 +185,9 @@ const pageLogo = computed(() => {
       --ed-button-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
       --ed-button-hover-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
       --ed-button-active-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      --ed-button-bg-color: rgba(248, 249, 250, 1);
+      --ed-button-bg-color: var(--workspace-control-bg);
       --ed-button-hover-bg-color: var(--ed-color-primary-1a, #1cba901a);
-      --ed-button-border-color: rgba(217, 220, 223, 1);
+      --ed-button-border-color: var(--workspace-border);
       --ed-button-hover-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
       --ed-button-active-bg-color: var(--ed-color-primary-33, #1cba9033);
       --ed-button-active-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
@@ -200,10 +200,10 @@ const pageLogo = computed(() => {
     left: 0;
     top: 0;
     width: 50%;
-    background: #f5f6f7;
+    background: var(--workspace-control-bg);
     box-shadow: 0px 6px 24px 0px #1f232914;
     padding: 16px;
-    border-right: 1px solid #dee0e3;
+    border-right: 1px solid var(--workspace-border);
     display: none;
   }
 }

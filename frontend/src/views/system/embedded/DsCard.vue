@@ -85,7 +85,7 @@ const handlePublic = () => {
 <style lang="less" scoped>
 .card {
   width: 370px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   padding: 16px;
   border-radius: 12px;
   cursor: pointer;
@@ -112,15 +112,15 @@ const handlePublic = () => {
         font-weight: 400;
         font-size: 12px;
         line-height: 20px;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
       }
     }
 
     .default {
-      background: var(--ed-color-primary-33, #1cba9033);
+      background: var(--theme-primary-soft-bg);
       padding: 0 4px;
       border-radius: 6px;
-      color: var(--ed-color-primary-dark-2);
+      color: var(--theme-accent-text);
       font-weight: 400;
       font-size: 12px;
       line-height: 20px;
@@ -129,8 +129,8 @@ const handlePublic = () => {
       top: 12px;
 
       &.is-private {
-        background: #f54a4533;
-        color: #d03f3b;
+        background: var(--theme-danger-soft-bg);
+        color: var(--theme-danger-text);
       }
     }
   }
@@ -139,7 +139,7 @@ const handlePublic = () => {
     font-weight: 400;
     font-size: 14px;
     line-height: 22px;
-    color: #646a73;
+    color: var(--workspace-text-secondary);
     height: 44px;
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -164,7 +164,7 @@ const handlePublic = () => {
     .form-rate {
       display: flex;
       align-items: center;
-      color: #646a73;
+      color: var(--workspace-text-secondary);
       font-weight: 400;
       font-size: 14px;
       line-height: 22px;
@@ -183,7 +183,7 @@ const handlePublic = () => {
 
         &::after {
           content: '';
-          background-color: #1f23291a;
+          background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
           position: absolute;
           border-radius: 6px;
           width: 24px;
@@ -214,7 +214,7 @@ const handlePublic = () => {
 .popover-card_ds_copy.popover-card_ds_copy.popover-card_ds_copy {
   box-shadow: 0px 4px 8px 0px #1f23291a;
   border-radius: 6px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   width: fit-content !important;
   min-width: 120px !important;
   padding: 0;
@@ -227,7 +227,7 @@ const handlePublic = () => {
       left: 0;
       width: 100%;
       height: 1px;
-      background: #dee0e3;
+      background: var(--workspace-border);
     }
     .item {
       position: relative;
@@ -238,7 +238,7 @@ const handlePublic = () => {
       cursor: pointer;
       .ed-icon {
         margin-right: 8px;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
       }
       &:hover {
         &::after {
@@ -255,7 +255,7 @@ const handlePublic = () => {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #1f23291a;
+        background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
         display: none;
       }
     }

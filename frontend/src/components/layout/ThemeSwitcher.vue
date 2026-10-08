@@ -1,26 +1,23 @@
 <script lang="ts" setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import {
-  applyTheme,
   COLOR_THEME_SWITCHING_ENABLED,
   getInitialTheme,
   getNextTheme,
+  subscribeTheme,
   type ThemeMode,
 } from '@/utils/theme'
+import { useUserStore } from '@/stores/user'
 
 defineProps({
   collapse: { type: Boolean, required: true },
 })
 
 const theme = ref<ThemeMode>(getInitialTheme())
-
-const setTheme = (value: ThemeMode) => {
-  theme.value = value
-  applyTheme(value)
-}
+const user = useUserStore()
 
 const toggleTheme = () => {
-  setTheme(getNextTheme(theme.value))
+  void user.setColorTheme(getNextTheme(theme.value))
 }
 
 const nextThemeLabel = computed(() => {
@@ -30,9 +27,8 @@ const nextThemeLabel = computed(() => {
 const showMoonIcon = computed(() => theme.value === 'light')
 const themeText = computed(() => (theme.value === 'dark' ? '浅色' : '深色'))
 
-onMounted(() => {
-  setTheme(getInitialTheme())
-})
+const unsubscribe = subscribeTheme((value) => { theme.value = value })
+onUnmounted(unsubscribe)
 </script>
 
 <template>
@@ -43,6 +39,8 @@ onMounted(() => {
     :class="[`theme-toggle--${theme}`, { collapse }]"
     :aria-label="nextThemeLabel"
     :title="nextThemeLabel"
+    :disabled="!user.themeReady || user.themeSaving"
+    :aria-busy="user.themeSaving"
     @click="toggleTheme"
   >
     <span v-if="!collapse" class="theme-toggle-track">
@@ -169,6 +167,13 @@ onMounted(() => {
   height: 16px;
   display: block;
 }
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--theme-focus-ring, #79a6ff);
+  outline-offset: 2px;
+}
+
+.theme-toggle:disabled { cursor: wait; opacity: 0.6; }
 
 .theme-toggle-track {
   position: relative;

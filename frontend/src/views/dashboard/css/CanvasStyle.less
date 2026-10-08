@@ -38,10 +38,17 @@
       position: absolute;
       inset: var(--dashboard-item-gap, 8px);
       overflow: hidden;
-      background-color: #fff;
-      border-radius: 12px;
-      border: 1px solid #e8edf5;
-      box-shadow: 0 2px 8px rgba(16, 24, 40, 0.035);
+      background-color: var(--workspace-card-bg);
+      border-radius: var(--theme-card-radius);
+      border: 1px solid var(--theme-card-border);
+      box-shadow: none;
+
+      // The editor shell owns the outline; nested Tab cards retain their own.
+      > :deep(.chart-base-container) {
+        border: 0;
+        border-radius: inherit;
+        box-shadow: none;
+      }
     }
 
     .sq-component {
@@ -78,7 +85,7 @@
       inset: var(--dashboard-item-gap, 8px);
       width: calc(100% - var(--dashboard-item-gap, 8px) * 2);
       height: calc(100% - var(--dashboard-item-gap, 8px) * 2);
-      border-radius: 12px;
+      border-radius: var(--theme-card-radius);
       object-fit: cover;
       z-index: 2;
     }

@@ -84,7 +84,7 @@ const handleDefaultChatChange = (val: any) => {
   width: 132px !important;
   min-width: 132px !important;
   box-shadow: 0 14px 34px rgba(24, 46, 86, 0.14);
-  border: 1px solid #e2e8f2;
+  border: 1px solid var(--workspace-border);
   border-radius: 8px;
   background: var(--workspace-card-bg, #ffffff);
 
@@ -101,7 +101,7 @@ const handleDefaultChatChange = (val: any) => {
         display: flex;
         align-items: center;
         padding-left: 8px;
-        color: #8090a6;
+        color: var(--workspace-text-tertiary);
         font-size: 12px;
         font-weight: 500;
       }
@@ -120,7 +120,7 @@ const handleDefaultChatChange = (val: any) => {
         margin-bottom: 0;
       }
       &:hover {
-        background: #f2f6fc;
+        background: var(--workspace-control-bg);
       }
 
       .model-name {
@@ -137,7 +137,7 @@ const handleDefaultChatChange = (val: any) => {
       }
 
       &.isActive {
-        color: var(--ed-color-primary);
+        color: var(--theme-accent-text);
 
         .done {
           display: block;
@@ -158,7 +158,7 @@ const handleDefaultChatChange = (val: any) => {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #60728c;
+  color: var(--workspace-text-secondary);
   transition:
     background-color 0.16s ease,
     color 0.16s ease,
@@ -170,13 +170,13 @@ const handleDefaultChatChange = (val: any) => {
   }
 
   &:hover {
-    background: #f5f8fd;
-    color: #34516f;
+    background: var(--workspace-control-bg);
+    color: var(--workspace-text-secondary);
   }
 
   &.active {
-    background: #edf4ff;
-    color: #346fe8;
+    background: var(--workspace-primary-soft-bg);
+    color: var(--theme-accent-text);
     box-shadow: inset 0 0 0 1px rgba(79, 125, 243, 0.22);
   }
 }

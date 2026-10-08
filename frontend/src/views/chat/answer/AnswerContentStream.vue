@@ -25,7 +25,7 @@ const entries = computed(() =>
   margin-bottom: 10px;
   padding: 2px 0 2px 10px;
   border-left: 2px solid rgba(22, 143, 112, 0.35);
-  color: rgba(31, 35, 41, 0.72);
+  color: var(--workspace-text-secondary);
   font-size: 14px;
   line-height: 22px;
 }
@@ -38,7 +38,7 @@ const entries = computed(() =>
   display: block;
   height: 1px;
   margin: 8px 0;
-  background: rgba(31, 35, 41, 0.1);
+  background: var(--workspace-control-hover-bg);
 }
 
 .answer-content-stream :deep(.markdown-body) {

@@ -18,7 +18,7 @@ import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { isMobile } from '@/utils/utils'
 import { PLATFORM_ADMIN_HOME } from '@/utils/navigation'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
-import { getInitialTheme, THEME_CHANGE_EVENT, type ThemeMode } from '@/utils/theme'
+import { getInitialTheme, getCurrentTheme, THEME_CHANGE_EVENT, type ThemeMode } from '@/utils/theme'
 import { ANALYSIS_ASSISTANT_ENABLED } from '@/utils/analysisAssistant'
 import {
   clearRememberedBusinessTenant,
@@ -38,11 +38,8 @@ const workspaceAdminViewVersion = ref(0)
 const appearanceStore = useAppearanceStoreWithOut()
 let time: any
 let topNavResizeObserver: ResizeObserver | undefined
-const handleThemeChange = (event: Event) => {
-  const theme = (event as CustomEvent<ThemeMode>).detail
-  if (theme === 'dark' || theme === 'light') {
-    currentTheme.value = theme
-  }
+const handleThemeChange = () => {
+  currentTheme.value = getCurrentTheme()
 }
 onUnmounted(() => {
   clearTimeout(time)
@@ -255,8 +252,8 @@ onMounted(() => {
               {{ appearanceStore.version }}
             </span>
           </div>
+          <div class="top-nav-brand-divider" aria-hidden="true"></div>
         </div>
-        <div class="top-nav-brand-divider" aria-hidden="true"></div>
         <Menu
           class="top-nav-menu"
           mode="horizontal"
@@ -512,7 +509,7 @@ onMounted(() => {
 
   @keyframes rotate {
     0% {
-      width: 240px;
+      width: 220px;
     }
     100% {
       width: 64px;
@@ -520,9 +517,9 @@ onMounted(() => {
   }
 
   &.system-layout-top-nav {
-    --top-nav-height: 52px;
+    --top-nav-height: 56px;
     --top-nav-control-height: 32px;
-    --top-nav-bg: #f2f6fb;
+    --top-nav-bg: var(--theme-header-bg);
 
     flex-direction: column;
     background: var(--workspace-shell-bg, var(--theme-shell-bg));
@@ -535,7 +532,7 @@ onMounted(() => {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 0 14px;
+      padding: 0 14px 0 0;
       color: var(--workspace-text-primary, var(--theme-text-primary));
       background: var(--top-nav-bg);
       border-bottom: 1px solid var(--workspace-border, var(--theme-shell-border));
@@ -544,13 +541,15 @@ onMounted(() => {
     }
 
     .top-nav-brand {
-      flex: 0 0 236px;
-      min-width: 236px;
-      max-width: 236px;
+      flex: 0 0 var(--sidebar-width);
+      min-width: 0;
+      width: var(--sidebar-width);
+      box-sizing: border-box;
+      position: relative;
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-left: 18px;
+      padding: 0 12px 0 32px;
       cursor: pointer;
 
       img,
@@ -575,7 +574,7 @@ onMounted(() => {
         font-weight: 700;
         line-height: 20px;
         letter-spacing: 0;
-        color: var(--ed-color-primary, #2f6bff);
+        color: var(--theme-accent-text);
       }
 
       .top-nav-version {
@@ -586,8 +585,8 @@ onMounted(() => {
         min-height: 17px;
         padding: 0 7px;
         border-radius: 6px;
-        background: #e3eeff;
-        color: var(--ed-color-primary, #2f6bff);
+        background: var(--theme-primary-soft-bg);
+        color: var(--theme-accent-text);
         font-size: 11px;
         font-weight: 700;
         line-height: 17px;
@@ -601,17 +600,18 @@ onMounted(() => {
           width: 5px;
           height: 5px;
           border-radius: 50%;
-          background: var(--ed-color-primary, #2f6bff);
+          background: var(--theme-accent-text);
         }
       }
     }
 
     .top-nav-brand-divider {
-      flex: 0 0 2px;
-      width: 2px;
+      position: absolute;
+      right: 0;
+      width: 1px;
       height: 32px;
       border-radius: 1px;
-      background: #bfdbfe;
+      background: var(--theme-shell-border);
     }
 
     :deep(.workspace-selector) {

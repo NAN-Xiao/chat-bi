@@ -16,6 +16,8 @@ import {
   type ChartForecastConfig,
 } from '@/views/chat/component/BaseChart.ts'
 import { useEmitt } from '@/utils/useEmitt.ts'
+import { subscribeTheme } from '@/utils/theme'
+import { createChartThemeLifecycle } from './chartThemeLifecycle'
 
 const params = withDefaults(
   defineProps<{
@@ -119,6 +121,30 @@ let rerenderAfterStaging = false
 let pendingRenderRetry = 0
 const maxRenderRetries = 2
 const destroyedChartInstances = new WeakSet<BaseChart>()
+let themeRevision = 0
+const themeUpdateFailed = ref(false)
+const themeUpdates = createChartThemeLifecycle({
+  apply: async () => {
+    const instance = chartInstance
+    if (!instance || destroyedChartInstances.has(instance)) return
+    try {
+      await instance.updateTheme()
+    } catch (error) {
+      if (destroyedChartInstances.has(instance) || instance !== chartInstance) return
+      throw error
+    }
+    if (destroyedChartInstances.has(instance) || instance !== chartInstance) return
+    themeUpdateFailed.value = false
+  },
+  onError: (error) => {
+    console.error('[ChartComponent] theme update failed', error)
+    themeUpdateFailed.value = true
+  },
+})
+const unsubscribeTheme = subscribeTheme(() => {
+  themeRevision++
+  themeUpdates.request()
+})
 
 const chartValidationMessage = computed(() => {
   if (!chartValidationErrorCode.value) {
@@ -342,6 +368,7 @@ function renderAtomicChart(retry = 0) {
     showInitialLoading.value = true
   }
   const token = ++renderToken
+  let renderedThemeRevision = themeRevision
   const stagingLayer = document.createElement('div')
   stagingLayer.className = 'chart-render-layer chart-render-layer--staging'
   const stagingMount = document.createElement('div')
@@ -359,7 +386,13 @@ function renderAtomicChart(retry = 0) {
     const renderInstance = nextInstance
     configureChart(renderInstance)
     Promise.resolve(renderInstance.render())
-      .then(() => {
+      .then(async () => {
+        // A hidden layer may have started drawing before the user switched theme.
+        // Finish that draw, then update it to the latest revision before publishing it.
+        while (token === renderToken && renderedThemeRevision !== themeRevision) {
+          renderedThemeRevision = themeRevision
+          await renderInstance.updateTheme()
+        }
         if (token !== renderToken) {
           cleanupStagedChart(renderInstance, stagingLayer)
           drainPendingRender()
@@ -480,6 +513,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  unsubscribeTheme()
+  themeUpdates.dispose()
   if (renderTimer) {
     window.clearTimeout(renderTimer)
     renderTimer = undefined
@@ -507,6 +542,10 @@ function handleVisibilityChange() {
 
 <template>
   <div :id="chartId" ref="chartContainerRef" class="chart-container">
+    <div v-if="themeUpdateFailed" class="chart-component-validation-error" role="alert">
+      图表外观更新失败
+      <button type="button" @click="themeUpdates.request()">重试</button>
+    </div>
     <div v-if="chartValidationErrorCode" class="chart-component-validation-error" role="alert">
       {{ chartValidationMessage }}
     </div>
@@ -559,7 +598,7 @@ function handleVisibilityChange() {
 
 .chart-component-validation-error {
   align-items: center;
-  color: #8c3f3f;
+  color: var(--theme-chart-red);
   display: flex;
   font-size: 14px;
   height: 100%;

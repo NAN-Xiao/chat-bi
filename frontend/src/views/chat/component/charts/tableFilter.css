@@ -6,10 +6,10 @@
   max-height: min(420px, calc(100vh - 16px));
   padding: 12px;
   overflow: hidden;
-  color: #303133;
+  color: var(--theme-text-primary);
   font-size: 13px;
-  background: #fff;
-  border: 1px solid #dcdfe6;
+  background: var(--theme-overlay-bg);
+  border: 1px solid var(--theme-overlay-border);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
 }
@@ -37,7 +37,7 @@
 .table-column-filter__summary,
 .table-column-filter__option-count,
 .table-column-filter__footer {
-  color: #909399;
+  color: var(--theme-text-tertiary);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -47,16 +47,16 @@
   width: 100%;
   height: 32px;
   padding: 0 10px;
-  color: #303133;
+  color: var(--theme-text-primary);
   font: inherit;
   outline: none;
-  background: #fff;
-  border: 1px solid #dcdfe6;
+  background: var(--theme-overlay-bg);
+  border: 1px solid var(--theme-overlay-border);
   border-radius: 6px;
 }
 
 .table-column-filter__search:focus {
-  border-color: #409eff;
+  border-color: var(--theme-focus-ring);
   box-shadow: 0 0 0 2px rgb(64 158 255 / 12%);
 }
 
@@ -67,7 +67,7 @@
 
 .table-column-filter__actions button {
   padding: 0;
-  color: #409eff;
+  color: var(--theme-focus-ring);
   font: inherit;
   cursor: pointer;
   background: transparent;
@@ -76,15 +76,15 @@
 
 .table-column-filter__actions .table-column-filter__clear {
   margin-left: auto;
-  color: #606266;
+  color: var(--theme-text-secondary);
 }
 
 .table-column-filter__options {
   max-height: 250px;
   padding: 4px 0;
   overflow-y: auto;
-  border-top: 1px solid #ebeef5;
-  border-bottom: 1px solid #ebeef5;
+  border-top: 1px solid var(--theme-shell-border);
+  border-bottom: 1px solid var(--theme-shell-border);
 }
 
 .table-column-filter__option {
@@ -96,7 +96,7 @@
 }
 
 .table-column-filter__option:hover {
-  background: #f5f7fa;
+  background: var(--theme-hover-bg);
 }
 
 .table-column-filter__option input {
@@ -114,7 +114,7 @@
 
 .table-column-filter__empty {
   padding: 24px 8px;
-  color: #909399;
+  color: var(--theme-text-tertiary);
   text-align: center;
 }
 

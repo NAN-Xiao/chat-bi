@@ -846,22 +846,22 @@ watch(
   .chart-base-container {
     border: 0;
     box-shadow: none;
-    background: #ffffff;
+    background: var(--workspace-card-bg);
   }
 
   .chart-select-container {
-    border-color: #e4ebf4 !important;
-    background: #ffffff !important;
+    border-color: var(--workspace-border) !important;
+    background: var(--workspace-card-bg) !important;
   }
 
   .buttons-bar .divider {
-    border-color: #e1e8f2 !important;
+    border-color: var(--workspace-border) !important;
   }
 
   .chart-active,
   .chat-select_type.active {
-    background: #f2f7ff !important;
-    color: #3f73e6 !important;
+    background: var(--workspace-primary-soft-bg) !important;
+    color: var(--theme-accent-text) !important;
   }
 }
 
@@ -870,7 +870,7 @@ watch(
   width: 120px !important;
   min-width: 120px !important;
   box-shadow: 0px 4px 8px 0px #1f23291a;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
 
   .popover {
     .popover-content {
@@ -885,7 +885,7 @@ watch(
         display: flex;
         align-items: center;
         padding-left: 8px;
-        color: #8f959e;
+        color: var(--workspace-text-tertiary);
       }
     }
 
@@ -905,7 +905,7 @@ watch(
       }
 
       &:hover {
-        background: #1f23291a;
+        background: var(--workspace-control-hover-bg);
       }
 
       .model-name {
@@ -922,7 +922,7 @@ watch(
       }
 
       &.isActive {
-        color: var(--ed-color-primary);
+        color: var(--theme-accent-text);
 
         .done {
           display: block;
@@ -938,11 +938,11 @@ watch(
   padding: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid #dce6f2;
+  border: 1px solid var(--workspace-border);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--workspace-card-bg);
   box-shadow: 0 10px 28px rgba(36, 64, 102, 0.05);
-  color: #18263a;
+  color: var(--workspace-text-primary);
   font-family: Inter, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
 
   &.full-screen {
@@ -954,7 +954,7 @@ watch(
     .header-bar {
       height: 56px;
       padding: 14px 24px;
-      border-bottom: 1px solid #e4ebf4;
+      border-bottom: 1px solid var(--workspace-border);
     }
 
     .chart-block {
@@ -971,9 +971,9 @@ watch(
     align-items: center;
     flex-direction: row;
     gap: 12px;
-    border-bottom: 1px solid #e6edf6;
+    border-bottom: 1px solid var(--workspace-border);
     border-radius: 8px 8px 0 0;
-    background: #ffffff;
+    background: var(--workspace-card-bg);
 
     .tool-btn {
       width: 30px;
@@ -986,7 +986,7 @@ watch(
       border-radius: 7px;
       border: 1px solid transparent;
       background: transparent;
-      color: #5f7088;
+      color: var(--workspace-text-secondary);
       transition:
         background-color 0.16s ease,
         border-color 0.16s ease,
@@ -1000,19 +1000,19 @@ watch(
       }
 
       &:hover {
-        background: #f5f8fd;
-        border-color: #dce6f2;
-        color: #34516f;
+        background: var(--workspace-control-bg);
+        border-color: var(--workspace-border);
+        color: var(--workspace-text-secondary);
       }
 
       &:active {
-        background: #ecf3ff;
+        background: var(--workspace-primary-soft-bg);
       }
     }
 
     .chart-active {
-      background: #edf4ff;
-      color: #346fe8;
+      background: var(--workspace-primary-soft-bg);
+      color: var(--theme-accent-text);
       border-color: rgba(79, 125, 243, 0.28);
       border-radius: 7px;
       box-shadow: 0 2px 6px rgba(79, 125, 243, 0.1);
@@ -1022,15 +1022,15 @@ watch(
       }
 
       :deep(.ed-select__input) {
-        color: #346fe8;
+        color: var(--theme-accent-text);
       }
 
       :deep(.ed-select__placeholder) {
-        color: #346fe8;
+        color: var(--theme-accent-text);
       }
 
       :deep(.ed-select__caret) {
-        color: #346fe8;
+        color: var(--theme-accent-text);
       }
     }
 
@@ -1040,7 +1040,7 @@ watch(
       overflow: hidden;
       text-overflow: ellipsis;
 
-      color: #132238;
+      color: var(--workspace-text-primary);
       font-weight: 600;
       font-size: 15px;
       line-height: 22px;
@@ -1060,7 +1060,7 @@ watch(
         width: 1px;
         height: 18px;
         margin: 0 2px;
-        border-left: 1px solid #e1e8f2;
+        border-left: 1px solid var(--workspace-border);
       }
     }
 
@@ -1070,9 +1070,9 @@ watch(
       flex-direction: row;
       gap: 4px;
       border-radius: 9px;
-      border: 1px solid #e4ebf4;
-      background: #ffffff;
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+      border: 1px solid var(--workspace-border);
+      background: var(--workspace-card-bg);
+      box-shadow: inset 0 0 0 1px var(--workspace-border-soft);
 
       .chart-select {
         min-width: 44px;
@@ -1086,11 +1086,11 @@ watch(
           border-radius: 7px;
 
           &:hover {
-            background: #f6f9fd;
+            background: var(--workspace-control-bg);
           }
 
           &:active {
-            background: #e8f0fb;
+            background: var(--workspace-primary-soft-bg);
           }
         }
 
@@ -1105,16 +1105,16 @@ watch(
     height: 356px;
     width: 100%;
     padding: 14px 16px 16px;
-    background: #ffffff;
+    background: var(--workspace-card-bg);
   }
 
   .data-permission-warning {
     margin: 16px;
     padding: 12px 14px;
-    border: 1px solid #f3d19e;
+    border: 1px solid var(--theme-warning-text);
     border-radius: 6px;
-    background: #fdf6ec;
-    color: #9a5b00;
+    background: var(--theme-warning-soft-bg);
+    color: var(--theme-warning-text);
     font-size: 14px;
     line-height: 22px;
   }
@@ -1135,20 +1135,20 @@ watch(
     position: absolute;
     top: 12px;
     right: 12px;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     display: none;
     background-color: transparent !important;
 
-    border-color: #dee0e3;
+    border-color: var(--workspace-border);
     box-shadow: 0px 4px 8px 0px #1f23291a;
 
     &:hover,
     &:focus {
-      color: var(--ed-color-primary);
+      color: var(--theme-accent-text);
     }
 
     &:active {
-      color: var(--ed-color-primary-dark-2);
+      color: var(--theme-accent-text);
     }
   }
 

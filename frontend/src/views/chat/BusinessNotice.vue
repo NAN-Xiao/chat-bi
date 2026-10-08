@@ -58,25 +58,25 @@ const isWarning = computed(() => severity.value !== 'info')
   align-items: flex-start;
   margin: 0 0 8px;
   padding: 10px 12px;
-  border: 1px solid #d9e7ff;
+  border: 1px solid var(--workspace-border);
   border-radius: 8px;
-  background: #f5f9ff;
-  color: #27364a;
+  background: var(--workspace-primary-soft-bg);
+  color: var(--workspace-text-primary);
   font-size: 14px;
   line-height: 22px;
 
   &.warning {
-    border-color: #ffd8bd;
-    background: #fff7f0;
+    border-color: var(--theme-warning-text);
+    background: var(--theme-warning-soft-bg);
 
     .notice-icon {
-      color: #d0630f;
+      color: var(--theme-warning-text);
     }
   }
 
   .notice-icon {
     margin-top: 3px;
-    color: #3f73e6;
+    color: var(--theme-accent-text);
     flex: 0 0 auto;
   }
 

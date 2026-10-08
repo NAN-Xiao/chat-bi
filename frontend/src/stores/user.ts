@@ -6,6 +6,7 @@ import { formatRequestErrorMessage, type FullRequestConfig } from '@/utils/reque
 import { useCache } from '@/utils/useCache'
 import { i18n } from '@/i18n'
 import { store } from './index'
+import { useAssistantStore } from './assistant'
 import { getCurrentRouter, getQueryString, getShuzhiAddr, isPlatform } from '@/utils/utils'
 import {
   clearPlatformWorkspaceDelegateContext,
@@ -20,6 +21,8 @@ import {
 import { workspaceContext, workspaceContextState } from '@/utils/workspaceContext'
 import { clearWorkspaceSelectorCaches } from '@/utils/requestDedupe'
 import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
+import { createAccountTheme } from '@/utils/accountTheme'
+import { applyTheme, type ThemeMode } from '@/utils/theme'
 
 const { wsCache } = useCache()
 
@@ -29,6 +32,8 @@ interface UserState {
   account: string
   name: string
   language: string
+  themeReady: boolean
+  themeSaving: boolean
   exp: number
   time: number
   origin: number
@@ -111,6 +116,8 @@ export const UserStore = defineStore('user', {
       account: '',
       name: '',
       language: 'zh-CN',
+      themeReady: false,
+      themeSaving: false,
       exp: 0,
       time: 0,
       origin: 0,
@@ -277,6 +284,9 @@ export const UserStore = defineStore('user', {
         isSystemAdmin: Boolean(res.isAdmin),
       }
       Object.assign(this, identityValues)
+      void getAccountTheme().bind(identityValues.uid, !useAssistantStore().getToken).catch(() => {
+        ElMessage.error('无法读取账户配色，请刷新后重试')
+      })
       Object.entries(identityValues).forEach(([key, value]) => {
         wsCache.set(`user.${key}`, value)
       })
@@ -488,6 +498,7 @@ export const UserStore = defineStore('user', {
       this.platformInfo = info
     },
     clear() {
+      getAccountTheme().reset()
       clearPlatformWorkspaceDelegateContext()
       workspaceContext.clear()
       clearWorkspaceSelectorCaches()
@@ -515,9 +526,46 @@ export const UserStore = defineStore('user', {
       keys.forEach((key) => wsCache.delete('user.' + key))
       this.$reset()
     },
+    async setColorTheme(theme: ThemeMode) {
+      try {
+        await getAccountTheme().choose(theme)
+      } catch (error) {
+        ElMessage.error(formatRequestErrorMessage(error, '账户配色未同步成功，请刷新后重试'))
+      }
+    },
   },
 })
 
 export const useUserStore = () => {
   return UserStore(store)
+}
+
+let accountTheme: ReturnType<typeof createAccountTheme> | undefined
+function getAccountTheme() {
+  if (!accountTheme) {
+    accountTheme = createAccountTheme({
+      load: AuthApi.colorTheme,
+      save: AuthApi.saveColorTheme,
+      apply: applyTheme,
+      publish: key => {
+        // Server persistence remains authoritative even if browser storage is denied.
+        try { window.localStorage.setItem(key, `${Date.now()}:${Math.random()}`) } catch { /* Cross-tab sync unavailable. */ }
+      },
+      status: ({ ready, saving }) => {
+        const user = useUserStore()
+        user.themeReady = ready
+        user.themeSaving = saving
+      },
+    })
+    window.addEventListener('storage', event => {
+      try {
+        if (event.storageArea === window.localStorage) {
+          void accountTheme?.acceptStorage(event.key, event.newValue).catch(() => {
+            ElMessage.error('账户配色同步失败，请刷新后重试')
+          })
+        }
+      } catch { /* Browser storage may be disabled. */ }
+    })
+  }
+  return accountTheme
 }

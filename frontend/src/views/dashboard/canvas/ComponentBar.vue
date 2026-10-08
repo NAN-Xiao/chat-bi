@@ -176,7 +176,7 @@ const doShareComponent = async (e: MouseEvent) => {
 .bar-more {
   width: 28px;
   height: 28px;
-  color: rgba(31, 35, 41, 1);
+  color: var(--workspace-text-primary);
   border-radius: 0;
   background: transparent;
   border: none;
@@ -192,7 +192,7 @@ const doShareComponent = async (e: MouseEvent) => {
   }
   &:hover {
     background-color: transparent;
-    color: var(--ed-color-primary, #3370ff);
+    color: var(--theme-accent-text);
   }
 
   &:active {
@@ -205,13 +205,13 @@ const doShareComponent = async (e: MouseEvent) => {
 .bar-main_popper {
   box-shadow: 0px 4px 8px 0px #1f23291a !important;
   border-radius: 6px;
-  border: 1px solid #dee0e3 !important;
+  border: 1px solid var(--workspace-border) !important;
   width: 120px !important;
   min-width: 120px !important;
   padding: 0 !important;
 
   .handle-icon {
-    color: #646a73;
+    color: var(--workspace-text-secondary);
     margin-right: 8px;
   }
 
@@ -223,15 +223,15 @@ const doShareComponent = async (e: MouseEvent) => {
     position: relative;
     padding-left: 12px;
     background: none;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
 
     &:focus {
       background: none;
-      color: #1f2329;
+      color: var(--workspace-text-primary);
     }
     &:hover {
       background: none;
-      color: #1f2329;
+      color: var(--workspace-text-primary);
       &::after {
         content: '';
         width: 112px;
@@ -241,7 +241,7 @@ const doShareComponent = async (e: MouseEvent) => {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #1f23291a;
+        background: var(--workspace-control-hover-bg);
       }
     }
   }

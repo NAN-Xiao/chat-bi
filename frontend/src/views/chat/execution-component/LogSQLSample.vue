@@ -49,7 +49,7 @@ const title = computed(() => {
 
 <style scoped lang="less">
 .inner-title {
-  color: #646a73;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
   line-height: 20px;
   font-weight: 500;
@@ -62,23 +62,23 @@ const title = computed(() => {
   align-items: stretch;
   flex-wrap: nowrap;
   .inner-item {
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     display: flex;
     flex-direction: column;
     gap: 8px;
     border-radius: 12px;
     padding: 16px;
-    background: #ffffff;
+    background: var(--workspace-card-bg);
 
     .inner-item-title {
-      color: #1f2329;
+      color: var(--workspace-text-primary);
       font-weight: 500;
       line-height: 22px;
       font-size: 14px;
       vertical-align: middle;
     }
     .inner-item-description {
-      color: #646a73;
+      color: var(--workspace-text-secondary);
       font-weight: 400;
       line-height: 22px;
       font-size: 14px;

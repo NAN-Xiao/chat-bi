@@ -142,8 +142,8 @@ function applySettings() {
   justify-content: center;
   border: 1px solid transparent;
   border-radius: 6px;
-  color: #6b7280;
-  background: #f5f6f8;
+  color: var(--workspace-text-secondary);
+  background: var(--workspace-control-bg);
   cursor: pointer;
 }
 
@@ -151,8 +151,8 @@ function applySettings() {
 .distribution-settings-trigger:focus-visible,
 .distribution-settings-trigger.is-customized {
   border-color: #3b5bff;
-  color: #3154e8;
-  background: #fff;
+  color: var(--theme-accent-text);
+  background: var(--workspace-card-bg);
 }
 
 .distribution-settings-trigger:disabled {
@@ -161,13 +161,13 @@ function applySettings() {
 }
 
 .distribution-interval-settings {
-  color: #303643;
+  color: var(--workspace-text-primary);
 }
 
 .distribution-interval-tabs {
   display: flex;
   gap: 22px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--workspace-border);
 }
 
 .distribution-interval-tab {
@@ -175,14 +175,14 @@ function applySettings() {
   min-height: 40px;
   padding: 0;
   border: 0;
-  color: #6b7280;
+  color: var(--workspace-text-secondary);
   background: transparent;
   font-size: 13px;
   cursor: pointer;
 }
 
 .distribution-interval-tab.is-active {
-  color: #1f2937;
+  color: var(--workspace-text-primary);
   font-weight: 600;
 }
 
@@ -199,7 +199,7 @@ function applySettings() {
 .distribution-interval-body {
   min-height: 112px;
   padding: 18px 16px;
-  color: #7b8494;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
   line-height: 1.75;
 }
@@ -211,7 +211,7 @@ function applySettings() {
 .distribution-custom-label {
   display: block;
   margin-bottom: 8px;
-  color: #4b5563;
+  color: var(--workspace-text-secondary);
   font-weight: 600;
 }
 
@@ -220,7 +220,7 @@ function applySettings() {
   justify-content: flex-end;
   gap: 8px;
   padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--workspace-border);
 }
 
 :global(.distribution-interval-popper) {

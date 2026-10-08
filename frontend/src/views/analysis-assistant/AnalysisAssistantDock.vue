@@ -1540,18 +1540,18 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
 <style scoped lang="less">
 .analysis-assistant-dock {
-  --assistant-dock-bg: #ffffff;
-  --assistant-dock-body-bg: #f6f8fc;
-  --assistant-dock-control-bg: #f1f5fb;
-  --assistant-dock-control-hover-bg: #e8f0ff;
-  --assistant-dock-pill-bg: #edf3ff;
-  --assistant-dock-border: #d7e1ef;
-  --assistant-dock-border-soft: #e6edf6;
-  --assistant-dock-text-primary: #15233b;
-  --assistant-dock-text-secondary: #6b7a90;
-  --assistant-dock-text-tertiary: #8a97aa;
-  --assistant-dock-input-bg: #ffffff;
-  --assistant-dock-primary-soft-bg: rgba(47, 107, 255, 0.1);
+  --assistant-dock-bg: var(--workspace-card-bg);
+  --assistant-dock-body-bg: var(--workspace-shell-bg);
+  --assistant-dock-control-bg: var(--workspace-control-bg);
+  --assistant-dock-control-hover-bg: var(--workspace-control-hover-bg);
+  --assistant-dock-pill-bg: var(--workspace-primary-soft-bg);
+  --assistant-dock-border: var(--workspace-border);
+  --assistant-dock-border-soft: var(--workspace-border-soft);
+  --assistant-dock-text-primary: var(--workspace-text-primary);
+  --assistant-dock-text-secondary: var(--workspace-text-secondary);
+  --assistant-dock-text-tertiary: var(--workspace-text-tertiary);
+  --assistant-dock-input-bg: var(--workspace-input-bg);
+  --assistant-dock-primary-soft-bg: var(--workspace-primary-soft-bg);
   --assistant-dock-danger-soft-bg: #fff5f5;
   --assistant-tab-bg: #ffffff;
   --assistant-tab-hover-bg: #edf3ff;

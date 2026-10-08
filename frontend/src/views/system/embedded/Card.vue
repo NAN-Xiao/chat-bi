@@ -133,7 +133,7 @@ const pageLogo = computed(() => {
 .card {
   width: 100%;
   height: 180px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   padding: 16px;
   border-radius: 12px;
   &:hover {
@@ -165,7 +165,7 @@ const pageLogo = computed(() => {
           font-weight: 400;
           font-size: 12px;
           line-height: 20px;
-          color: #646a73;
+          color: var(--workspace-text-secondary);
           margin-right: 8px;
         }
       }
@@ -184,13 +184,13 @@ const pageLogo = computed(() => {
       font-weight: 400;
       font-size: 12px;
       line-height: 20px;
-      background: #ff880033;
-      color: #d97400;
+      background: var(--theme-warning-soft-bg);
+      color: var(--theme-warning-text);
       margin-top: -18px;
 
       &.is-base {
-        background: var(--ed-color-primary-33, #1cba9033);
-        color: var(--ed-color-primary-dark-2);
+        background: var(--theme-primary-soft-bg);
+        color: var(--theme-accent-text);
       }
     }
   }
@@ -228,7 +228,7 @@ const pageLogo = computed(() => {
 
       &::after {
         content: '';
-        background: #fff;
+        background: var(--workspace-card-bg);
         position: absolute;
         border-radius: 6px;
         width: 30px;
@@ -236,13 +236,13 @@ const pageLogo = computed(() => {
         transform: translate(-50%, -50%);
         top: 50%;
         left: 50%;
-        border: 1px solid #d9dcdf;
+        border: 1px solid var(--workspace-border);
         z-index: 1;
       }
 
       &:hover {
         &::after {
-          background: #f5f6f7;
+          background: var(--workspace-control-bg);
         }
       }
     }
@@ -254,7 +254,7 @@ const pageLogo = computed(() => {
 .popover-card_embedded.popover-card_embedded.popover-card_embedded {
   box-shadow: 0px 4px 8px 0px #1f23291a;
   border-radius: 6px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   width: fit-content !important;
   min-width: 120px !important;
   padding: 0;
@@ -270,7 +270,7 @@ const pageLogo = computed(() => {
 
       .ed-icon {
         margin-right: 8px;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
       }
 
       &:hover {
@@ -288,7 +288,7 @@ const pageLogo = computed(() => {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #1f23291a;
+        background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
         display: none;
       }
     }

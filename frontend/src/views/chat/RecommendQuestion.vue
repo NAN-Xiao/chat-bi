@@ -224,7 +224,7 @@ defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
   gap: 4px;
 
   .continue-ask {
-    color: rgba(100, 106, 115, 1);
+    color: var(--workspace-text-secondary);
     font-weight: 400;
   }
 
@@ -243,17 +243,17 @@ defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
   .question {
     font-weight: 400;
     cursor: pointer;
-    background: rgba(245, 246, 247, 1);
+    background: var(--workspace-control-bg);
     min-height: 32px;
     border-radius: 6px;
     padding: 5px 12px;
     line-height: 22px;
     &:hover {
-      background: rgba(31, 35, 41, 0.1);
+      background: var(--workspace-control-hover-bg);
     }
     &.disabled {
       cursor: not-allowed;
-      background: rgba(245, 246, 247, 1);
+      background: var(--workspace-control-bg);
     }
   }
 }
@@ -261,7 +261,7 @@ defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
 .recommend-questions-error {
   font-size: 12px;
   font-weight: 500;
-  color: rgba(100, 106, 115, 1);
+  color: var(--workspace-text-secondary);
   margin-top: 70px;
   display: flex;
   align-items: center;

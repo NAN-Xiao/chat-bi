@@ -1053,7 +1053,7 @@ onMounted(async () => {
   --shadow: 0 24px 70px rgba(61, 58, 124, 0.12);
   position: relative;
   color: var(--text-main);
-  color-scheme: light;
+  color-scheme: var(--theme-color-scheme);
   background: var(--page-bg);
 }
 
@@ -1100,7 +1100,7 @@ onMounted(async () => {
   display: grid;
   place-items: center;
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--login-surface-bg, #ffffff);
   box-shadow: 0 10px 24px rgba(81, 72, 220, 0.16);
 
   img {
@@ -1219,7 +1219,7 @@ onMounted(async () => {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 0 20px;
-  background: #ffffff;
+  background: var(--login-surface-bg, #ffffff);
   color: var(--text-main);
   font-size: 14px;
 
@@ -1350,7 +1350,7 @@ onMounted(async () => {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--login-surface-bg, #ffffff);
   box-shadow: var(--shadow);
 }
 
@@ -1443,7 +1443,7 @@ onMounted(async () => {
   min-width: 0;
   border: 1px solid #e9ebf3;
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--login-surface-bg, #ffffff);
 }
 
 .trend-panel {
@@ -1506,7 +1506,7 @@ onMounted(async () => {
     display: grid;
     place-items: center;
     border-radius: 50%;
-    background: #ffffff;
+    background: var(--login-surface-bg, #ffffff);
     color: #606779;
     font-size: 13px;
     font-weight: 900;
@@ -1588,7 +1588,7 @@ onMounted(async () => {
 }
 
 .flow-section {
-  background: #ffffff;
+  background: var(--login-surface-bg, #ffffff);
 }
 
 .flow-card-grid {
@@ -1601,7 +1601,7 @@ onMounted(async () => {
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 26px;
-    background: #ffffff;
+    background: var(--login-surface-bg, #ffffff);
     box-shadow: 0 16px 40px rgba(61, 58, 124, 0.06);
   }
 
@@ -1735,7 +1735,7 @@ onMounted(async () => {
   min-height: 118px;
   border: 1px solid #e9ebf3;
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--login-surface-bg, #ffffff);
 }
 
 .builder-card.metric {
@@ -1920,7 +1920,7 @@ onMounted(async () => {
   border: 1px solid #e9ebf3;
   border-radius: 8px;
   padding: 16px;
-  background: #ffffff;
+  background: var(--login-surface-bg, #ffffff);
 
   b {
     display: block;
@@ -1951,7 +1951,7 @@ onMounted(async () => {
 }
 
 .scenario-section {
-  background: #ffffff;
+  background: var(--login-surface-bg, #ffffff);
 }
 
 .scenario-grid {
@@ -1964,7 +1964,7 @@ onMounted(async () => {
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 24px;
-    background: #ffffff;
+    background: var(--login-surface-bg, #ffffff);
     box-shadow: 0 12px 30px rgba(61, 58, 124, 0.05);
   }
 
@@ -2170,7 +2170,7 @@ onMounted(async () => {
   border: 1px solid #e9ebf3;
   border-radius: 8px;
   padding: 18px 20px 14px;
-  background: #ffffff;
+  background: var(--login-surface-bg, #ffffff);
 
   i {
     flex: 1;
@@ -2215,7 +2215,7 @@ onMounted(async () => {
   display: flex;
   align-items: flex-end;
   padding-top: 36px;
-  color-scheme: light;
+  color-scheme: var(--theme-color-scheme);
 }
 
 .product-login-card {
@@ -2527,7 +2527,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--login-surface-bg, #ffffff);
 }
 
 .product-login-feishu-logo {
@@ -2549,7 +2549,7 @@ onMounted(async () => {
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 22px;
-    background: #ffffff;
+    background: var(--login-surface-bg, #ffffff);
   }
 
   .el-icon {
@@ -2838,6 +2838,48 @@ onMounted(async () => {
   .login-capability-strip {
     margin: 42px -18px 0;
     padding: 36px 18px 42px;
+  }
+}
+
+</style>
+
+<style lang="less">
+:root[data-theme='dark'] .shuzhi-landing-page {
+  --page-bg: var(--workspace-shell-bg);
+  --soft-bg: var(--workspace-panel-bg);
+  --login-surface-bg: var(--workspace-card-bg);
+  --text-main: var(--workspace-text-primary);
+  --text-strong: var(--workspace-text-primary);
+  --text-muted: var(--workspace-text-secondary);
+  --line: var(--workspace-border);
+  --primary: #79a6ff;
+  --primary-dark: #9bbdff;
+  --primary-soft: #2c3d57;
+  --shadow: none;
+  .product-login-wrap {
+    --theme-panel-bg: var(--workspace-card-bg);
+    --theme-text-primary: var(--workspace-text-primary);
+    --theme-text-secondary: var(--workspace-text-secondary);
+    --theme-text-tertiary: var(--workspace-text-tertiary);
+    --theme-input-bg: var(--workspace-input-bg);
+    --theme-input-border: var(--workspace-border);
+  }
+  .shuzhi-nav { background: var(--theme-header-bg); }
+  .shuzhi-login-stage { background: var(--page-bg); }
+  .login-preview-question, .mini-window-head, .metric-grid article {
+    background: var(--soft-bg);
+    border-color: var(--line);
+  }
+  .shuzhi-nav-links button, .shuzhi-hero-copy > p, .shuzhi-login-story > p,
+  .shuzhi-trust-row, .channel-legend { color: var(--workspace-text-secondary); }
+  .shuzhi-nav-primary, .shuzhi-primary-button {
+    background: var(--theme-button-primary-bg);
+    color: #fff;
+    &:hover { background: var(--theme-button-primary-hover-bg); }
+  }
+  .product-login-submit {
+    background: var(--theme-button-primary-bg);
+    &:hover { background: var(--theme-button-primary-hover-bg); }
   }
 }
 </style>

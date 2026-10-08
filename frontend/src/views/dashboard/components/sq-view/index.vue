@@ -511,7 +511,7 @@ const dateFilterApplyDisabled = computed(() =>
 const dateFilterRangeLabel = computed(() => {
   const [start = t('dashboard.date_filter_start'), end = t('dashboard.date_filter_end')] =
     dateFilterState.value.draftRange || []
-  return `${start} - ${end}`
+  return `${start} 至 ${end}`
 })
 const datePickerLocale = computed(() => {
   const locales = {
@@ -2612,6 +2612,7 @@ defineExpose({
       <DashboardDateExpressionPicker
         :model-value="dashboardDateExpression"
         variant="roi"
+        appearance="inline"
         show-resolved-range
         :resolved-range="insightDateRange"
         timezone="Asia/Shanghai"
@@ -2993,11 +2994,11 @@ defineExpose({
 
   width: 100%;
   height: 100%;
-  background: #ffffff;
+  background: var(--workspace-card-bg);
   padding: var(--insight-frame-compact-padding-block)
     var(--insight-frame-compact-padding-inline) !important;
-  border: 0;
-  border-radius: 10px;
+  border: 1px solid var(--theme-card-border);
+  border-radius: var(--theme-card-radius);
   box-shadow: none;
   overflow: hidden;
   container-type: inline-size;
@@ -3070,20 +3071,20 @@ defineExpose({
 
     .chart-active {
       background: var(--ed-color-primary-1a, rgba(28, 186, 144, 0.1));
-      color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+      color: var(--theme-accent-text);
       border-radius: 6px;
 
       :deep(.ed-select__wrapper) {
         background: transparent;
       }
       :deep(.ed-select__input) {
-        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+        color: var(--theme-accent-text);
       }
       :deep(.ed-select__placeholder) {
-        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+        color: var(--theme-accent-text);
       }
       :deep(.ed-select__caret) {
-        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+        color: var(--theme-accent-text);
       }
     }
 
@@ -3188,14 +3189,14 @@ defineExpose({
     align-items: center;
 
     .date-filter-trigger {
-      width: 242px;
+      width: auto;
       max-width: 100%;
       height: 30px;
-      padding: 0 10px;
-      border: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
+      padding: 0;
+      border: 0;
       border-radius: 6px;
-      background: var(--workspace-surface, #fff);
-      color: var(--workspace-text-primary, rgba(31, 35, 41, 1));
+      background: transparent;
+      color: var(--theme-text-secondary);
       display: flex;
       align-items: center;
       gap: 7px;
@@ -3209,9 +3210,12 @@ defineExpose({
 
       &:hover,
       &:focus-visible {
-        border-color: var(--ed-color-primary, #3370ff);
-        box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.08);
-        outline: none;
+        color: var(--theme-text-primary);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--theme-focus-ring);
+        outline-offset: 2px;
       }
 
       &:disabled {
@@ -3276,7 +3280,7 @@ defineExpose({
       height: 28px;
       padding: 2px;
       border-radius: 6px;
-      background: #f3f6fb;
+      background: var(--workspace-control-bg);
     }
 
     .pivot-granularity-tab {
@@ -3286,7 +3290,7 @@ defineExpose({
       border: 1px solid transparent;
       border-radius: 5px;
       background: transparent;
-      color: #667085;
+      color: var(--workspace-text-secondary);
       cursor: pointer;
       font: inherit;
       font-size: 11px;
@@ -3294,15 +3298,15 @@ defineExpose({
 
       &:hover,
       &:focus-visible {
-        color: #2f6bff;
+        color: var(--theme-accent-text);
         outline: none;
       }
 
       &.active {
         border-color: #b7d0ff;
-        background: #ffffff;
+        background: var(--workspace-card-bg);
         box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
-        color: #2f6bff;
+        color: var(--theme-accent-text);
         font-weight: 600;
       }
     }
@@ -3340,7 +3344,8 @@ defineExpose({
     :deep(.date-expression-trigger) {
       width: auto;
       min-width: 84px;
-      height: 30px;
+      height: auto;
+      min-height: 30px;
       padding: 0;
       border: 0;
       background: transparent;
@@ -3356,6 +3361,16 @@ defineExpose({
         background: transparent;
       }
     }
+  }
+
+  .dashboard-filter-controls--combined > .date-expression-toolbar :deep(.date-expression-trigger--inline) {
+    height: auto;
+  }
+
+  // Tab cards reserve a single controls row. Keep the preset visible there;
+  // the range's title exposes the full dates when the remaining width is narrow.
+  &.dashboard-layout-surface-tab .date-expression-toolbar :deep(.date-expression-trigger--inline > span) {
+    flex-wrap: nowrap;
   }
 
   @container (max-width: 560px) {
@@ -3400,7 +3415,7 @@ defineExpose({
       text-overflow: ellipsis;
 
       &.pivot-link {
-        color: var(--ed-color-primary, #2f6bff);
+        color: var(--theme-accent-text);
         font-weight: 600;
       }
 
@@ -3412,7 +3427,7 @@ defineExpose({
 
       &.pivot-link:hover,
       &.pivot-link:focus-visible {
-        color: var(--ed-color-primary, #2f6bff);
+        color: var(--theme-accent-text);
       }
 
       &.pivot-group-chip {
@@ -3427,7 +3442,7 @@ defineExpose({
       }
 
       &.active {
-        color: var(--ed-color-primary, #2f6bff);
+        color: var(--theme-accent-text);
         font-weight: 600;
       }
     }
@@ -3459,7 +3474,7 @@ defineExpose({
 
 :global(.dashboard-pivot-popper) {
   padding: 8px !important;
-  border: 1px solid rgba(31, 35, 41, 0.08) !important;
+  border: 1px solid var(--workspace-border) !important;
   border-radius: 8px !important;
   box-shadow: 0 12px 32px rgba(31, 35, 41, 0.12) !important;
 }
@@ -3468,13 +3483,13 @@ defineExpose({
   --el-color-primary: var(--ed-color-primary, #3370ff);
   padding: 0 !important;
   overflow: hidden;
-  border: 1px solid rgba(31, 35, 41, 0.08) !important;
+  border: 1px solid var(--workspace-border) !important;
   border-radius: 8px !important;
   box-shadow: 0 12px 32px rgba(31, 35, 41, 0.14) !important;
 }
 
 :global(.dashboard-date-filter-popper .date-filter-panel) {
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 
 :global(.dashboard-date-filter-popper .el-picker-panel) {
@@ -3493,8 +3508,8 @@ defineExpose({
   justify-content: flex-end;
   min-height: 48px;
   padding: 8px 12px;
-  border-top: 1px solid rgba(31, 35, 41, 0.08);
-  background: #fff;
+  border-top: 1px solid var(--workspace-border);
+  background: var(--workspace-card-bg);
 }
 
 :global(.dashboard-pivot-popper .pivot-menu),
@@ -3519,7 +3534,7 @@ defineExpose({
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: rgba(31, 35, 41, 1);
+  color: var(--workspace-text-primary);
   cursor: pointer;
   font-size: 13px;
   line-height: 20px;
@@ -3534,7 +3549,7 @@ defineExpose({
 }
 
 :global(.dashboard-pivot-popper .pivot-menu-item.active) {
-  color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+  color: var(--theme-accent-text);
   font-weight: 600;
 }
 
@@ -3550,7 +3565,7 @@ defineExpose({
 }
 
 :global(.dashboard-pivot-popper .pivot-menu-item.with-arrow.active .pivot-menu-arrow) {
-  color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+  color: var(--theme-accent-text);
 }
 
 :global(.dashboard-pivot-popper .pivot-range-grid) {
@@ -3578,7 +3593,7 @@ defineExpose({
   border: 1px solid rgba(51, 112, 255, 0.16);
   border-radius: 999px;
   background: rgba(51, 112, 255, 0.06);
-  color: #12305f;
+  color: var(--workspace-text-secondary);
   cursor: pointer;
   font-size: 12px;
   line-height: 20px;
@@ -3590,7 +3605,7 @@ defineExpose({
 :global(.dashboard-pivot-popper .pivot-quick-chip.active) {
   background: rgba(51, 112, 255, 0.12);
   border-color: rgba(51, 112, 255, 0.28);
-  color: var(--ed-color-primary, #1cba90);
+  color: var(--theme-accent-text);
   font-weight: 600;
 }
 
@@ -3673,8 +3688,8 @@ defineExpose({
 
 :global(.dashboard-pivot-popper .pivot-calendar-foot) {
   align-items: center;
-  border-top: 1px solid rgba(31, 35, 41, 0.08);
-  color: rgba(100, 106, 115, 1);
+  border-top: 1px solid var(--workspace-border);
+  color: var(--workspace-text-secondary);
   display: flex;
   font-size: 11px;
   gap: 8px;
@@ -3715,7 +3730,7 @@ defineExpose({
 
 :global(.dashboard-pivot-popper .pivot-group-value-toolbar) {
   align-items: center;
-  border-bottom: 1px solid rgba(31, 35, 41, 0.08);
+  border-bottom: 1px solid var(--workspace-border);
   display: flex;
   gap: 8px;
   justify-content: space-between;
@@ -3740,7 +3755,7 @@ defineExpose({
 :global(.dashboard-pivot-popper .pivot-group-value-item) {
   align-items: center;
   border-radius: 6px;
-  color: rgba(31, 35, 41, 1);
+  color: var(--workspace-text-primary);
   cursor: pointer;
   display: flex;
   gap: 8px;
@@ -3771,7 +3786,7 @@ defineExpose({
 }
 
 :global(.dashboard-pivot-popper .pivot-group-value-empty) {
-  color: rgba(100, 106, 115, 1);
+  color: var(--workspace-text-secondary);
   font-size: 12px;
   line-height: 30px;
   padding: 0 6px;
@@ -3779,7 +3794,7 @@ defineExpose({
 
 :global(.dashboard-pivot-popper .pivot-group-value-footer) {
   align-items: center;
-  border-top: 1px solid rgba(31, 35, 41, 0.08);
+  border-top: 1px solid var(--workspace-border);
   display: flex;
   gap: 6px;
   justify-content: space-between;
@@ -3824,7 +3839,7 @@ defineExpose({
 
   .chart-empty-info,
   .error-info {
-    color: #667085;
+    color: var(--workspace-text-secondary);
     font-size: 12px;
     line-height: 18px;
   }

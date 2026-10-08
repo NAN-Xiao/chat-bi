@@ -46,7 +46,7 @@ onMounted(() => {
   width: 100%;
   height: 100vh;
   position: relative;
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 .shuzhi-embedded-assistant-page {
   width: 100%;
@@ -54,7 +54,7 @@ onMounted(() => {
   position: absolute;
   top: 0;
   left: 0;
-  background: #f7f8fa;
+  background: var(--workspace-control-bg);
   box-sizing: border-box;
   overflow: auto;
   // padding-bottom: 48px;

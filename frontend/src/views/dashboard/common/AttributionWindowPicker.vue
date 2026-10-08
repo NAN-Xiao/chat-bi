@@ -108,7 +108,7 @@ function updateMode(mode: AttributionWindowMode) {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -119,7 +119,7 @@ function updateMode(mode: AttributionWindowMode) {
 }
 
 .attribution-window-label .el-icon {
-  color: #8d96a5;
+  color: var(--workspace-text-tertiary);
   cursor: help;
 }
 

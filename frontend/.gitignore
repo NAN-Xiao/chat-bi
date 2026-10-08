@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local implementation evidence and browser QA artifacts
+.superpowers/
+.playwright-cli/

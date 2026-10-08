@@ -821,8 +821,8 @@ onBeforeUnmount(() => {
   }
 
   .canvas-have-update {
-    background-color: rgba(52, 199, 36, 0.2);
-    color: rgba(44, 169, 31, 1);
+    background-color: var(--theme-success-soft-bg);
+    color: var(--theme-success-text);
     font-weight: 400;
     font-size: 12px;
     line-height: 20px;
@@ -866,7 +866,7 @@ onBeforeUnmount(() => {
           border-radius: 6px;
           height: 28px;
           width: 28px;
-          background: #1f23291a;
+          background: var(--workspace-control-hover-bg);
         }
       }
     }
@@ -892,7 +892,7 @@ onBeforeUnmount(() => {
   padding: 16px;
   border: 2px solid #4f7df3;
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--workspace-card-bg);
   box-shadow: 0 18px 42px rgba(47, 107, 255, 0.16);
   max-height: var(--report-popover-max-height, calc(100vh - 32px));
   overflow: auto;
@@ -920,7 +920,7 @@ onBeforeUnmount(() => {
     border-radius: 0;
     box-shadow: none !important;
     background: transparent;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     resize: none;
     overflow-y: auto;
 
@@ -962,8 +962,8 @@ onBeforeUnmount(() => {
   padding: 0 8px;
   border: 1px solid rgba(79, 125, 243, 0.2);
   border-radius: 6px;
-  background: rgba(79, 125, 243, 0.08);
-  color: #2f4b7c;
+  background: var(--workspace-primary-soft-bg);
+  color: var(--theme-accent-text);
   cursor: pointer;
   font-size: 12px;
   line-height: 24px;
@@ -974,8 +974,8 @@ onBeforeUnmount(() => {
   &:hover,
   &:focus {
     border-color: rgba(47, 107, 255, 0.45);
-    background: rgba(47, 107, 255, 0.12);
-    color: #1f4ed8;
+    background: var(--workspace-primary-soft-bg);
+    color: var(--theme-accent-text);
   }
 }
 
@@ -983,7 +983,7 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
   min-height: 0;
   padding-top: 8px;
-  background: #ffffff;
+  background: var(--workspace-card-bg);
 }
 
 .report-conversation-footer .report-prompt-history {
@@ -997,7 +997,7 @@ onBeforeUnmount(() => {
 .report-dialog-title {
   min-width: 0;
   flex: 1;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-weight: 600;
 
   span {
@@ -1063,12 +1063,12 @@ onBeforeUnmount(() => {
   min-width: 26px;
   height: 26px;
   margin-left: auto;
-  color: #65758c;
+  color: var(--workspace-text-secondary);
 
   &:hover,
   &:focus {
-    color: #2f6bff;
-    background: rgba(47, 107, 255, 0.1);
+    color: var(--theme-accent-text);
+    background: var(--workspace-primary-soft-bg);
   }
 }
 
@@ -1077,7 +1077,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   max-height: none;
   overflow: auto;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   line-height: 1.65;
 
@@ -1101,7 +1101,7 @@ onBeforeUnmount(() => {
 .report-progress,
 .report-answer-tip,
 .report-target-context {
-  color: #74849a;
+  color: var(--workspace-text-tertiary);
   font-size: 13px;
 }
 
@@ -1110,7 +1110,7 @@ onBeforeUnmount(() => {
   margin-top: 6px;
   font-size: 12px;
   line-height: 20px;
-  color: #9aa8bb;
+  color: var(--workspace-text-tertiary);
 }
 
 .report-target-context {
@@ -1119,7 +1119,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #74849a;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
   line-height: 20px;
 }
@@ -1140,12 +1140,12 @@ onBeforeUnmount(() => {
   height: 28px;
   padding: 0;
   border-radius: 8px;
-  color: #394b63;
+  color: var(--workspace-text-secondary);
 
   &:hover,
   &:focus {
-    color: #2f6bff;
-    background: rgba(47, 107, 255, 0.1);
+    color: var(--theme-accent-text);
+    background: var(--workspace-primary-soft-bg);
   }
 }
 
@@ -1155,9 +1155,9 @@ onBeforeUnmount(() => {
   height: 54px;
   min-height: 54px;
   margin-top: 8px;
-  border: 1px solid #e3e9f2;
+  border: 1px solid var(--workspace-border);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--workspace-card-bg);
   overflow: hidden;
 }
 
@@ -1187,7 +1187,7 @@ onBeforeUnmount(() => {
     outline: 0 !important;
     resize: none;
     line-height: 20px;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     background: transparent;
     overflow-y: hidden;
 
@@ -1207,7 +1207,7 @@ onBeforeUnmount(() => {
   top: 50%;
   bottom: auto;
   transform: translateY(-50%);
-  border-color: #a7b9d6;
+  border-color: var(--workspace-border);
   color: #ffffff;
 }
 

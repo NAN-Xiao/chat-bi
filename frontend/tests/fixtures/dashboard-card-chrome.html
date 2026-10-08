@@ -1,0 +1,180 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>日期与卡片边框回归</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h, ref } from 'vue'
+      import ElementPlus, { ElButton } from 'element-plus-secondary'
+      import { store } from '/src/stores/index.ts'
+      import { i18n } from '/src/i18n/index.ts'
+      import SqWrapper from '/src/views/dashboard/preview/SQComponentWrapper.vue'
+      import SqView from '/src/views/dashboard/components/sq-view/index.vue'
+      import CanvasShape from '/src/views/dashboard/canvas/CanvasShape.vue'
+      import DatePicker from '/src/views/dashboard/common/DashboardDateExpressionPicker.vue'
+      import { applyInitialTheme, applyTheme } from '/src/utils/theme.ts'
+      import '/node_modules/element-plus-secondary/dist/index.css'
+      import '/src/style.less'
+      applyInitialTheme()
+      const width = ref(340),
+        showRange = ref(true),
+        disabled = ref(false)
+      const expression = ref({ version: 1, mode: 'preset', preset: 'past_30_days' })
+      const dates = ['2026-08-29', '2026-09-27']
+      const rows = Array.from({ length: 30 }, (_, i) => ({
+        day: new Date(Date.UTC(2026, 7, 29 + i)).toISOString().slice(0, 10),
+        value: [12, 9, 8, 16, 5, 7, 8, 10, 11, 9, 8, 7, 48, 9, 23, 66, 11][i % 17],
+      }))
+      function view(id, withSql = true) {
+        return {
+          id,
+          status: 'success',
+          dataState: 'ready',
+          refreshState: '',
+          chart: {
+            type: 'line',
+            title: '趋势卡片',
+            xAxis: [{ value: 'day', name: '日期' }],
+            yAxis: [{ value: 'value', name: '指标' }],
+            series: [],
+            columns: [],
+            insight: { enabled: true },
+          },
+          sourceConfig: withSql ? { sql: {} } : {},
+          dateFilter: { enabled: true, expression: expression.value },
+          dateFilterCapability: {
+            status: 'available',
+            resolvedStart: dates[0],
+            resolvedEnd: dates[1],
+          },
+          data: { data: rows, fields: [{ name: 'day' }, { name: 'value' }] },
+          fields: [],
+        }
+      }
+      const a = view('card-one'),
+        b = view('card-two'),
+        c = view('card-legacy', false),
+        standalone = view('card-standalone')
+      const before = JSON.stringify([a, b, c, standalone])
+      createApp({
+        setup: () => () =>
+          h('main', [
+            h('header', [
+              h('h2', '真实看板组件：日期与边框'),
+              h(ElButton, { onClick: () => applyTheme('light') }, () => '浅色'),
+              h(ElButton, { onClick: () => applyTheme('dark') }, () => '深色'),
+            ]),
+            h('div', { class: 'cards dv-preview' }, [
+              h(SqWrapper, {
+                'data-fixture': 'framed',
+                style: { position: 'relative', width: width.value + 'px', height: '360px' },
+                configItem: { id: a.id, component: 'SQView' },
+                canvasViewInfo: { [a.id]: a },
+                readonlyTemplate: true,
+              }),
+              h(SqWrapper, {
+                'data-fixture': 'frameless',
+                style: { position: 'relative', width: width.value + 'px', height: '360px' },
+                configItem: { id: b.id, component: 'SQView' },
+                canvasViewInfo: { [b.id]: b },
+                frameless: true,
+                dashboardLayoutSurface: 'tab',
+                readonlyTemplate: true,
+              }),
+              h(
+                'section',
+                {
+                  'data-fixture': 'standalone',
+                  style: { width: width.value + 'px', height: '360px' },
+                },
+                [h(SqView, { viewInfo: standalone })]
+              ),
+              h(
+                'section',
+                { 'data-fixture': 'legacy', style: { width: width.value + 'px', height: '360px' } },
+                [h(SqView, { viewInfo: c })]
+              ),
+              h('section', { class: 'dragAndResize', style: { width: width.value + 'px', height: '360px' } }, [
+                h(CanvasShape, {
+                  'data-fixture': 'editor-card',
+                  configItem: { id: 'editor-card', component: 'SQView' },
+                  itemIndex: 0, active: true, draggable: true, moveAnimate: false,
+                  showComponentBar: false,
+                  style: { width: '100%', height: '100%' },
+                }, () => h(SqView, { viewInfo: { ...standalone, id: 'editor-card' }, showPosition: 'editor' })),
+              ]),
+            ]),
+            h('section', { class: 'control-fixtures' }, [
+              h('div', { 'data-fixture': 'inline-picker' }, [
+                h(DatePicker, {
+                  modelValue: expression.value,
+                  appearance: 'inline',
+                  showResolvedRange: showRange.value,
+                  resolvedRange: dates,
+                  disabled: disabled.value,
+                }),
+              ]),
+              h('div', { 'data-fixture': 'editor-picker' }, [
+                h(DatePicker, {
+                  modelValue: expression.value,
+                  showResolvedRange: true,
+                  resolvedRange: dates,
+                }),
+              ]),
+            ]),
+          ]),
+      })
+        .use(store)
+        .use(i18n)
+        .use(ElementPlus)
+        .mount('#app')
+      window.cardChromeQA = {
+        applyTheme,
+        width,
+        showRange,
+        disabled,
+        expression,
+        views: [a, b, c, standalone],
+        before,
+      }
+    </script>
+    <style>
+      body {
+        display: block;
+      }
+      main {
+        padding: 20px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      h2 {
+        font-size: 18px;
+      }
+      .cards {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: flex-start;
+        height: auto !important;
+      }
+      .cards > * {
+        flex: none;
+      }
+      .control-fixtures {
+        display: flex;
+        gap: 24px;
+        margin-top: 24px;
+      }
+      .control-fixtures > div {
+        width: 300px;
+      }
+    </style>
+  </body>
+</html>

@@ -790,22 +790,22 @@ const btnSelectClick = (val: any) => {
     font-weight: 400;
     font-size: 14px;
     line-height: 22px;
-    color: #646a73;
-    border-bottom: 1px solid #1f232926;
+    color: var(--workspace-text-secondary);
+    border-bottom: 1px solid var(--workspace-border);
     position: relative;
 
     .ed-button.is-text {
       height: 22px;
       line-height: 22px;
-      color: #646a73;
+      color: var(--workspace-text-secondary);
 
       &:hover {
-        background: var(--ed-color-primary-1a, #1cba901a);
-        color: var(--ed-color-primary);
+        background: var(--theme-primary-soft-bg);
+        color: var(--theme-accent-text);
       }
       &:active {
-        color: var(--ed-color-primary-dark-2);
-        background: var(--ed-color-primary-33, #1cba9033);
+        color: var(--theme-accent-text);
+        background: var(--theme-primary-soft-bg);
       }
     }
 
@@ -816,7 +816,7 @@ const btnSelectClick = (val: any) => {
     }
 
     .name {
-      color: #1f2329;
+      color: var(--workspace-text-primary);
       margin-left: 4px;
     }
 
@@ -831,7 +831,7 @@ const btnSelectClick = (val: any) => {
       width: 280px;
       padding: 8px 16px;
       height: 100%;
-      border-right: 1px solid #1f232926;
+      border-right: 1px solid var(--workspace-border);
       .table-relationship {
         height: 56px;
         width: 100%;
@@ -845,7 +845,7 @@ const btnSelectClick = (val: any) => {
           width: calc(100% + 32px);
           position: absolute;
           left: -16px;
-          background-color: #1f232926;
+          background-color: var(--workspace-border);
           top: 0;
           height: 1px;
         }
@@ -859,14 +859,14 @@ const btnSelectClick = (val: any) => {
           align-items: center;
           padding-left: 8px;
           .ed-icon {
-            color: #646a73;
+            color: var(--workspace-text-secondary);
             margin-right: 8px;
           }
 
           &.active {
-            color: var(--ed-color-primary);
+            color: var(--theme-accent-text);
             .ed-icon {
-              color: var(--ed-color-primary);
+              color: var(--theme-accent-text);
             }
             background-color: var(--ed-color-primary-1a);
           }
@@ -882,7 +882,7 @@ const btnSelectClick = (val: any) => {
 
         .ed-icon {
           cursor: pointer;
-          color: var(--ed-color-primary);
+          color: var(--theme-accent-text);
         }
       }
 
@@ -898,7 +898,7 @@ const btnSelectClick = (val: any) => {
           font-size: 14px;
           line-height: 22px;
           text-align: center;
-          color: #646a73;
+          color: var(--workspace-text-secondary);
         }
         .model {
           width: 100%;
@@ -914,8 +914,8 @@ const btnSelectClick = (val: any) => {
           }
 
           &.disabled-table {
-            background: #dee0e3 !important;
-            color: #646a73;
+            background: var(--workspace-border) !important;
+            color: var(--workspace-text-secondary);
             cursor: not-allowed;
           }
 
@@ -930,12 +930,12 @@ const btnSelectClick = (val: any) => {
             text-overflow: ellipsis;
           }
           &:hover {
-            background: #1f23291a;
+            background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
           }
 
           &.isActive {
-            background: var(--ed-color-primary-1a, #1cba901a);
-            color: var(--ed-color-primary);
+            background: var(--theme-primary-soft-bg);
+            color: var(--theme-accent-text);
           }
         }
       }
@@ -956,7 +956,7 @@ const btnSelectClick = (val: any) => {
 
       .readonly-empty-hint {
         margin-top: 8px;
-        color: #8f959e;
+        color: var(--workspace-text-tertiary);
         font-size: 12px;
         line-height: 20px;
       }
@@ -979,7 +979,7 @@ const btnSelectClick = (val: any) => {
         line-height: 56px;
         font-weight: 500;
         font-size: 16px;
-        border-bottom: 1px solid #1f232926;
+        border-bottom: 1px solid var(--workspace-border);
       }
     }
     .info-table {
@@ -991,7 +991,7 @@ const btnSelectClick = (val: any) => {
       .table-name {
         height: 80px;
         padding: 16px 0 0 24px;
-        border-bottom: 1px solid #1f232926;
+        border-bottom: 1px solid var(--workspace-border);
 
         .name {
           font-weight: 500;
@@ -1009,7 +1009,7 @@ const btnSelectClick = (val: any) => {
 
           &::after {
             content: '';
-            background-color: #1f23291a;
+            background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
             position: absolute;
             border-radius: 6px;
             width: 24px;
@@ -1031,7 +1031,7 @@ const btnSelectClick = (val: any) => {
           font-weight: 400;
           font-size: 14px;
           line-height: 22px;
-          color: #646a73;
+          color: var(--workspace-text-secondary);
           display: flex;
           align-items: center;
 
@@ -1062,17 +1062,17 @@ const btnSelectClick = (val: any) => {
           padding-left: 4px;
           padding-right: 4px;
           display: inline-flex;
-          background: #ffffff;
+          background: var(--workspace-card-bg);
           align-items: center;
-          border: 1px solid #d0d3d6;
+          border: 1px solid var(--workspace-border);
           border-radius: 6px;
 
           .is-active {
-            background: var(--ed-color-primary-1a, #1cba901a);
+            background: var(--theme-primary-soft-bg);
           }
 
           .ed-button:not(.is-active) {
-            color: #1f2329;
+            color: var(--workspace-text-primary);
           }
           .ed-button.is-text {
             height: 24px;
@@ -1125,11 +1125,11 @@ const btnSelectClick = (val: any) => {
               cursor: pointer;
               margin-left: 8px;
               display: none;
-              color: #646a73;
+              color: var(--workspace-text-secondary);
 
               &::after {
                 content: '';
-                background-color: #1f23291a;
+                background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
                 position: absolute;
                 border-radius: 6px;
                 width: 24px;
@@ -1153,7 +1153,7 @@ const btnSelectClick = (val: any) => {
             font-weight: 400;
             font-size: 14px;
             line-height: 22px;
-            color: #646a73;
+            color: var(--workspace-text-secondary);
           }
 
           .table-container {

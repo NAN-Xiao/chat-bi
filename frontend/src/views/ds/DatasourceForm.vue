@@ -553,7 +553,7 @@ defineExpose({
   >
     <div v-if="isCreate && activeStep !== 2" class="model-name">
       {{ activeName }}
-      <span v-if="form.type !== 'excel'" style="margin-left: 8px; color: #8f959e; font-size: 12px">
+      <span v-if="form.type !== 'excel'" style="margin-left: 8px; color: var(--workspace-text-tertiary); font-size: 12px">
         <span>{{ t('ds.form.support_version') }}:&nbsp;</span>
         <span v-if="form.type === 'sqlServer'">2012+</span>
         <span v-else-if="form.type === 'oracle'">12+</span>
@@ -883,7 +883,7 @@ defineExpose({
     height: 56px;
     width: 100%;
     padding-left: 24px;
-    border-bottom: 1px solid #1f232926;
+    border-bottom: 1px solid var(--workspace-border);
     font-weight: 500;
     font-size: 16px;
     line-height: 24px;
@@ -907,7 +907,7 @@ defineExpose({
       font-weight: 400;
       font-size: 14px;
       line-height: 22px;
-      color: #8f959e;
+      color: var(--workspace-text-tertiary);
       display: inline-block;
       width: 100%;
     }
@@ -918,7 +918,7 @@ defineExpose({
       display: flex;
       align-items: center;
       padding: 0 16px 0 12px;
-      border: 1px solid #dee0e3;
+      border: 1px solid var(--workspace-border);
       border-radius: 6px;
 
       .file-name {
@@ -933,18 +933,18 @@ defineExpose({
           font-weight: 400;
           font-size: 12px;
           line-height: 20px;
-          color: #8f959e;
+          color: var(--workspace-text-tertiary);
         }
       }
 
       .ed-icon {
         position: relative;
         cursor: pointer;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
 
         &::after {
           content: '';
-          background-color: #1f23291a;
+          background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
           position: absolute;
           border-radius: 6px;
           width: 24px;
@@ -981,9 +981,9 @@ defineExpose({
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    border-top: 1px solid #1f232926;
+    border-top: 1px solid var(--workspace-border);
     padding-right: 24px;
-    background-color: #fff;
+    background-color: var(--workspace-card-bg);
     z-index: 10;
   }
 
@@ -1003,17 +1003,17 @@ defineExpose({
       margin: 0 0 16px 0;
     }
     .container {
-      border: 1px solid #dee0e3;
+      border: 1px solid var(--workspace-border);
       border-radius: 6px;
       overflow: hidden;
 
       .select-all {
-        background: #f5f6f7;
+        background: var(--workspace-control-bg);
         height: 40px;
         padding-left: 12px;
         display: flex;
         align-items: center;
-        border-bottom: 1px solid #dee0e3;
+        border-bottom: 1px solid var(--workspace-border);
       }
 
       :deep(.ed-checkbox__label) {
@@ -1041,7 +1041,7 @@ defineExpose({
     .name {
       .required::after {
         content: '*';
-        color: #f54a45;
+        color: var(--theme-danger-text);
         margin-left: 2px;
       }
     }

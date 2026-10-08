@@ -131,13 +131,13 @@ onMounted(() => {
     height: 32px;
     padding: 5px 12px;
 
-    --ed-button-text-color: rgba(31, 35, 41, 1);
+    --ed-button-text-color: var(--workspace-text-primary);
     --ed-button-hover-text-color: var(--ed-button-text-color);
     --ed-button-active-text-color: var(--ed-button-text-color);
-    --ed-button-bg-color: rgba(255, 255, 255, 1);
-    --ed-button-hover-bg-color: rgba(245, 246, 247, 1);
-    --ed-button-active-bg-color: rgba(239, 240, 241, 1);
-    --ed-button-border-color: rgba(217, 220, 223, 1);
+    --ed-button-bg-color: var(--workspace-card-bg);
+    --ed-button-hover-bg-color: var(--workspace-control-bg);
+    --ed-button-active-bg-color: var(--workspace-active-bg);
+    --ed-button-border-color: var(--workspace-border);
     --ed-button-hover-border-color: var(--ed-button-border-color);
     --ed-button-active-border-color: var(--ed-button-border-color);
 
@@ -162,7 +162,7 @@ onMounted(() => {
     display: flex;
     flex-direction: column;
     padding-left: 9px;
-    border-left: 1px solid rgba(31, 35, 41, 0.15);
+    border-left: 1px solid var(--workspace-border);
     gap: 8px;
 
     .reasoning {
@@ -170,10 +170,10 @@ onMounted(() => {
       line-height: 22px;
       font-weight: 400;
       font-size: 14px;
-      color: rgba(143, 149, 158, 1) !important;
+      color: var(--workspace-text-tertiary) !important;
 
       .markdown-body {
-        color: rgba(143, 149, 158, 1) !important;
+        color: var(--workspace-text-tertiary) !important;
         line-height: 22px;
         font-weight: 400;
         font-size: 14px;
@@ -185,7 +185,7 @@ onMounted(() => {
       }
 
       padding-bottom: 8px;
-      border-bottom: 1px solid rgba(31, 35, 41, 0.15);
+      border-bottom: 1px solid var(--workspace-border);
 
       &:last-child {
         padding-bottom: unset;
@@ -207,7 +207,7 @@ onMounted(() => {
     line-height: 24px;
     font-size: 16px;
     font-weight: 400;
-    color: rgba(31, 35, 41, 1);
+    color: var(--workspace-text-primary);
   }
 
   .thinking-btn ~ .answer-container {

@@ -112,10 +112,10 @@ const nextClick = () => {
     position: absolute;
     right: 0;
     top: 4px;
-    background: #fff;
+    background: var(--workspace-card-bg);
 
     .ed-icon {
-      color: #8d9199;
+      color: var(--workspace-text-tertiary);
       cursor: pointer;
 
       &.disabled {
@@ -123,7 +123,7 @@ const nextClick = () => {
       }
 
       &:not(.disabled):hover {
-        color: var(--ed-color-primary);
+        color: var(--theme-accent-text);
       }
 
       & + .ed-icon {
@@ -133,7 +133,7 @@ const nextClick = () => {
   }
 
   .sheet-tab {
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     cursor: pointer;
     position: relative;
     padding: 0 20px;
@@ -142,7 +142,7 @@ const nextClick = () => {
     height: 36px;
     max-width: 200px;
     &:hover {
-      color: var(--ed-color-primary);
+      color: var(--theme-accent-text);
     }
 
     .ellipsis {
@@ -158,7 +158,7 @@ const nextClick = () => {
       width: 1px;
       top: 50%;
       transform: translateY(-50%);
-      background: rgba(31, 35, 41, 0.15);
+      background: var(--workspace-border);
     }
 
     &::after {
@@ -176,18 +176,18 @@ const nextClick = () => {
         width: 2px;
         position: absolute;
         top: 0;
-        background: #fff;
+        background: var(--workspace-card-bg);
       }
     }
   }
   .active {
-    box-shadow: 0px -1px 0px 0px #f5f6f7 inset;
-    color: var(--ed-color-primary);
-    border: 1px solid rgba(31, 35, 41, 0.15);
+    box-shadow: 0px -1px 0px 0px var(--workspace-control-bg) inset;
+    color: var(--theme-accent-text);
+    border: 1px solid var(--workspace-border);
     border-bottom: none;
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
-    background: #f5f6f7;
+    background: var(--workspace-control-bg);
     position: relative;
 
     &::before,
@@ -202,7 +202,7 @@ const nextClick = () => {
       position: absolute;
       top: calc(100% - 1px);
       left: 0;
-      background: #f5f6f7;
+      background: var(--workspace-control-bg);
       display: block;
     }
 

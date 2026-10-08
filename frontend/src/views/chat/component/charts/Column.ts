@@ -189,7 +189,6 @@ export class Column extends BaseG2Chart {
                 return 'top'
               },
               transform: [
-                { type: 'contrastReverse' },
                 { type: 'exceedAdjust' },
                 { type: 'overlapHide' },
               ],

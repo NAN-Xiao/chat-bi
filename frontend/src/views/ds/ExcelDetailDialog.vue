@@ -223,8 +223,8 @@ defineExpose({
 .excel-detail-dialog {
   .content {
     height: 593px;
-    background-color: #f5f6f7;
-    border: 1px solid #dee0e3;
+    background-color: var(--workspace-control-bg);
+    border: 1px solid var(--workspace-border);
     border-radius: 6px;
     margin-top: -1px;
     border-top-left-radius: 0;
@@ -241,17 +241,17 @@ defineExpose({
       padding-left: 4px;
       padding-right: 4px;
       display: inline-flex;
-      background: #ffffff;
+      background: var(--workspace-card-bg);
       align-items: center;
-      border: 1px solid #d0d3d6;
+      border: 1px solid var(--workspace-border);
       border-radius: 6px;
 
       .is-active {
-        background: var(--ed-color-primary-1a, #1cba901a);
+        background: var(--theme-primary-soft-bg);
       }
 
       .ed-button:not(.is-active) {
-        color: #1f2329;
+        color: var(--workspace-text-primary);
       }
       .ed-button.is-text {
         height: 24px;
@@ -269,7 +269,7 @@ defineExpose({
       font-weight: 400;
       font-size: 14px;
       line-height: 22px;
-      color: #646a73;
+      color: var(--workspace-text-secondary);
     }
 
     .preview {

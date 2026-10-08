@@ -6,7 +6,7 @@
 
 <style scoped lang="less">
 .base-container {
-  background: #f5f6f7;
+  background: var(--workspace-control-bg);
   border-radius: 12px;
   padding: 12px;
   margin-top: 16px;

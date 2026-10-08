@@ -124,32 +124,32 @@ function updateActiveSection() {
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  border: 1px solid #e4e7ec;
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
-  background: #f5f7fa;
+  background: var(--workspace-panel-bg);
 }
 .document-directory {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-right: 1px solid #e4e7ec;
-  background: #fff;
+  border-right: 1px solid var(--workspace-border);
+  background: var(--workspace-card-bg);
 }
 .directory-heading {
   display: flex;
   min-height: 52px;
   align-items: center;
   padding: 0 16px;
-  border-bottom: 1px solid #eaecf0;
+  border-bottom: 1px solid var(--workspace-border-soft);
 }
 .directory-label {
-  color: #344054;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   font-weight: 600;
 }
 .directory-count {
   margin-left: 7px;
-  color: #98a2b3;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 .directory-list {
@@ -167,7 +167,7 @@ function updateActiveSection() {
   padding: 9px 8px;
   border: 0;
   border-radius: 4px;
-  color: #475467;
+  color: var(--workspace-text-secondary);
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -175,12 +175,15 @@ function updateActiveSection() {
 .directory-item:hover,
 .directory-item:focus-visible,
 .directory-item.is-active {
-  color: #175cd3;
-  background: #eff8ff;
-  outline: 0;
+  color: var(--theme-accent-text);
+  background: var(--theme-nav-active-bg);
+}
+.directory-item:focus-visible {
+  outline: 2px solid var(--theme-focus-ring);
+  outline-offset: -2px;
 }
 .directory-index {
-  color: #98a2b3;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
   text-align: center;
 }
@@ -195,14 +198,14 @@ function updateActiveSection() {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #12b76a;
+  background: var(--theme-success-text);
 }
 .document-workspace {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 .document-canvas {
   width: min(100%, 960px);
@@ -219,11 +222,11 @@ function updateActiveSection() {
 }
 .section-header {
   padding-bottom: 8px;
-  border-bottom: 1px solid #d8dee4;
+  border-bottom: 1px solid var(--workspace-border);
 }
 .section-header h2 {
   margin: 0;
-  color: #1f2328;
+  color: var(--workspace-text-primary);
   font-size: 20px;
   font-weight: 600;
   line-height: 30px;
@@ -233,7 +236,7 @@ function updateActiveSection() {
   min-height: 72px;
   padding-top: 16px;
   background-color: transparent;
-  color: #1f2328;
+  color: var(--workspace-text-primary);
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
   font-size: 14px;
@@ -251,7 +254,7 @@ function updateActiveSection() {
 .section-content :deep(h3),
 .section-content :deep(h4) {
   margin: 18px 0 8px;
-  color: #1d2939;
+  color: var(--workspace-text-primary);
   letter-spacing: 0;
 }
 .section-content :deep(ul),
@@ -275,7 +278,7 @@ function updateActiveSection() {
 .section-content :deep(th),
 .section-content :deep(td) {
   padding: 7px 9px;
-  border: 1px solid #d0d5dd;
+  border: 1px solid var(--workspace-border);
 }
 
 @media (max-width: 680px) {
@@ -286,7 +289,7 @@ function updateActiveSection() {
   .document-directory {
     flex: 0 0 auto;
     border-right: 0;
-    border-bottom: 1px solid #e4e7ec;
+    border-bottom: 1px solid var(--workspace-border);
   }
   .directory-heading {
     min-height: 44px;

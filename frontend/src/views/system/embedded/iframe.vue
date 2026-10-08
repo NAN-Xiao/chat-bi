@@ -1242,17 +1242,17 @@ const saveHandler = () => {
       padding-left: 4px;
       padding-right: 4px;
       display: inline-flex;
-      background: #ffffff;
+      background: var(--workspace-card-bg);
       align-items: center;
-      border: 1px solid #d9dcdf;
+      border: 1px solid var(--workspace-border);
       border-radius: 6px;
 
       .is-active {
-        background: var(--ed-color-primary-1a, #1cba901a);
+        background: var(--theme-primary-soft-bg);
       }
 
       .ed-button:not(.is-active) {
-        color: #1f2329;
+        color: var(--workspace-text-primary);
       }
 
       .ed-button.is-text {
@@ -1310,7 +1310,7 @@ const saveHandler = () => {
     align-items: center;
 
     .open-the_query {
-      color: #ff8800;
+      color: var(--theme-warning-text);
       margin-left: 4px;
       max-width: 650px;
     }
@@ -1356,7 +1356,7 @@ const saveHandler = () => {
         font-weight: 400;
         font-size: 14px;
         line-height: 22px;
-        color: #ff8800;
+        color: var(--theme-warning-text);
         margin-left: 8px;
       }
     }
@@ -1399,7 +1399,7 @@ const saveHandler = () => {
       cursor: pointer;
 
       &:hover {
-        background-color: #1f23291a;
+        background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
       }
     }
   }
@@ -1408,18 +1408,18 @@ const saveHandler = () => {
     width: 100%;
     max-height: calc(100vh - 390px);
     overflow-y: auto;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 6px;
     border-top: none;
 
     .operation-column_text {
       .ed-button {
-        color: #646a73;
+        color: var(--workspace-text-secondary);
         height: 24px;
       }
 
       .ed-button:not(.is-disabled):hover {
-        background: #1f23291a;
+        background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
       }
 
       .ed-button + .ed-button {
@@ -1441,7 +1441,7 @@ const saveHandler = () => {
   padding: 0;
   width: 282px !important;
   box-shadow: 0px 4px 8px 0px #1f23291a;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
 
   .popover {
     .popover-content {
@@ -1460,7 +1460,7 @@ const saveHandler = () => {
       padding-top: 8px;
 
       &:hover {
-        background: #1f23291a;
+        background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
       }
 
       &:nth-child(2) {
@@ -1477,7 +1477,7 @@ const saveHandler = () => {
         }
 
         .tip {
-          color: #8f959e;
+          color: var(--workspace-text-tertiary);
           font-family: PingFang SC;
           font-size: 12px;
           line-height: 20px;
@@ -1498,7 +1498,7 @@ const saveHandler = () => {
     }
 
     .code-bg {
-      background: #f5f6f7;
+      background: var(--workspace-control-bg);
       border-radius: 6px;
       overflow: hidden;
       margin-top: 16px;
@@ -1508,7 +1508,7 @@ const saveHandler = () => {
       padding: 16px;
       padding-bottom: 0;
       border-radius: 6px;
-      border: 1px solid #dee0e3;
+      border: 1px solid var(--workspace-border);
       cursor: pointer;
       width: 268px;
       height: 182px;
@@ -1531,7 +1531,7 @@ const saveHandler = () => {
         width: 180px;
         height: 120px;
         border-radius: 10px;
-        background: linear-gradient(180deg, #f7fbff 0%, #edf4ff 100%);
+        background: var(--workspace-panel-bg);
       }
 
       .full-preview {
@@ -1539,9 +1539,9 @@ const saveHandler = () => {
         width: 180px;
         height: 120px;
         overflow: hidden;
-        border: 1px solid #dce6f2;
+        border: 1px solid var(--workspace-border);
         border-radius: 10px;
-        background: #ffffff;
+        background: var(--workspace-card-bg);
         box-shadow: 0 10px 24px rgba(24, 46, 86, 0.08);
       }
 
@@ -1553,7 +1553,7 @@ const saveHandler = () => {
       .full-preview-main {
         flex: 1;
         padding: 10px;
-        background: linear-gradient(180deg, #f7fbff 0%, #eef4ff 100%);
+        background: var(--workspace-panel-bg);
       }
 
       .full-preview-topbar {
@@ -1581,8 +1581,8 @@ const saveHandler = () => {
         span {
           height: 22px;
           border-radius: 6px;
-          background: #ffffff;
-          border: 1px solid #dce6f2;
+          background: var(--workspace-card-bg);
+          border: 1px solid var(--workspace-border);
         }
       }
 
@@ -1593,9 +1593,9 @@ const saveHandler = () => {
         width: 118px;
         height: 78px;
         padding: 12px;
-        border: 1px solid #dce6f2;
+        border: 1px solid var(--workspace-border);
         border-radius: 8px;
-        background: #ffffff;
+        background: var(--workspace-card-bg);
         box-shadow: 0 10px 24px rgba(24, 46, 86, 0.1);
       }
 
@@ -1612,7 +1612,7 @@ const saveHandler = () => {
         height: 6px;
         margin-top: 8px;
         border-radius: 999px;
-        background: #d8e3f3;
+        background: var(--workspace-border);
 
         &.long {
           width: 82px;
@@ -1650,13 +1650,13 @@ const saveHandler = () => {
       }
 
       &.active {
-        background: var(--ed-color-primary-1a, #1cba901a);
+        background: var(--theme-primary-soft-bg);
         border-color: var(--ed-color-primary, #1cba90);
       }
     }
 
     .line {
-      background-color: #1f232926;
+      background-color: var(--workspace-border);
       width: calc(100% - 32px);
       height: 1px;
       margin-left: 16px;
@@ -1684,7 +1684,7 @@ const saveHandler = () => {
               top: 50%;
               left: 50%;
               transform: translate(-50%, -50%);
-              background: #1f23291a;
+              background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
               width: 24px;
               height: 24px;
               border-radius: 6px;

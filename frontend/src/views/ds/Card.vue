@@ -333,7 +333,7 @@ const dataTableDetail = () => {
 .popover-card_ds.popover-card_ds.popover-card_ds {
   box-shadow: 0px 4px 8px 0px #1f23291a;
   border-radius: 6px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   width: fit-content !important;
   min-width: 120px !important;
   padding: 0;
@@ -348,7 +348,7 @@ const dataTableDetail = () => {
       left: 0;
       width: 100%;
       height: 1px;
-      background: #dee0e3;
+      background: var(--workspace-border);
     }
 
     .item {
@@ -361,7 +361,7 @@ const dataTableDetail = () => {
 
       .ed-icon {
         margin-right: 8px;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
       }
 
       &:hover {
@@ -379,7 +379,7 @@ const dataTableDetail = () => {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #1f23291a;
+        background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
         display: none;
       }
     }

@@ -400,8 +400,8 @@ function removeSplitItem(event: string) {
   padding: 0 9px;
   border: 0;
   border-radius: 6px;
-  color: #374151;
-  background: #f0f2f6;
+  color: var(--workspace-text-primary);
+  background: var(--workspace-control-bg);
   cursor: pointer;
   font-size: 12px;
   line-height: 24px;
@@ -410,13 +410,13 @@ function removeSplitItem(event: string) {
 
 .path-event-trigger:hover,
 .path-event-trigger[aria-expanded='true'] {
-  color: #315cff;
-  background: #eef3ff;
+  color: var(--theme-accent-text);
+  background: var(--workspace-primary-soft-bg);
 }
 
 .path-event-picker {
   min-height: 330px;
-  color: #1f2633;
+  color: var(--workspace-text-primary);
   font-size: 12px;
 }
 
@@ -426,15 +426,15 @@ function removeSplitItem(event: string) {
   gap: 8px;
   height: 32px;
   padding: 0 9px;
-  border-bottom: 1px solid #edf0f5;
-  color: #8b93a3;
+  border-bottom: 1px solid var(--workspace-border);
+  color: var(--workspace-text-tertiary);
 }
 
 .path-event-picker-search input {
   width: 100%;
   border: 0;
   outline: 0;
-  color: #1f2633;
+  color: var(--workspace-text-primary);
   font-size: 12px;
 }
 
@@ -446,8 +446,8 @@ function removeSplitItem(event: string) {
   gap: 8px;
   padding: 0 12px;
   border: 0;
-  border-bottom: 1px solid #edf0f5;
-  color: #1f2633;
+  border-bottom: 1px solid var(--workspace-border);
+  color: var(--workspace-text-primary);
   background: transparent;
   cursor: pointer;
   font-size: 12px;
@@ -455,11 +455,11 @@ function removeSplitItem(event: string) {
 }
 
 .path-event-picker-select-all:hover:not(:disabled) {
-  background: #f4f6fa;
+  background: var(--workspace-control-bg);
 }
 
 .path-event-picker-select-all:disabled {
-  color: #b5bbc6;
+  color: var(--workspace-text-tertiary);
   cursor: not-allowed;
 }
 
@@ -468,7 +468,7 @@ function removeSplitItem(event: string) {
   height: 38px;
   align-items: flex-end;
   padding: 0 12px;
-  border-bottom: 1px solid #edf0f5;
+  border-bottom: 1px solid var(--workspace-border);
 }
 
 .path-event-picker-tabs button {
@@ -476,14 +476,14 @@ function removeSplitItem(event: string) {
   padding: 0;
   border: 0;
   border-bottom: 2px solid transparent;
-  color: #5f687a;
+  color: var(--workspace-text-secondary);
   background: transparent;
   font-size: 12px;
 }
 
 .path-event-picker-tabs button.active {
   border-color: #315cff;
-  color: #1f2633;
+  color: var(--workspace-text-primary);
   font-weight: 600;
 }
 
@@ -497,7 +497,7 @@ function removeSplitItem(event: string) {
   max-height: 280px;
   overflow-y: auto;
   padding: 7px 6px;
-  border-right: 1px solid #edf0f5;
+  border-right: 1px solid var(--workspace-border);
 }
 
 .path-event-category-list button {
@@ -507,7 +507,7 @@ function removeSplitItem(event: string) {
   padding: 0 8px;
   border: 0;
   border-radius: 6px;
-  color: #374151;
+  color: var(--workspace-text-primary);
   background: transparent;
   cursor: pointer;
   font-size: 12px;
@@ -519,8 +519,8 @@ function removeSplitItem(event: string) {
 
 .path-event-category-list button:hover,
 .path-event-category-list button.active {
-  color: #315cff;
-  background: #eef1f7;
+  color: var(--theme-accent-text);
+  background: var(--workspace-control-bg);
   font-weight: 600;
 }
 
@@ -533,7 +533,7 @@ function removeSplitItem(event: string) {
 .path-event-picker-group-title {
   height: 28px;
   padding: 0 8px;
-  color: #5f687a;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
   font-weight: 600;
   line-height: 28px;
@@ -551,22 +551,22 @@ function removeSplitItem(event: string) {
   padding: 4px 8px;
   border: 0;
   border-radius: 6px;
-  color: #1f2633;
+  color: var(--workspace-text-primary);
   background: transparent;
   cursor: pointer;
   text-align: left;
 }
 
 .path-event-picker-option:hover:not(:disabled) {
-  background: #f4f6fa;
+  background: var(--workspace-control-bg);
 }
 
 .path-event-picker-option.active {
-  background: #eef1f7;
+  background: var(--workspace-control-bg);
 }
 
 .path-event-picker-option:disabled {
-  color: #b5bbc6;
+  color: var(--workspace-text-tertiary);
   cursor: not-allowed;
 }
 
@@ -580,7 +580,7 @@ function removeSplitItem(event: string) {
   border: 1px solid #c8ced9;
   border-radius: 4px;
   color: #fff;
-  background: #fff;
+  background: var(--workspace-card-bg);
   font-size: 12px;
 }
 
@@ -604,7 +604,7 @@ function removeSplitItem(event: string) {
 }
 
 .path-event-picker-option-text small {
-  color: #9aa2af;
+  color: var(--workspace-text-tertiary);
   font-size: 11px;
 }
 
@@ -614,14 +614,14 @@ function removeSplitItem(event: string) {
   align-items: center;
   justify-content: center;
   padding: 22px 12px;
-  color: #9aa2af;
+  color: var(--workspace-text-tertiary);
   text-align: center;
 }
 
 .path-event-limit-hint {
   margin: 0;
   padding: 0 12px 8px;
-  color: #a8b0be;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -631,7 +631,7 @@ function removeSplitItem(event: string) {
   max-width: 100%;
   margin-left: 12px;
   padding-left: 10px;
-  border-left: 1px solid #e4e8f0;
+  border-left: 1px solid var(--workspace-border);
 }
 
 .path-split-row {
@@ -650,8 +650,8 @@ function removeSplitItem(event: string) {
   gap: 4px;
   padding-left: 7px;
   border-radius: 6px;
-  color: #4d5666;
-  background: #f3f5fa;
+  color: var(--workspace-text-secondary);
+  background: var(--workspace-control-bg);
 }
 
 .path-split-picker > .el-icon {
@@ -670,12 +670,12 @@ function removeSplitItem(event: string) {
 
 .path-split-picker.is-disabled {
   padding-right: 8px;
-  color: #a6adba;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
 .path-split-word {
-  color: #8a93a3;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -689,14 +689,14 @@ function removeSplitItem(event: string) {
   padding: 0;
   border: 0;
   border-radius: 4px;
-  color: #a2a9b5;
+  color: var(--workspace-text-tertiary);
   background: transparent;
   cursor: pointer;
 }
 
 .path-split-remove:hover {
-  color: #d14343;
-  background: #fff0f0;
+  color: var(--theme-danger-text);
+  background: var(--theme-danger-soft-bg);
 }
 
 .path-add-split {
@@ -706,18 +706,18 @@ function removeSplitItem(event: string) {
   gap: 4px;
   padding: 0 4px;
   border: 0;
-  color: #315cff;
+  color: var(--theme-accent-text);
   background: transparent;
   cursor: pointer;
   font-size: 12px;
 }
 
 .path-add-split:hover:not(:disabled) {
-  color: #244de0;
+  color: var(--theme-accent-text);
 }
 
 .path-add-split:disabled {
-  color: #b2b8c3;
+  color: var(--workspace-text-tertiary);
   cursor: not-allowed;
 }
 

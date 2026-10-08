@@ -2,6 +2,7 @@
 脚本说明：这个脚本放系统管理的接口，把前端请求接进来并交给后面的业务逻辑处理。
 """
 from collections import defaultdict
+from apps.system.api.user_theme import router as color_theme_router
 
 from fastapi import APIRouter, File, HTTPException, Path, Query, UploadFile
 from sqlmodel import SQLModel, delete as sqlmodel_delete, or_, select
@@ -69,6 +70,7 @@ from common.core.security import (
 from common.utils.time import get_timestamp
 
 router = APIRouter(tags=["system_user"], prefix="/user")
+router.include_router(color_theme_router)
 
 
 def _trial_application_dto(application: TrialApplicationModel) -> TrialApplicationDTO:

@@ -9,7 +9,7 @@ import {
   isPercentAxis,
   toNullableNumber,
 } from '@/views/chat/component/charts/utils.ts'
-import { chartPalette } from '@/views/chat/component/charts/theme.ts'
+import { chartCssPalette as chartPalette } from '@/views/chat/component/charts/theme.ts'
 import {
   availableTrendComparisonMetrics,
   defaultTrendComparisonMetrics,
@@ -1457,11 +1457,8 @@ onBeforeUnmount(() => {
         <template v-if="configuredTrendSummary">
           <div class="configured-trend-layout">
             <div class="configured-trend-primary">
-              <div v-if="surface === 'dashboard'" class="configured-trend-caption">
+              <div class="configured-trend-caption">
                 {{ t('chat.insight_latest_value') }}
-              </div>
-              <div v-if="showDateContext" class="configured-trend-anchor" :title="configuredTrendSummary.anchorLabel">
-                {{ configuredTrendSummary.anchorLabel }}
               </div>
               <div class="configured-trend-value" :title="configuredTrendValueTitle">
                 {{ configuredTrendSummary.latestValue }}
@@ -1552,7 +1549,7 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
   padding: 2px 2px 12px;
   margin-bottom: 10px;
-  border-bottom: 1px solid #eaf0f8;
+  border-bottom: 1px solid var(--workspace-border-soft);
 
   .insight-fit-content {
     min-width: 0;
@@ -1564,7 +1561,7 @@ onBeforeUnmount(() => {
     gap: 8px 14px;
     min-height: 20px;
     align-items: center;
-    color: #4c5f78;
+    color: var(--theme-insight-secondary);
     font-size: 12px;
     line-height: 20px;
   }
@@ -1587,7 +1584,7 @@ onBeforeUnmount(() => {
 
   .insight-anchor {
     margin-bottom: 4px;
-    color: #63748c;
+    color: var(--theme-insight-secondary);
     font-size: 12px;
     line-height: 18px;
     white-space: nowrap;
@@ -1606,7 +1603,7 @@ onBeforeUnmount(() => {
   }
 
   .insight-stat-value {
-    color: #14243a;
+    color: var(--theme-insight-primary);
     font-size: 21px;
     font-weight: 700;
     line-height: 28px;
@@ -1616,11 +1613,11 @@ onBeforeUnmount(() => {
     text-overflow: ellipsis;
 
     &.positive {
-      color: #0c9b6d;
+      color: var(--theme-insight-positive);
     }
 
     &.negative {
-      color: #e05252;
+      color: var(--theme-insight-negative);
     }
   }
 
@@ -1631,7 +1628,7 @@ onBeforeUnmount(() => {
     gap: 6px;
     min-width: 0;
     margin-top: 2px;
-    color: #44546a;
+    color: var(--theme-insight-secondary);
     font-size: 12px;
     line-height: 18px;
   }
@@ -1653,7 +1650,7 @@ onBeforeUnmount(() => {
   .insight-stat-sub-label {
     margin-top: 1px;
     padding-left: 13px;
-    color: #7a8aa0;
+    color: var(--theme-text-tertiary);
     font-size: 11px;
     line-height: 16px;
     white-space: nowrap;
@@ -1663,14 +1660,14 @@ onBeforeUnmount(() => {
 
   .insight-stat-meta {
     padding-left: 13px;
-    color: #7a8aa0;
+    color: var(--theme-text-tertiary);
 
     &.positive {
-      color: #0c9b6d;
+      color: var(--theme-insight-positive);
     }
 
     &.negative {
-      color: #e05252;
+      color: var(--theme-insight-negative);
     }
   }
 
@@ -1687,8 +1684,8 @@ onBeforeUnmount(() => {
     min-width: 0;
   }
 
-  .configured-trend-anchor {
-    color: #63748c;
+  .configured-trend-caption {
+    color: var(--theme-insight-secondary);
     font-size: 12px;
     line-height: 18px;
     white-space: nowrap;
@@ -1698,7 +1695,7 @@ onBeforeUnmount(() => {
 
   .configured-trend-value {
     margin-top: 4px;
-    color: #14243a;
+    color: var(--theme-insight-primary);
     font-size: 28px;
     font-weight: 700;
     line-height: 34px;
@@ -1757,7 +1754,7 @@ onBeforeUnmount(() => {
 
   .configured-trend-item-label {
     flex: 0 0 auto;
-    color: #44546a;
+    color: var(--theme-insight-secondary);
     font-size: 12px;
     line-height: 18px;
     white-space: nowrap;
@@ -1765,18 +1762,18 @@ onBeforeUnmount(() => {
 
   .configured-trend-item-value {
     min-width: 0;
-    color: #14243a;
+    color: var(--theme-insight-primary);
     font-size: 12px;
     font-weight: 600;
     line-height: 18px;
     white-space: nowrap;
 
     &.positive {
-      color: #0c9b6d;
+      color: var(--theme-insight-positive);
     }
 
     &.negative {
-      color: #e05252;
+      color: var(--theme-insight-negative);
     }
   }
 
@@ -1787,7 +1784,7 @@ onBeforeUnmount(() => {
 
   .configured-trend-item-sub-label {
     margin-top: 1px;
-    color: #7a8aa0;
+    color: var(--theme-text-tertiary);
     font-size: 11px;
     line-height: 16px;
     white-space: nowrap;
@@ -1800,7 +1797,7 @@ onBeforeUnmount(() => {
     height: 100%;
     padding: 2px 14px 2px 0;
     margin: 0 16px 0 0;
-    border-right: 1px solid #eaf0f8;
+    border-right: 1px solid var(--workspace-border-soft);
     border-bottom: 0;
     overflow: hidden;
 
@@ -1894,15 +1891,15 @@ onBeforeUnmount(() => {
         gap: 22px;
       }
 
-      .configured-trend-anchor {
-        color: #1f3554;
+      .configured-trend-caption {
+        color: var(--theme-insight-primary);
         font-size: 12px;
         line-height: 18px;
       }
 
       .configured-trend-value {
         margin-top: 2px;
-        color: #071a33;
+        color: var(--theme-insight-primary);
         font-size: 36px;
         font-weight: 700;
         line-height: 44px;
@@ -1925,23 +1922,23 @@ onBeforeUnmount(() => {
       }
 
       .configured-trend-item-label {
-        color: #14243a;
+        color: var(--theme-insight-primary);
         font-size: 13px;
         line-height: 20px;
       }
 
       .configured-trend-item-value {
-        color: #14243a;
+        color: var(--theme-insight-primary);
         font-size: 13px;
         font-weight: 700;
         line-height: 20px;
 
         &.positive {
-          color: #0c9b6d;
+          color: var(--theme-insight-positive);
         }
 
         &.negative {
-          color: #e05252;
+          color: var(--theme-insight-negative);
         }
       }
 
@@ -1960,13 +1957,13 @@ onBeforeUnmount(() => {
       }
 
       .configured-trend-aggregate-item .configured-trend-item-label {
-        color: #14243a;
+        color: var(--theme-insight-primary);
         font-size: 13px;
         line-height: 24px;
       }
 
       .configured-trend-aggregate-value {
-        color: #071a33;
+        color: var(--theme-insight-primary);
         font-size: 32px;
         font-weight: 500;
         line-height: 38px;
@@ -2154,7 +2151,7 @@ onBeforeUnmount(() => {
       gap: 6px 12px;
     }
 
-    .configured-trend-anchor,
+    .configured-trend-caption,
     .configured-trend-item-label,
     .configured-trend-item-value {
       font-size: 11px;
@@ -2192,7 +2189,7 @@ onBeforeUnmount(() => {
       height: 100%;
       padding: 2px 10px 2px 0;
       margin: 0 10px 0 0;
-      border-right: 1px solid #eaf0f8;
+      border-right: 1px solid var(--workspace-border-soft);
       border-bottom: 0;
       overflow: hidden;
 
@@ -2344,7 +2341,7 @@ onBeforeUnmount(() => {
       gap: 4px 10px;
     }
 
-    .configured-trend-anchor,
+    .configured-trend-caption,
     .configured-trend-item-label,
     .configured-trend-item-value {
       font-size: 11px;
@@ -2369,7 +2366,7 @@ onBeforeUnmount(() => {
       padding: 0 0 4px;
       margin: 0 0 4px;
       border-right: 0;
-      border-bottom: 1px solid #eaf0f8;
+      border-bottom: 1px solid var(--workspace-border-soft);
 
       .configured-trend-layout {
         grid-template-columns: 1fr;
@@ -2394,7 +2391,7 @@ onBeforeUnmount(() => {
   .insight-stat-row { display: block; }
   .card-general-summary { width: 100%; min-width: 0; }
   .card-summary-caption {
-    color: #63748c;
+    color: var(--theme-insight-secondary);
     font-size: 12px;
     line-height: 18px;
     margin-bottom: 6px;
@@ -2410,7 +2407,7 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 6px;
-    color: #63748c;
+    color: var(--theme-insight-secondary);
     font-size: 12px;
     line-height: 18px;
   }
@@ -2428,7 +2425,7 @@ onBeforeUnmount(() => {
   }
   .card-summary-value {
     margin-top: 2px;
-    color: #14243a;
+    color: var(--theme-insight-primary);
     font-size: 24px;
     line-height: 30px;
     font-weight: 700;
@@ -2440,13 +2437,13 @@ onBeforeUnmount(() => {
   .card-summary-detail,
   .card-summary-change {
     margin-top: 3px;
-    color: #63748c;
+    color: var(--theme-insight-secondary);
     font-size: 12px;
     line-height: 18px;
     overflow-wrap: anywhere;
   }
-  .card-summary-change.positive { color: #0c9b6d; }
-  .card-summary-change.negative { color: #e05252; }
+  .card-summary-change.positive { color: var(--theme-insight-positive); }
+  .card-summary-change.negative { color: var(--theme-insight-negative); }
 
   &.side .card-summary-grid { grid-template-columns: minmax(0, 1fr); }
 
@@ -2461,7 +2458,7 @@ onBeforeUnmount(() => {
     }
     .configured-trend-primary { flex: 0 0 96px; min-width: 0; }
     .configured-trend-caption {
-      color: #63748c;
+      color: var(--theme-insight-secondary);
       font-size: 12px;
       font-weight: 400;
       line-height: 18px;
@@ -2497,7 +2494,7 @@ onBeforeUnmount(() => {
       flex: 0 0 104px;
       min-width: 0;
       padding-left: 16px;
-      border-left: 1px solid #eaf0f8;
+      border-left: 1px solid var(--workspace-border-soft);
     }
     .configured-trend-aggregate-row {
       flex-direction: column;

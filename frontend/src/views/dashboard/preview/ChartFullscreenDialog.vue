@@ -182,7 +182,7 @@ function closeDialog() {
 .dashboard-chart-fullscreen-body {
   height: 100vh;
   padding: 0;
-  background: #f4f7fb;
+  background: var(--workspace-control-bg);
 }
 </style>
 
@@ -194,8 +194,8 @@ function closeDialog() {
   grid-template-rows: auto minmax(0, 1fr);
   background:
     radial-gradient(circle at 12% 4%, rgba(47, 107, 255, 0.07), transparent 32%),
-    linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%);
-  color: #14243a;
+    linear-gradient(180deg, var(--workspace-card-bg) 0%, var(--workspace-shell-bg) 100%);
+  color: var(--workspace-text-primary);
 }
 
 .fullscreen-header {
@@ -204,7 +204,7 @@ function closeDialog() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(221, 228, 238, 0.85);
+  border-bottom: 1px solid var(--workspace-border);
 }
 
 .fullscreen-title-block {
@@ -237,8 +237,8 @@ function closeDialog() {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  background: rgba(47, 107, 255, 0.09);
-  color: #2f5ec7;
+  background: var(--workspace-primary-soft-bg);
+  color: var(--theme-accent-text);
   font-size: 12px;
   font-weight: 600;
 }
@@ -252,13 +252,13 @@ function closeDialog() {
   height: 32px;
   padding: 0;
   border-radius: 7px;
-  color: #394b63;
+  color: var(--workspace-text-secondary);
   background: transparent;
 
   &:hover,
   &:focus {
-    color: #2f6bff;
-    background: rgba(47, 107, 255, 0.1);
+    color: var(--theme-accent-text);
+    background: var(--workspace-primary-soft-bg);
   }
 }
 
@@ -274,9 +274,9 @@ function closeDialog() {
   min-height: 0;
   padding: 18px 18px 16px;
   align-self: stretch;
-  border: 1px solid rgba(226, 232, 240, 0.92);
+  border: 1px solid var(--workspace-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--workspace-card-bg);
   box-shadow: 0 4px 12px rgba(18, 34, 66, 0.035);
   overflow: hidden;
 
@@ -299,9 +299,9 @@ function closeDialog() {
 .fullscreen-top-summary {
   padding: 14px 16px 12px;
   margin: 0;
-  border: 1px solid rgba(226, 232, 240, 0.92);
+  border: 1px solid var(--workspace-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.84);
+  background: var(--workspace-card-bg);
   box-shadow: 0 8px 24px rgba(18, 34, 66, 0.05);
 }
 
@@ -318,9 +318,9 @@ function closeDialog() {
   height: 100%;
   min-height: 0;
   padding: 18px 20px;
-  border: 1px solid rgba(226, 232, 240, 0.92);
+  border: 1px solid var(--workspace-border);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--workspace-card-bg);
   box-shadow:
     0 6px 18px rgba(18, 34, 66, 0.045),
     0 1px 3px rgba(18, 34, 66, 0.03);

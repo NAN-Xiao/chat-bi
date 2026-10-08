@@ -307,7 +307,7 @@ defineExpose({
         content: '';
         height: 44px;
         width: calc(100% + 34px);
-        background: #1f23291a;
+        background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
         position: absolute;
         border-radius: 6px;
         top: 50%;
@@ -350,7 +350,7 @@ defineExpose({
       align-items: center;
 
       .account {
-        color: #8f959e;
+        color: var(--workspace-text-tertiary);
       }
     }
   }
@@ -364,7 +364,7 @@ defineExpose({
     &:hover,
     &:active,
     &:focus {
-      background: #1f23291a !important;
+      background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent) !important;
     }
   }
 
@@ -376,7 +376,7 @@ defineExpose({
   }
 
   .border {
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
   }
 
   .w-full {
@@ -416,7 +416,7 @@ defineExpose({
   }
 
   .border-r {
-    border-right: 1px solid #dee0e3;
+    border-right: 1px solid var(--workspace-border);
     width: 50%;
     overflow: hidden;
   }

@@ -459,9 +459,9 @@ watch(
 
 <style lang="less" scoped>
 .access-page {
-  --dashboard-preview-card-bg: #ffffff;
-  --dashboard-preview-canvas-bg: #fbfbff;
-  --dashboard-preview-sidebar-bg: #f3f7fc;
+  --dashboard-preview-card-bg: var(--workspace-card-bg);
+  --dashboard-preview-canvas-bg: var(--theme-dashboard-canvas-bg);
+  --dashboard-preview-sidebar-bg: var(--theme-dashboard-sidebar-bg);
 
   width: 100%;
   height: 100%;
@@ -470,7 +470,7 @@ watch(
   display: flex;
   overflow: hidden;
   background: var(--dashboard-preview-sidebar-bg);
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
 
   .access-sidebar {
@@ -531,12 +531,12 @@ watch(
     }
 
     &.is-active {
-      background: #e8f0ff;
-      color: var(--workspace-text-primary, var(--theme-text-primary));
+      background: var(--theme-nav-active-bg);
+      color: var(--theme-nav-active-text);
       font-weight: 500;
 
       .ed-icon {
-        color: var(--ed-color-primary, #2f6bff);
+        color: var(--theme-nav-active-icon);
         transform: scale(1.08);
       }
     }
@@ -624,9 +624,9 @@ watch(
 
   .access-panel,
   .access-notice {
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 8px;
-    background: #fff;
+    background: var(--workspace-card-bg);
   }
 
   .access-panel {
@@ -645,7 +645,7 @@ watch(
     align-items: center;
     gap: 14px;
     padding-bottom: 20px;
-    border-bottom: 1px solid #eff0f1;
+    border-bottom: 1px solid var(--workspace-border-soft);
   }
 
   .account-summary-main {
@@ -653,7 +653,7 @@ watch(
   }
 
   .account-name {
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     font-size: 18px;
     line-height: 26px;
     font-weight: 600;
@@ -662,7 +662,7 @@ watch(
 
   .account-text {
     margin-top: 2px;
-    color: #86909c;
+    color: var(--workspace-text-tertiary);
     font-size: 13px;
     line-height: 20px;
     word-break: break-word;
@@ -670,7 +670,7 @@ watch(
 
   .account-detail-list {
     margin-top: 20px;
-    border: 1px solid #eff0f1;
+    border: 1px solid var(--workspace-border-soft);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -682,7 +682,7 @@ watch(
     grid-template-columns: 160px minmax(0, 1fr);
     align-items: center;
     gap: 16px;
-    border-bottom: 1px solid #eff0f1;
+    border-bottom: 1px solid var(--workspace-border-soft);
 
     &:last-child {
       border-bottom: 0;
@@ -690,21 +690,21 @@ watch(
   }
 
   .account-detail-label {
-    color: #646a73;
+    color: var(--workspace-text-secondary);
     font-size: 13px;
     line-height: 20px;
   }
 
   .account-detail-value {
     min-width: 0;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     font-size: 14px;
     line-height: 22px;
     word-break: break-word;
   }
 
   .identity-panel {
-    background: linear-gradient(180deg, #f7faf9 0%, #fff 100%);
+    background: linear-gradient(180deg, var(--workspace-panel-bg) 0%, var(--workspace-card-bg) 100%);
   }
 
   .section-heading {
@@ -727,7 +727,7 @@ watch(
 
   .section-description {
     margin-top: 4px;
-    color: #646a73;
+    color: var(--workspace-text-secondary);
     font-size: 13px;
     line-height: 20px;
   }
@@ -744,16 +744,16 @@ watch(
     display: flex;
     justify-content: space-between;
     gap: 16px;
-    border: 1px solid #eff0f1;
+    border: 1px solid var(--workspace-border-soft);
     border-radius: 8px;
-    background: #fff;
+    background: var(--workspace-card-bg);
   }
 
   .identity-row {
     align-items: center;
     min-height: 58px;
     padding: 10px 12px;
-    background: rgba(255, 255, 255, 0.84);
+    background: var(--workspace-card-bg);
   }
 
   .workspace-main {
@@ -777,17 +777,17 @@ watch(
 
   .workspace-meta {
     margin-top: 2px;
-    color: #86909c;
+    color: var(--workspace-text-tertiary);
     font-size: 12px;
     line-height: 18px;
     word-break: break-word;
   }
 
   .request-table-shell {
-    border: 1px solid #eff0f1;
+    border: 1px solid var(--workspace-border-soft);
     border-radius: 8px;
     overflow: hidden;
-    background: #fff;
+    background: var(--workspace-card-bg);
   }
 
   .request-table {
@@ -799,17 +799,17 @@ watch(
     }
 
     :deep(.ed-table__header-wrapper th.ed-table__cell) {
-      background: #f7f8fa;
-      color: #646a73;
+      background: var(--workspace-panel-bg);
+      color: var(--workspace-text-secondary);
       font-weight: 600;
     }
 
     :deep(.ed-table__cell) {
-      border-color: #eff0f1;
+      border-color: var(--workspace-border-soft);
     }
 
     :deep(.ed-table__body tr:hover > td.ed-table__cell) {
-      background: #f8fbff;
+      background: var(--workspace-control-hover-bg);
     }
   }
 
@@ -824,7 +824,7 @@ watch(
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: #646a73;
+    color: var(--workspace-text-secondary);
     font-size: 13px;
     line-height: 20px;
     font-weight: 500;
@@ -840,7 +840,7 @@ watch(
   }
 
   .status-pending {
-    color: #f54a45;
+    color: var(--theme-danger-text);
 
     .status-icon {
       border: 1.5px solid currentColor;
@@ -870,7 +870,7 @@ watch(
   }
 
   .status-approved {
-    color: #24714d;
+    color: var(--theme-success-text);
 
     .status-icon::before {
       content: '';
@@ -886,7 +886,7 @@ watch(
   }
 
   .status-rejected {
-    color: #c02a2a;
+    color: var(--theme-danger-text);
 
     .status-icon::before,
     .status-icon::after {
@@ -910,7 +910,7 @@ watch(
   }
 
   .status-cancelled {
-    color: #646a73;
+    color: var(--workspace-text-secondary);
 
     .status-icon::before {
       content: '';
@@ -931,7 +931,7 @@ watch(
   }
 
   .request-time-status {
-    color: #646a73;
+    color: var(--workspace-text-secondary);
     font-size: 13px;
     line-height: 20px;
     font-weight: 500;
@@ -939,7 +939,7 @@ watch(
 
   .request-time-detail,
   .request-description-cell {
-    color: #86909c;
+    color: var(--workspace-text-tertiary);
     font-size: 12px;
     line-height: 18px;
   }
@@ -950,15 +950,15 @@ watch(
     justify-content: flex-end;
     min-height: 48px;
     padding: 10px 16px;
-    border-top: 1px solid #eff0f1;
-    background: #fff;
+    border-top: 1px solid var(--workspace-border-soft);
+    background: var(--workspace-card-bg);
   }
 
   .empty-state {
     padding: 14px;
     border-radius: 8px;
-    background: #f7f8fa;
-    color: #86909c;
+    background: var(--workspace-panel-bg);
+    color: var(--workspace-text-tertiary);
     font-size: 13px;
     line-height: 20px;
   }
@@ -966,7 +966,7 @@ watch(
   .access-notice {
     padding: 20px 24px;
     margin-bottom: 16px;
-    background: #f7faf9;
+    background: var(--workspace-panel-bg);
   }
 
   .notice-title {
@@ -978,13 +978,13 @@ watch(
   .notice-description,
   .notice-footer {
     margin-top: 8px;
-    color: #646a73;
+    color: var(--workspace-text-secondary);
     font-size: 14px;
     line-height: 22px;
   }
 
   .notice-footer {
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     font-weight: 500;
   }
 }

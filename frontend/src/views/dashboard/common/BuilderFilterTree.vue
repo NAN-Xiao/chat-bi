@@ -193,7 +193,7 @@ function isGroup(node: FilterNode) {
   top: 8px;
   bottom: 10px;
   width: 1px;
-  background: #d8dde7;
+  background: var(--workspace-border);
 }
 
 .builder-filter-tree.is-nested {
@@ -235,8 +235,8 @@ function isGroup(node: FilterNode) {
   padding: 0;
   border: 1px solid #315cff;
   border-radius: 11px;
-  background: #fff;
-  color: #315cff;
+  background: var(--workspace-card-bg);
+  color: var(--theme-accent-text);
   cursor: pointer;
   font-size: 11px;
   line-height: 1;
@@ -260,9 +260,9 @@ function isGroup(node: FilterNode) {
 .builder-filter-group {
   min-width: 0;
   padding: 10px 12px 12px;
-  border: 1px solid #e7eaf0;
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
-  background: #fafbff;
+  background: var(--workspace-control-bg);
 }
 
 .builder-filter-group-head {
@@ -275,7 +275,7 @@ function isGroup(node: FilterNode) {
 }
 
 .builder-filter-group-title {
-  color: #2f3848;
+  color: var(--workspace-text-primary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -299,13 +299,13 @@ function isGroup(node: FilterNode) {
   min-width: 22px;
   height: 22px;
   padding: 0;
-  color: #7c8493;
+  color: var(--workspace-text-tertiary);
 }
 
 .builder-add-condition {
   height: 24px;
   padding: 0 5px;
-  color: #315cff;
+  color: var(--theme-accent-text);
   font-size: 12px;
 }
 
@@ -316,7 +316,7 @@ function isGroup(node: FilterNode) {
 
 .builder-empty-row {
   padding: 2px 0 2px;
-  color: #9aa2af;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 

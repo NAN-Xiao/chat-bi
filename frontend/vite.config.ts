@@ -5,6 +5,7 @@ import Components from 'unplugin-vue-components-secondary/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components-secondary/resolvers'
 import path from 'path'
 import svgLoader from 'vite-svg-loader'
+import { themeBootstrapPlugin } from './plugins/themeBootstrap'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
   const devProxyTarget = env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:8000'
@@ -13,6 +14,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     plugins: [
+      themeBootstrapPlugin(),
       vue(),
       AutoImport({
         resolvers: [ElementPlusResolver()],

@@ -1122,9 +1122,9 @@ defineExpose({
 
 <style lang="less">
 .dv-preview {
-  --dashboard-preview-card-bg: #ffffff;
-  --dashboard-preview-canvas-bg: #fbfbff;
-  --dashboard-preview-sidebar-bg: #eaf1f8;
+  --dashboard-preview-card-bg: var(--workspace-card-bg);
+  --dashboard-preview-canvas-bg: var(--theme-dashboard-canvas-bg);
+  --dashboard-preview-sidebar-bg: var(--theme-dashboard-sidebar-bg);
 
   width: 100%;
   height: 100%;
@@ -1136,7 +1136,7 @@ defineExpose({
   font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
 
   .resource-area {
-    --ed-aside-width: 280px;
+    --ed-aside-width: var(--sidebar-width);
 
     position: relative;
     height: 100%;
@@ -1248,7 +1248,7 @@ defineExpose({
 }
 
 .dashboard-loading-icon {
-  color: var(--ed-color-primary, #2f6bff);
+  color: var(--theme-accent-text);
   animation: dashboard-loading-spin 0.9s linear infinite;
 }
 
@@ -1293,11 +1293,11 @@ defineExpose({
   }
 
   &.create-icon-btn {
-    color: var(--ed-color-primary, #2f6bff);
+    color: var(--theme-accent-text);
 
     &:hover {
       background: var(--workspace-primary-soft-bg, rgba(47, 107, 255, 0.1));
-      color: var(--ed-color-primary, #2f6bff);
+      color: var(--theme-accent-text);
     }
   }
 

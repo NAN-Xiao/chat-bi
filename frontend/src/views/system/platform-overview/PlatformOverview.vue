@@ -520,7 +520,7 @@ onMounted(async () => {
   min-height: 100%;
   padding-bottom: var(--overview-page-bottom-gap);
   position: relative;
-  color-scheme: light;
+  color-scheme: var(--theme-color-scheme);
 
   .tool-left {
     display: flex;
@@ -570,8 +570,8 @@ onMounted(async () => {
   .chart-card,
   .ops-card,
   .summary-card {
-    background: var(--theme-card-bg, #ffffff);
-    border: 1px solid var(--theme-border-color, #ebeef5);
+    background: var(--workspace-card-bg);
+    border: 1px solid var(--workspace-border);
     border-radius: 8px;
     box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
   }
@@ -579,10 +579,8 @@ onMounted(async () => {
   .hero-copy {
     min-height: 320px;
     padding: 18px;
-    background:
-      linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(244, 249, 255, 0.98)),
-      var(--theme-card-bg, #ffffff);
-    border-color: #e2eaf4;
+    background: var(--workspace-panel-bg);
+    border-color: var(--workspace-border);
   }
 
   .hero-kicker {
@@ -591,8 +589,8 @@ onMounted(async () => {
     height: 24px;
     padding: 0 10px;
     border-radius: 999px;
-    background: rgba(47, 107, 255, 0.1);
-    color: #2f6bff;
+    background: var(--theme-primary-soft-bg);
+    color: var(--theme-accent-text);
     font-size: 12px;
     line-height: 24px;
     font-weight: 600;
@@ -619,11 +617,11 @@ onMounted(async () => {
     flex: 0 0 auto;
     padding: 6px 12px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.88);
+    background: var(--workspace-card-bg);
     color: var(--theme-text-secondary);
     font-size: 12px;
     line-height: 18px;
-    border: 1px solid rgba(222, 232, 246, 0.9);
+    border: 1px solid var(--workspace-border);
   }
 
   .hero-note {
@@ -643,8 +641,8 @@ onMounted(async () => {
   .hero-highlight {
     padding: 14px 16px;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid #e6edf6;
+    background: var(--workspace-card-bg);
+    border: 1px solid var(--workspace-border);
 
     span {
       display: block;
@@ -676,8 +674,8 @@ onMounted(async () => {
     gap: 10px;
     padding: 10px 12px;
     border-radius: 8px;
-    background: #f8fbff;
-    border: 1px solid #edf2f8;
+    background: var(--workspace-panel-bg);
+    border: 1px solid var(--workspace-border);
   }
 
   .risk-level {
@@ -690,18 +688,18 @@ onMounted(async () => {
     font-weight: 500;
 
     &.is-warning {
-      background: rgba(245, 74, 69, 0.12);
-      color: #f54a45;
+      background: var(--theme-danger-soft-bg);
+      color: var(--theme-danger-text);
     }
 
     &.is-attention {
-      background: rgba(245, 74, 69, 0.12);
-      color: #f54a45;
+      background: var(--theme-danger-soft-bg);
+      color: var(--theme-danger-text);
     }
 
     &.is-healthy {
-      background: rgba(57, 201, 138, 0.14);
-      color: #1f9f66;
+      background: var(--theme-success-soft-bg);
+      color: var(--theme-success-text);
     }
   }
 
@@ -716,10 +714,10 @@ onMounted(async () => {
     &.is-warning,
     &.is-attention {
       border-color: rgba(245, 74, 69, 0.18);
-      background: rgba(245, 74, 69, 0.04);
+      background: var(--theme-danger-soft-bg);
 
       strong {
-        color: #f54a45;
+        color: var(--theme-danger-text);
       }
     }
   }
@@ -883,7 +881,7 @@ onMounted(async () => {
     padding: 12px 14px;
     border-radius: 8px;
     background: var(--theme-hover-bg, #f8fafc);
-    border: 1px solid rgba(15, 23, 42, 0.05);
+    border: 1px solid var(--workspace-border-soft);
   }
 
   .rank-index {
@@ -893,8 +891,8 @@ onMounted(async () => {
     align-items: center;
     justify-content: center;
     border-radius: 8px;
-    background: rgba(47, 107, 255, 0.12);
-    color: #2f6bff;
+    background: var(--theme-primary-soft-bg);
+    color: var(--theme-accent-text);
     font-weight: 600;
   }
 

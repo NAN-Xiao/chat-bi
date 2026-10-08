@@ -70,7 +70,7 @@ defineExpose({
   gap: 4px;
 
   .continue-ask {
-    color: rgba(100, 106, 115, 1);
+    color: var(--workspace-text-secondary);
     font-weight: 400;
   }
 
@@ -97,11 +97,11 @@ defineExpose({
     overflow: hidden; /* 隐藏溢出内容 */
     text-overflow: ellipsis; /* 显示省略号 */
     &:hover {
-      background: rgba(31, 35, 41, 0.1);
+      background: var(--workspace-control-hover-bg);
     }
     &.disabled {
       cursor: not-allowed;
-      background: rgba(245, 246, 247, 1);
+      background: var(--workspace-control-bg);
     }
   }
 }
@@ -109,7 +109,7 @@ defineExpose({
 .recommend-questions-error {
   font-size: 14px;
   font-weight: 400;
-  color: rgba(100, 106, 115, 1);
+  color: var(--workspace-text-secondary);
   margin-top: 60px;
   display: flex;
   align-items: center;

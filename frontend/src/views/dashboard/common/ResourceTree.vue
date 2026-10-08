@@ -1572,7 +1572,7 @@ defineExpose({
 
   &.active {
     border: 1px solid var(--ed-color-primary);
-    color: var(--ed-color-primary);
+    color: var(--theme-accent-text);
 
     &:hover,
     &:focus {
@@ -1615,13 +1615,13 @@ defineExpose({
   }
 
   &.create-compact-btn {
-    color: var(--ed-color-primary, #2f6bff);
+    color: var(--theme-accent-text);
     background: var(--workspace-primary-soft-bg, rgba(47, 107, 255, 0.1));
 
     &:hover,
     &:focus {
       background: rgba(47, 107, 255, 0.16);
-      color: var(--ed-color-primary, #2f6bff);
+      color: var(--theme-accent-text);
     }
   }
 }
@@ -1843,7 +1843,7 @@ defineExpose({
 
 .custom-tree {
   --hover-color: var(--workspace-control-hover-bg, var(--theme-hover-bg));
-  --active-color: #e8f0ff;
+  --active-color: var(--theme-nav-active-bg);
 
   flex: 1;
   position: relative;
@@ -1960,7 +1960,7 @@ defineExpose({
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree--highlight-current .ed-tree-node.is-current > .ed-tree-node__content:hover),
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current:focus > .ed-tree-node__content) {
     background-color: var(--active-color) !important;
-    color: var(--workspace-text-primary, var(--theme-text-primary)) !important;
+    color: var(--theme-nav-active-text) !important;
     font-weight: 500;
   }
 
@@ -1969,7 +1969,7 @@ defineExpose({
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .label-tooltip),
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon),
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon svg) {
-    color: var(--workspace-text-primary, var(--theme-text-primary)) !important;
+    color: var(--theme-nav-active-text) !important;
   }
 
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon svg path) {
@@ -1977,7 +1977,7 @@ defineExpose({
   }
 
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon.icon-primary) {
-    color: var(--ed-color-primary, #2f6bff) !important;
+    color: var(--theme-nav-active-icon) !important;
     opacity: 1;
     transform: scale(1.18);
   }
@@ -2164,7 +2164,7 @@ defineExpose({
 
   &.is-tree-drop-inner {
     border-radius: 6px;
-    background: rgba(47, 107, 255, 0.09);
+    background: var(--workspace-primary-soft-bg);
     box-shadow:
       0 0 0 1px rgba(47, 107, 255, 0.48) inset,
       0 6px 14px rgba(47, 107, 255, 0.12);
@@ -2172,7 +2172,7 @@ defineExpose({
   }
 
   &.is-tree-drop-inner .tree-node-icon {
-    color: var(--ed-color-primary, #2f6bff);
+    color: var(--theme-accent-text);
   }
 
   .tree-node-icon {
@@ -2270,7 +2270,7 @@ defineExpose({
     padding: 0 6px;
     border-radius: 999px;
     background: rgba(37, 99, 235, 0.1);
-    color: #2563eb;
+    color: var(--theme-accent-text);
     font-size: 10px;
     line-height: 16px;
     font-weight: 500;
@@ -2281,7 +2281,7 @@ defineExpose({
     padding: 0 6px;
     border-radius: 999px;
     background: rgba(245, 158, 11, 0.14);
-    color: #b45309;
+    color: var(--theme-warning-text);
     font-size: 10px;
     line-height: 16px;
     font-weight: 500;
@@ -2316,9 +2316,9 @@ defineExpose({
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: #f8faff;
+      background: var(--workspace-control-bg);
       box-shadow: none;
-      color: #8aa3ea;
+      color: var(--theme-accent-text);
       cursor: pointer;
       opacity: 1;
       transition:
@@ -2345,9 +2345,9 @@ defineExpose({
 
     :deep(.hover-icon:hover),
     :deep(.hover-icon:focus) {
-      background: #f8f9fb;
+      background: var(--workspace-control-bg);
       box-shadow: none;
-      color: #8a94a3;
+      color: var(--workspace-text-tertiary);
       opacity: 1;
       transform: translateY(-1px);
     }
@@ -2382,7 +2382,7 @@ defineExpose({
 }
 
 .node-disabled-custom {
-  color: rgba(187, 191, 196, 1);
+  color: var(--workspace-text-tertiary);
   cursor: not-allowed;
 }
 

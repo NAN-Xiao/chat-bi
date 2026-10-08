@@ -26,6 +26,6 @@ assert.match(source, /groupTabs\.forEach/, '全部标签需要按固定顺序生
 const activeStyle = source.match(/\.builder-field-picker-tabs button\.active\s*\{([\s\S]*?)\n\}/)
 assert.ok(activeStyle, '属性标签需要活动态样式')
 assert.match(activeStyle[1], /border-color:\s*#315cff/, '活动标签需要蓝色底部指示线')
-assert.match(activeStyle[1], /color:\s*#1f2633/, '活动标签文字使用深色，不使用蓝色按钮文字')
+assert.match(activeStyle[1], /color:\s*var\(--workspace-text-primary\)/, '活动标签使用随主题切换的主文字色')
 
 console.log('builder field picker filter property tests passed')

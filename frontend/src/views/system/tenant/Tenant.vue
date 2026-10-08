@@ -1239,15 +1239,15 @@ onMounted(async () => {
     }
 
     :deep(.ed-table) {
-      --el-table-header-bg-color: #f5f7fa;
-      --el-table-border-color: #ebeef5;
-      --el-table-header-text-color: #606266;
-      background: #fff;
+      --el-table-header-bg-color: var(--workspace-panel-bg);
+      --el-table-border-color: var(--workspace-border);
+      --el-table-header-text-color: var(--workspace-text-secondary);
+      background: var(--workspace-card-bg);
 
       th {
         font-weight: 600;
         height: 48px;
-        background: #f7f9fc;
+        background: var(--workspace-panel-bg);
       }
 
       td {
@@ -1259,12 +1259,12 @@ onMounted(async () => {
       }
 
       .ed-table__row:hover > td {
-        background-color: #f8fbff;
+        background-color: var(--workspace-panel-bg);
       }
     }
 
     .muted {
-      color: #8f959e;
+      color: var(--workspace-text-tertiary);
       font-size: 12px;
       line-height: 18px;
     }
@@ -1275,32 +1275,32 @@ onMounted(async () => {
       line-height: 22px;
 
       &.is-default {
-        color: #646a73;
+        color: var(--workspace-text-secondary);
         font-weight: 400;
       }
 
       &.is-basic {
-        color: #245bdb;
+        color: var(--theme-accent-text);
       }
 
       &.is-enterprise {
-        color: #8f3f11;
+        color: var(--theme-warning-text);
       }
 
       &.is-primary {
-        color: #245bdb;
+        color: var(--theme-accent-text);
       }
 
       &.is-success {
-        color: #24714d;
+        color: var(--theme-success-text);
       }
 
       &.is-warning {
-        color: #b76e00;
+        color: var(--theme-warning-text);
       }
 
       &.is-danger {
-        color: #c42a2a;
+        color: var(--theme-danger-text);
       }
     }
 
@@ -1319,7 +1319,7 @@ onMounted(async () => {
     .table-primary-text,
     .enterprise-user-name {
       max-width: 100%;
-      color: #1f2329;
+      color: var(--workspace-text-primary);
       font-size: 14px;
       font-weight: 500;
       line-height: 22px;
@@ -1327,7 +1327,7 @@ onMounted(async () => {
 
     .table-secondary-text {
       max-width: 100%;
-      color: #8f959e;
+      color: var(--workspace-text-tertiary);
       font-size: 12px;
       line-height: 18px;
     }
@@ -1343,7 +1343,7 @@ onMounted(async () => {
         margin: 0 10px 0 12px;
         height: 16px;
         width: 1px;
-        background-color: #1f232926;
+        background-color: var(--workspace-border);
       }
     }
 
@@ -1362,11 +1362,11 @@ onMounted(async () => {
       .ed-icon {
         position: relative;
         cursor: pointer;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
 
         &.disabled {
           cursor: not-allowed;
-          color: #b8bdc6;
+          color: var(--ed-disabled-text-color);
 
           &::after {
             display: none !important;
@@ -1375,7 +1375,7 @@ onMounted(async () => {
 
         &::after {
           content: '';
-          background-color: #1f23291a;
+          background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
           position: absolute;
           border-radius: 6px;
           width: 24px;
@@ -1405,7 +1405,7 @@ onMounted(async () => {
       display: flex;
       flex-direction: column;
       min-width: 0;
-      color: #1f2329;
+      color: var(--workspace-text-primary);
       font-size: 13px;
       line-height: 18px;
     }
@@ -1424,11 +1424,11 @@ onMounted(async () => {
   }
 
   &.active {
-    color: #24714d;
+    color: var(--theme-success-text);
   }
 
   &.disabled {
-    color: #8f959e;
+    color: var(--workspace-text-tertiary);
   }
 }
 
@@ -1445,7 +1445,7 @@ onMounted(async () => {
 
   .datasource-type {
     max-width: 120px;
-    color: #8f959e;
+    color: var(--workspace-text-tertiary);
     font-size: 12px;
   }
 }
@@ -1458,9 +1458,9 @@ onMounted(async () => {
 
 .tenant-form-section {
   padding: 12px;
-  border: 1px solid #e5e8ef;
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--workspace-card-bg);
 
   :deep(.ed-form-item:last-child) {
     margin-bottom: 0;
@@ -1483,7 +1483,7 @@ onMounted(async () => {
   :deep(.ed-range-separator) {
     flex: 0 0 auto;
     padding: 0 8px;
-    color: #646a73;
+    color: var(--workspace-text-secondary);
   }
 }
 
@@ -1502,7 +1502,7 @@ onMounted(async () => {
     min-height: 32px;
     margin-bottom: 0;
     padding-right: 0;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     font-size: 14px;
     font-weight: 500;
     line-height: 32px;
@@ -1541,18 +1541,18 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  background: #fbfcff;
+  background: var(--workspace-panel-bg);
 }
 
 .owner-transfer-target {
   padding: 12px 14px;
-  border: 1px solid #e5e8ef;
+  border: 1px solid var(--workspace-border);
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--workspace-panel-bg);
 }
 
 .owner-transfer-title {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 14px;
   font-weight: 600;
   line-height: 22px;
@@ -1561,7 +1561,7 @@ onMounted(async () => {
 .owner-transfer-meta,
 .owner-transfer-hint {
   margin-top: 4px;
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
   line-height: 18px;
 }
@@ -1594,17 +1594,17 @@ onMounted(async () => {
 
 .owner-option-name {
   min-width: 0;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
 }
 
 .owner-option-id,
 .owner-option-meta {
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
 .owner-option-role {
-  color: #646a73;
+  color: var(--workspace-text-secondary);
 }
 </style>
 
@@ -1614,12 +1614,12 @@ onMounted(async () => {
   .ed-drawer__header,
   .ed-drawer__body,
   .ed-drawer__footer {
-    background: #fff !important;
-    color: #1f2329 !important;
+    background: var(--workspace-card-bg) !important;
+    color: var(--workspace-text-primary) !important;
   }
 
   .ed-drawer__header {
-    border-bottom: 1px solid #dee0e3;
+    border-bottom: 1px solid var(--workspace-border);
     margin-bottom: 0;
     padding-bottom: 16px;
   }
@@ -1629,52 +1629,47 @@ onMounted(async () => {
   }
 
   .ed-drawer__footer {
-    border-top: 1px solid #dee0e3;
+    border-top: 1px solid var(--workspace-border);
   }
 
   .ed-form-item__label,
   .ed-select__selected-item,
   .ed-input__inner,
   .ed-textarea__inner {
-    color: #1f2329 !important;
-    -webkit-text-fill-color: #1f2329 !important;
+    color: var(--workspace-text-primary) !important;
+    -webkit-text-fill-color: var(--workspace-text-primary) !important;
   }
 
   .ed-input__wrapper,
   .ed-select__wrapper,
   .ed-textarea__inner,
   .ed-date-editor {
-    background-color: #fff !important;
-    border-color: #d0d3d6 !important;
-    box-shadow: 0 0 0 1px #d0d3d6 inset !important;
+    background-color: var(--workspace-card-bg) !important;
+    border-color: var(--workspace-border) !important;
+    box-shadow: 0 0 0 1px var(--workspace-border) inset !important;
   }
 
   .ed-input__inner::placeholder,
   .ed-textarea__inner::placeholder {
-    color: #8f959e !important;
-    -webkit-text-fill-color: #8f959e !important;
+    color: var(--workspace-text-tertiary) !important;
+    -webkit-text-fill-color: var(--workspace-text-tertiary) !important;
   }
 
   .ed-input.is-disabled .ed-input__wrapper {
-    background-color: #f5f6f7 !important;
-    box-shadow: 0 0 0 1px #dee0e3 inset !important;
+    background-color: var(--workspace-control-bg) !important;
+    box-shadow: 0 0 0 1px var(--workspace-border) inset !important;
   }
 
   .ed-input.is-disabled .ed-input__inner {
-    color: #8f959e !important;
-    -webkit-text-fill-color: #8f959e !important;
+    color: var(--workspace-text-tertiary) !important;
+    -webkit-text-fill-color: var(--workspace-text-tertiary) !important;
   }
 
   .ed-button.is-secondary {
-    background-color: #fff !important;
-    border-color: #d0d3d6 !important;
-    color: #1f2329 !important;
+    background-color: var(--workspace-card-bg) !important;
+    border-color: var(--workspace-border) !important;
+    color: var(--workspace-text-primary) !important;
   }
 }
 
-:root[data-theme='dark'] {
-  .tenant-add-class {
-    color-scheme: light;
-  }
-}
 </style>

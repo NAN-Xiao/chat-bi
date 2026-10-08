@@ -163,7 +163,7 @@ const filteredAndGroupedData = computed(() => {
 
     .time-group-title {
       font-size: 12px;
-      color: rgba(100, 106, 115, 1);
+      color: var(--workspace-text-secondary);
       padding: 4px 8px;
       font-weight: 500;
     }
@@ -188,7 +188,7 @@ const filteredAndGroupedData = computed(() => {
     .title {
       flex: 1;
       width: 0;
-      color: rgba(31, 35, 41, 1);
+      color: var(--workspace-text-primary);
       font-size: 14px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -203,7 +203,7 @@ const filteredAndGroupedData = computed(() => {
     }
 
     &:hover {
-      background-color: rgba(255, 255, 255, 0.75);
+      background-color: var(--workspace-card-bg);
 
       .icon-more {
         display: inline-flex;
@@ -211,7 +211,7 @@ const filteredAndGroupedData = computed(() => {
     }
 
     &.active {
-      background-color: rgba(255, 255, 255, 1);
+      background-color: var(--workspace-card-bg);
     }
   }
 

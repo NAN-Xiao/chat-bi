@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import 'highlight.js/styles/github.min.css'
-import 'github-markdown-css/github-markdown-light.css'
+import 'github-markdown-css/github-markdown.css'
 import hljs from 'highlight.js'
 
 defineProps<{
@@ -22,7 +22,7 @@ defineProps<{
   padding: 1rem;
   display: block;
 
-  background: rgba(245, 246, 247, 1);
+  background: var(--workspace-control-bg);
   border: 1px solid rgba(222, 224, 227, 1);
   border-radius: 6px;
 }

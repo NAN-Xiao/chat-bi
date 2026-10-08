@@ -157,7 +157,7 @@ const del = (index: any, child: any) => {
     position: relative;
     align-items: center;
     z-index: 10;
-    background: #fff;
+    background: var(--workspace-card-bg);
     width: 48px;
     align-items: center;
     justify-content: center;
@@ -170,7 +170,7 @@ const del = (index: any, child: any) => {
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      background: #1f23291a;
+      background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
       z-index: 1;
       border-radius: 6px;
       user-select: none;
@@ -180,7 +180,6 @@ const del = (index: any, child: any) => {
     .operate-title {
       word-wrap: break-word;
       box-sizing: border-box;
-      color: rgba(0, 0, 0, 0.65);
       font-size: 12px;
       display: inline-block;
       white-space: nowrap;
@@ -190,7 +189,7 @@ const del = (index: any, child: any) => {
       position: relative;
       z-index: 1;
       height: 20px;
-      color: #1f2329;
+      color: var(--workspace-text-primary);
 
       .mrg-title {
         text-align: left;
@@ -241,8 +240,8 @@ const del = (index: any, child: any) => {
       padding: 0 10px;
       margin-right: 10px;
       font-size: 14px;
-      color: var(--ed-color-primary);
-      background: #fff;
+      color: var(--theme-accent-text);
+      background: var(--workspace-card-bg);
       border: 1px solid var(--ed-color-primary);
       border-radius: 6px;
     }

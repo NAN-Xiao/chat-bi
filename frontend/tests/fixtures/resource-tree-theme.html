@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>侧栏选中态主题回归</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h, ref } from 'vue'
+      import { ElTree, ElButton } from 'element-plus-secondary'
+      import ResourceTree from '/src/views/dashboard/common/ResourceTree.vue'
+      import AccessPage from '/src/views/access/index.vue'
+      import { applyInitialTheme, applyTheme } from '/src/utils/theme.ts'
+      import '/node_modules/element-plus-secondary/dist/index.css'
+      import '/src/style.less'
+      if (!ResourceTree.__scopeId || !AccessPage.__scopeId)
+        throw Error('Expected actual component scoped styles')
+      const treeScope = { [ResourceTree.__scopeId]: '' },
+        accessScope = { [AccessPage.__scopeId]: '' }
+      const selected = ref('my-first')
+      const data = [
+        {
+          id: 'recommended',
+          label: '推荐看板',
+          children: [
+            { id: 'recommended-first', label: '示例指标看板' },
+            {
+              id: 'recommended-folder',
+              label: '嵌套分组',
+              children: [{ id: 'nested', label: '很长的嵌套看板名称用于检查可读性' }],
+            },
+          ],
+        },
+        {
+          id: 'mine',
+          label: '我的看板',
+          children: [
+            { id: 'my-first', label: 't5' },
+            { id: 'my-second', label: '分析看板示例' },
+          ],
+        },
+      ]
+      const attrs = {
+        class: 'dashboard-resource-tree',
+        nodeKey: 'id',
+        data,
+        defaultExpandAll: true,
+        highlightCurrent: true,
+        expandOnClickNode: true,
+        onNodeClick: (d) => (selected.value = d.id),
+      }
+      function renderTree(menu) {
+        return h(
+          'div',
+          { class: 'dv-preview', ...treeScope, 'data-tree-mode': menu ? 'menu' : 'highlight' },
+          [
+            h('div', { class: 'resource-tree', ...treeScope }, [
+              h('div', { class: 'custom-tree', ...treeScope }, [
+                h(
+                  ElTree,
+                  { ...attrs, menu, currentNodeKey: selected.value },
+                  {
+                    default: ({ node, data }) =>
+                      h(
+                        'span',
+                        {
+                          class: [
+                            'custom-tree-node',
+                            node.isLeaf ? 'is-leaf-node' : 'is-group-node',
+                          ],
+                          ...treeScope,
+                        },
+                        [
+                          h(
+                            'span',
+                            {
+                              class: ['tree-node-icon', node.isLeaf ? 'icon-primary' : ''],
+                              ...treeScope,
+                            },
+                            [
+                              h('svg', { width: 14, height: 14, viewBox: '0 0 16 16' }, [
+                                h('path', {
+                                  d: 'M1 1h6v6H1zm8 0h6v6H9zM1 9h6v6H1zm8 0h6v6H9z',
+                                  fill: 'currentColor',
+                                }),
+                              ]),
+                            ]
+                          ),
+                          h('span', { class: 'label-tooltip', ...treeScope }, node.label),
+                        ]
+                      ),
+                  }
+                ),
+              ]),
+            ]),
+          ]
+        )
+      }
+      applyInitialTheme()
+      createApp({
+        setup: () => () =>
+          h('main', [
+            h('header', [
+              h('h2', '实际资源树样式：选中 / 悬停 / 焦点'),
+              h(ElButton, { onClick: () => applyTheme('light') }, () => '浅色'),
+              h(ElButton, { onClick: () => applyTheme('dark') }, () => '深色'),
+            ]),
+            h('div', { class: 'panels' }, [
+              renderTree(true),
+              renderTree(false),
+              h('section', { class: 'access-page', ...accessScope }, [
+                h('nav', { class: 'access-nav', ...accessScope }, [
+                  h('button', { class: 'access-nav-item is-active', ...accessScope }, [
+                    h('i', { class: 'ed-icon', ...accessScope }, '▦'),
+                    h('span', accessScope, '访问管理选中入口'),
+                  ]),
+                  h('button', { class: 'access-nav-item', ...accessScope }, [
+                    h('i', { class: 'ed-icon', ...accessScope }, '▦'),
+                    h('span', accessScope, '访问管理普通入口'),
+                  ]),
+                ]),
+              ]),
+            ]),
+          ]),
+      }).mount('#app')
+      window.sidebarQA = { applyTheme, selected }
+    </script>
+    <style>
+      body {
+        display: block;
+      }
+      main {
+        padding: 20px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+      .panels {
+        display: flex;
+        align-items: flex-start;
+        gap: 20px;
+      }
+      .panels > .dv-preview {
+        width: 240px;
+        height: 600px;
+        flex: none;
+      }
+      .panels .resource-tree {
+        width: 100%;
+        height: 100%;
+      }
+      .panels > .access-page {
+        height: 180px;
+        width: 240px;
+        padding: 12px;
+      }
+      .panels .tree-node-icon {
+        margin-right: 8px;
+        display: inline-flex;
+      }
+      h2 {
+        font-size: 18px;
+      }
+    </style>
+  </body>
+</html>

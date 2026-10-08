@@ -71,7 +71,7 @@ export class Treemap extends BaseG2Chart {
       ...this.chart.options(),
       type: 'treemap',
       padding: responsive.padding,
-      data: treeData,
+      data: { type: 'inline', value: treeData },
       encode: {
         value: 'value',
       },

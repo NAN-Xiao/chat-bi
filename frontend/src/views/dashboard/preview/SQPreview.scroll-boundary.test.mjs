@@ -64,7 +64,7 @@ assert.match(previewSource, /getDashboardGridContentRows\(displayComponentData\.
 assert.match(previewSource, /class="canvas-scroll-spacer"/)
 assert.match(previewSource, /:style="canvasScrollSpacerStyle"/)
 assert.match(previewSource, /width: Math\.max\(canvasWidth\.value, 1\) \+ 'px'/)
-assert.match(previewSource, /const PREVIEW_EDGE_GAP = 16/)
+assert.match(previewSource, /const PREVIEW_EDGE_GAP = 20/)
 assert.match(previewSource, /const edgeGap = props\.inTab \? gridGap : PREVIEW_EDGE_GAP/)
 assert.match(
   previewSource,

@@ -342,19 +342,19 @@ defineExpose({
 
 <style scoped lang="less">
 ::v-deep(.de-tabs) {
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 
 ::v-deep(.ed-tabs__header) {
   margin: 0 40px 0 12px !important;
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 ::v-deep(.ed-tabs__nav-scroll) {
   margin: 0 12px !important;
 }
 
 ::v-deep(.ed-tabs__content) {
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 
 .ed-dropdown-link {
@@ -367,7 +367,7 @@ defineExpose({
   width: calc(100% - var(--tab-content-inset) * 2);
   height: calc(100% - var(--tab-content-inset) * 2);
   margin: var(--tab-content-inset) !important; // border size
-  background: #fff;
+  background: var(--workspace-card-bg);
   div::-webkit-scrollbar {
     width: 0 !important;
     height: 0 !important;
@@ -375,12 +375,12 @@ defineExpose({
 }
 
 .tab-dashboard-preview {
-  background: #ffffff !important;
+  background: var(--workspace-card-bg) !important;
 }
 
 .tab-dashboard-editor-main {
   height: 100% !important;
-  background: #ffffff !important;
+  background: var(--workspace-card-bg) !important;
 }
 
 .tab-moveout {

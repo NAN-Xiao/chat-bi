@@ -1001,7 +1001,7 @@ const columnRules = {
               :value="item"
             >
               <div style="display: flex; align-items: center">
-                <el-icon size="16" style="margin-right: 8px; color: #646a73">
+                <el-icon size="16" style="margin-right: 8px; color: var(--workspace-text-secondary)">
                   <ICON_TABLE />
                 </el-icon>
                 {{ item.table_name }}
@@ -1153,14 +1153,14 @@ const columnRules = {
       .table-content {
         width: 100%;
         margin-top: 16px;
-        border: 1px solid #1f232926;
+        border: 1px solid var(--workspace-border);
         border-top: none;
         border-bottom: none;
         border-radius: 6px;
         overflow-y: auto;
 
         &.border-bottom {
-          border-bottom: 1px solid #1f232926;
+          border-bottom: 1px solid var(--workspace-border);
         }
         .ed-table__empty-text {
           padding-top: 0;
@@ -1181,11 +1181,11 @@ const columnRules = {
         .ed-icon {
           position: relative;
           cursor: pointer;
-          color: #646a73;
+          color: var(--workspace-text-secondary);
 
           &::after {
             content: '';
-            background-color: #1f23291a;
+            background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
             position: absolute;
             border-radius: 6px;
             width: 24px;
@@ -1211,7 +1211,7 @@ const columnRules = {
   .table-content {
     width: 100%;
     margin-top: 16px;
-    border: 1px solid #1f232926;
+    border: 1px solid var(--workspace-border);
     border-top: none;
     border-radius: 6px;
     overflow-y: auto;
@@ -1224,7 +1224,7 @@ const columnRules = {
   .auth-tree_content {
     padding: 16px;
     border-radius: 6px;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     min-height: 64px;
     display: flex;
     align-items: center;
@@ -1240,13 +1240,13 @@ const columnRules = {
     justify-content: space-between;
     gap: 16px;
     padding: 0 12px;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 6px;
-    background: #f5f6f7;
+    background: var(--workspace-control-bg);
     margin-bottom: 12px;
 
     span {
-      color: #646a73;
+      color: var(--workspace-text-secondary);
     }
 
     strong {
@@ -1261,10 +1261,10 @@ const columnRules = {
   .table-permission-summary {
     width: 100%;
     padding: 12px 16px;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 6px;
-    background: #f5f6f7;
-    color: #1f2329;
+    background: var(--workspace-control-bg);
+    color: var(--workspace-text-primary);
 
     .summary-title {
       font-weight: 500;
@@ -1280,7 +1280,7 @@ const columnRules = {
       min-height: 28px;
 
       span {
-        color: #646a73;
+        color: var(--workspace-text-secondary);
       }
 
       strong {
@@ -1300,7 +1300,7 @@ const columnRules = {
   width: 148px !important;
   min-width: 148px !important;
   box-shadow: 0px 4px 8px 0px #1f23291a;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
 
   .popover {
     .popover-content {
@@ -1313,7 +1313,7 @@ const columnRules = {
         top: 76px;
         width: 100%;
         height: 1px;
-        background: #1f232926;
+        background: var(--workspace-border);
       }
     }
     .popover-item {
@@ -1326,7 +1326,7 @@ const columnRules = {
       border-radius: 6px;
       cursor: pointer;
       &:hover {
-        background: #1f23291a;
+        background: var(--workspace-control-hover-bg);
       }
 
       &:nth-child(2),
@@ -1346,7 +1346,7 @@ const columnRules = {
       }
 
       &.isActive {
-        color: var(--ed-color-primary);
+        color: var(--theme-accent-text);
 
         .done {
           display: block;

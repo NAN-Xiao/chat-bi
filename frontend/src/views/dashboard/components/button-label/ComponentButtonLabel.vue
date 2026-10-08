@@ -41,7 +41,7 @@ const emits = defineEmits(['customClick'])
   justify-content: center;
   align-items: center;
   border-radius: 6px;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
 
   span {
     float: left;
@@ -50,23 +50,23 @@ const emits = defineEmits(['customClick'])
   }
 
   &:hover {
-    background: rgba(31, 35, 41, 0.1);
+    background: var(--workspace-control-hover-bg);
   }
 
   &:active {
-    background: rgba(31, 35, 41, 0.1);
+    background: var(--workspace-control-hover-bg);
   }
 }
 
 .group-right-border {
-  border-color: rgba(31, 35, 41, 0.15);
+  border-color: var(--workspace-border);
   margin: 0 4px 0 16px;
   height: 14px;
 }
 
 .inner-active {
   border: 1px solid var(--ed-color-primary);
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--workspace-primary-soft-bg);
 }
 
 .toolbar-icon {

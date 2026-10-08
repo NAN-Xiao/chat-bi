@@ -380,7 +380,7 @@ defineExpose({
   position: absolute;
   top: 18px;
   left: 20px;
-  color: #646a73;
+  color: var(--workspace-text-secondary);
   font-size: 14px;
   font-weight: 400;
   line-height: 22px;
@@ -395,7 +395,7 @@ defineExpose({
 .adapt-text {
   font-size: 14px;
   font-weight: 400;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   line-height: 22px;
 }
 
@@ -469,7 +469,7 @@ defineExpose({
   }
 
   .ed-drawer__body {
-    background: rgba(245, 246, 247, 1) !important;
+    background: var(--workspace-control-bg) !important;
     padding: 0 0 64px 0 !important;
   }
 }

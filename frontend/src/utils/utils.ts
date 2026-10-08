@@ -183,12 +183,21 @@ export const setCurrentColor = (color: any, element: HTMLElement = document.docu
   if (!currentColor) {
     return
   }
-  element.style.setProperty('--ed-color-primary', currentColor)
-  element.style.setProperty('--el-color-primary', currentColor)
-  element.style.setProperty('--primary-color', currentColor)
-  element.style.setProperty('--accent-color', currentColor)
-  element.style.setProperty('--user-msg-bg', currentColor)
-  element.style.setProperty('--van-blue', currentColor)
+  const previous = new Map<string, [string, string]>()
+  const setBrandProperty = (name: string, value: string) => {
+    previous.set(name, [element.style.getPropertyValue(name), element.style.getPropertyPriority(name)])
+    element.style.setProperty(name, value)
+  }
+  setBrandProperty('--theme-accent-text', currentColor)
+  setBrandProperty('--theme-button-primary-bg', currentColor)
+  setBrandProperty('--theme-primary-soft-bg', `${currentColor}1a`)
+  setBrandProperty('--workspace-primary-soft-bg', `${currentColor}1a`)
+  setBrandProperty('--ed-color-primary', currentColor)
+  setBrandProperty('--el-color-primary', currentColor)
+  setBrandProperty('--primary-color', currentColor)
+  setBrandProperty('--accent-color', currentColor)
+  setBrandProperty('--user-msg-bg', currentColor)
+  setBrandProperty('--van-blue', currentColor)
   const light3 = colorFunctions
     .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 15 })
     .toRGB()
@@ -205,25 +214,33 @@ export const setCurrentColor = (color: any, element: HTMLElement = document.docu
     .mix(new colorTree('000000'), new colorTree(currentColor.substr(1)), { value: 15 })
     .toRGB()
 
-  element.style.setProperty('--ed-color-primary-light-5', light5)
-  element.style.setProperty('--ed-color-primary-light-3', light3)
-  element.style.setProperty('--el-color-primary-light-3', light3)
-  element.style.setProperty('--el-color-primary-light-5', light5)
-  element.style.setProperty('--el-color-primary-light-7', light60)
-  element.style.setProperty('--el-color-primary-light-8', light80)
-  element.style.setProperty('--el-color-primary-light-9', `${currentColor}1a`)
-  element.style.setProperty('--el-color-primary-dark-2', dark2)
+  setBrandProperty('--theme-button-primary-hover-bg', light3)
+  setBrandProperty('--theme-button-primary-active-bg', dark2)
+  setBrandProperty('--ed-color-primary-light-5', light5)
+  setBrandProperty('--ed-color-primary-light-3', light3)
+  setBrandProperty('--el-color-primary-light-3', light3)
+  setBrandProperty('--el-color-primary-light-5', light5)
+  setBrandProperty('--el-color-primary-light-7', light60)
+  setBrandProperty('--el-color-primary-light-8', light80)
+  setBrandProperty('--el-color-primary-light-9', `${currentColor}1a`)
+  setBrandProperty('--el-color-primary-dark-2', dark2)
 
-  element.style.setProperty('--ed-color-primary-60', light60)
+  setBrandProperty('--ed-color-primary-60', light60)
 
-  element.style.setProperty('--ed-color-primary-80', light80)
+  setBrandProperty('--ed-color-primary-80', light80)
 
-  element.style.setProperty('--ed-color-primary-15-d', dark2)
-  element.style.setProperty('--ed-color-primary-1a', `${currentColor}1a`)
-  element.style.setProperty('--ed-color-primary-14', `${currentColor}14`)
-  element.style.setProperty('--ed-color-primary-33', `${currentColor}33`)
-  element.style.setProperty('--ed-color-primary-99', `${currentColor}99`)
-  element.style.setProperty('--ed-color-primary-dark-2', dark2)
+  setBrandProperty('--ed-color-primary-15-d', dark2)
+  setBrandProperty('--ed-color-primary-1a', `${currentColor}1a`)
+  setBrandProperty('--ed-color-primary-14', `${currentColor}14`)
+  setBrandProperty('--ed-color-primary-33', `${currentColor}33`)
+  setBrandProperty('--ed-color-primary-99', `${currentColor}99`)
+  setBrandProperty('--ed-color-primary-dark-2', dark2)
+  return () => {
+    previous.forEach(([value, priority], name) => {
+      if (value) element.style.setProperty(name, value, priority)
+      else element.style.removeProperty(name)
+    })
+  }
 }
 export const getQueryString = (name: string) => {
   const reg = new RegExp('(^|&)' + name + '=([^&]*)(&|$)', 'i')

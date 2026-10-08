@@ -170,7 +170,6 @@ export class Bar extends BaseG2Chart {
                 return 'right'
               },
               transform: [
-                { type: 'contrastReverse' },
                 { type: 'exceedAdjust' },
                 { type: 'overlapHide' },
               ],

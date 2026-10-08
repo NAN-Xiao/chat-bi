@@ -307,7 +307,7 @@ defineExpose({
   align-items: center;
   gap: 12px;
   padding: 14px 0 18px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--workspace-border);
   margin-bottom: 22px;
 
   img {
@@ -320,14 +320,14 @@ defineExpose({
 }
 
 .provider-name {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 16px;
   font-weight: 600;
   line-height: 24px;
 }
 
 .provider-desc {
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 14px;
   line-height: 22px;
   margin-top: 2px;
@@ -336,7 +336,7 @@ defineExpose({
 .drawer-section {
   padding-bottom: 20px;
   margin-bottom: 22px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--workspace-border);
 }
 
 .model-select-section {
@@ -344,7 +344,7 @@ defineExpose({
 }
 
 .section-title {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 15px;
   font-weight: 600;
   line-height: 24px;
@@ -360,7 +360,7 @@ defineExpose({
 }
 
 .fetch-status {
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   flex: 1;
   font-size: 14px;
   line-height: 22px;
@@ -368,7 +368,7 @@ defineExpose({
 }
 
 .model-select-tip {
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 14px;
   line-height: 22px;
   margin-top: 8px;

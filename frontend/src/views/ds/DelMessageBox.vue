@@ -48,7 +48,7 @@ defineProps({
       text-decoration: underline;
       text-decoration-style: solid;
       cursor: pointer;
-      color: var(--ed-color-primary);
+      color: var(--theme-accent-text);
     }
   }
 }

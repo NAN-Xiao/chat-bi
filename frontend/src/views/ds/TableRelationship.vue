@@ -5,6 +5,13 @@ import { useI18n } from 'vue-i18n'
 import { Graph, Cell, Shape } from '@antv/x6'
 import type { AnyColumn } from 'element-plus-secondary/es/components/table-v2/src/common.mjs'
 import { debounce } from 'lodash-es'
+import { subscribeTheme } from '@/utils/theme'
+import {
+  relationshipColors,
+  normalizeGeneratedRelationshipPortStyles,
+  themeRelationshipEdgeAttrs,
+  refreshRelationshipTheme,
+} from './relationshipTheme'
 
 const LINE_HEIGHT = 36
 const NODE_WIDTH = 180
@@ -30,6 +37,7 @@ const tooltipY = ref('-999px')
 const tooltipX = ref('-999px')
 const tooltipContent = ref('')
 const nodeIds = ref<any[]>([])
+const relationshipCanvas = ref<HTMLElement | null>(null)
 
 const cells = ref<Cell[]>([])
 const edgeOPtion = {
@@ -41,12 +49,13 @@ const edgeOPtion = {
   ],
   attrs: {
     line: {
-      stroke: '#DEE0E3',
+      stroke: relationshipColors.border,
       strokeWidth: 2,
     },
   },
 }
 let graph: any
+let unsubscribeTheme: (() => void) | undefined
 
 const resetTooltip = () => {
   tooltipY.value = '-1000px'
@@ -95,28 +104,28 @@ const initGraph = () => {
       ],
       attrs: {
         top: {
-          fill: '#BBBFC4',
+          fill: relationshipColors.top,
           refX: 0,
           refY: 0,
           d: 'M0 5C0 2.23858 2.23858 0 5 0H175C177.761 0 180 2.23858 180 5H0Z',
         },
-        rect: {
+        body: {
           strokeWidth: 0.5,
-          stroke: '#DEE0E3',
-          fill: '#F5F6F7',
+          stroke: relationshipColors.border,
+          fill: relationshipColors.header,
           refY: 5,
         },
         div: {
           fillRule: 'evenodd',
           clipRule: 'evenodd',
-          fill: '#646A73',
+          fill: relationshipColors.secondary,
           refX: 12,
           refY: 21,
           fontSize: 14,
           d: 'M1.4773 1.47724C1.67618 1.27836 1.94592 1.16663 2.22719 1.16663H11.7729C12.0541 1.16663 12.3239 1.27836 12.5227 1.47724C12.7216 1.67612 12.8334 1.94586 12.8334 2.22713V11.7728C12.8334 12.0541 12.7216 12.3238 12.5227 12.5227C12.3239 12.7216 12.0541 12.8333 11.7729 12.8333H2.22719C1.64152 12.8333 1.16669 12.3585 1.16669 11.7728V2.22713C1.16669 1.94586 1.27842 1.67612 1.4773 1.47724ZM2.33335 5.83329V8.16662H4.66669V5.83329H2.33335ZM2.33335 9.33329V11.6666H4.66669V9.33329H2.33335ZM5.83335 11.6666H8.16669V9.33329H5.83335V11.6666ZM9.33335 11.6666H11.6667V9.33329H9.33335V11.6666ZM11.6667 8.16662V5.83329H9.33335V8.16662H11.6667ZM8.16669 5.83329H5.83335V8.16662H8.16669V5.83329ZM11.6667 2.33329H2.33335V4.66663H11.6667V2.33329Z',
         },
         label: {
-          fill: '#1F2329',
+          fill: relationshipColors.text,
           fontSize: 14,
         },
       },
@@ -137,12 +146,13 @@ const initGraph = () => {
               portBody: {
                 width: NODE_WIDTH,
                 height: LINE_HEIGHT,
-                stroke: '#DEE0E3',
+                stroke: relationshipColors.border,
                 strokeWidth: 0.5,
-                fill: '#ffffff',
+                fill: relationshipColors.surface,
                 magnet: true,
               },
               portNameLabel: {
+                fill: relationshipColors.text,
                 ref: 'portBody',
                 refX: 12,
                 refY: 9.5,
@@ -168,7 +178,7 @@ const initGraph = () => {
       modifiers: ['ctrl', 'meta'],
       factor: 1.05,
     },
-    container: document.getElementById('container')!,
+    container: relationshipCanvas.value!,
     autoResize: true,
     panning: true,
     connecting: {
@@ -302,11 +312,20 @@ const getTableData = () => {
         }
         data.forEach((item: any) => {
           if (item.shape === 'edge') {
-            cells.value.push(graph.createEdge({ ...item, ...edgeOPtion }))
+            cells.value.push(graph.createEdge({
+              ...item,
+              ...edgeOPtion,
+              attrs: themeRelationshipEdgeAttrs({
+                ...edgeOPtion.attrs,
+                ...item.attrs,
+                line: { ...edgeOPtion.attrs.line, ...item.attrs?.line },
+              }),
+            }))
           } else {
             cells.value.push(
               graph.createNode({
                 ...item,
+                ports: normalizeGeneratedRelationshipPortStyles(item.ports),
                 position: {
                   x: Number.parseInt(item.position.x),
                   y: Number.parseInt(item.position.y),
@@ -327,9 +346,11 @@ const getTableData = () => {
     })
 }
 onMounted(() => {
+  unsubscribeTheme = subscribeTheme(() => refreshRelationshipTheme(graph))
   getTableData()
 })
 onBeforeUnmount(() => {
+  unsubscribeTheme?.()
   if (graph) {
     graph.dispose()
   }
@@ -452,7 +473,7 @@ const save = () => {
   <div v-if="!nodeIds.length" v-loading="loading" class="relationship-empty">
     {{ t('training.add_it_here') }}
   </div>
-  <div v-else id="container" v-loading="loading"></div>
+  <div v-else ref="relationshipCanvas" class="relationship-canvas" v-loading="loading"></div>
   <div
     v-show="dragging && !readonly"
     class="drag-mask"
@@ -510,7 +531,7 @@ const save = () => {
   height: 100%;
   font-size: 16px;
 }
-#container {
+.relationship-canvas {
   font-size: 14px;
   user-select: text;
   overflow: hidden;
@@ -520,7 +541,7 @@ const save = () => {
   position: relative;
   width: 100%;
   height: 100%;
-  background-color: #f5f6f7;
+  background-color: var(--workspace-control-bg);
   :deep(.x6-edge-tool) {
     display: none;
 

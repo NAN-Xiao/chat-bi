@@ -535,7 +535,7 @@ onMounted(() => {
       width: 100%;
       border-radius: 12px;
       padding: 16px;
-      border: 1px solid #dee0e3;
+      border: 1px solid var(--workspace-border);
       display: flex;
       flex-direction: column;
       margin-top: 16px;
@@ -583,36 +583,36 @@ onMounted(() => {
           box-shadow 0.2s ease;
 
         &.has-error {
-          border-color: #ff4d4f;
+          border-color: var(--theme-danger-text);
           box-shadow: 0 0 0 1px rgba(255, 77, 79, 0.2);
         }
 
         .feishu-error-summary {
           margin-top: 12px;
-          border: 1px solid #ffccc7;
+          border: 1px solid var(--theme-danger-text);
           border-radius: 6px;
           padding: 9px 12px;
-          background: #fff2f0;
-          color: #cf1322;
+          background: var(--theme-danger-soft-bg);
+          color: var(--theme-danger-text);
           font-size: 13px;
           line-height: 20px;
         }
 
         .card-item.is-error {
           :deep(.ed-input__wrapper) {
-            border-color: #ff4d4f;
-            box-shadow: 0 0 0 1px #ff4d4f inset;
+            border-color: var(--theme-danger-text);
+            box-shadow: 0 0 0 1px var(--theme-danger-text) inset;
           }
 
           :deep(.ed-select .ed-input__wrapper) {
-            border-color: #ff4d4f;
-            box-shadow: 0 0 0 1px #ff4d4f inset;
+            border-color: var(--theme-danger-text);
+            box-shadow: 0 0 0 1px var(--theme-danger-text) inset;
           }
         }
 
         .field-error {
           margin-top: 6px;
-          color: #cf1322;
+          color: var(--theme-danger-text);
           font-size: 12px;
           line-height: 18px;
         }
@@ -623,14 +623,14 @@ onMounted(() => {
         min-height: 32px;
         padding: 0 10px;
         border-radius: 6px;
-        background: #fff7ed;
-        color: #c2410c;
+        background: var(--theme-warning-soft-bg);
+        color: var(--theme-warning-text);
         font-size: 13px;
         font-weight: 600;
 
         &.valid {
-          background: #ecfdf3;
-          color: #047857;
+          background: var(--theme-success-soft-bg);
+          color: var(--theme-success-text);
         }
       }
     }

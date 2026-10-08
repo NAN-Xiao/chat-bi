@@ -70,15 +70,15 @@ const copyCode = () => {
   line-height: 24px;
   font-size: 16px;
   padding: 12px 16px;
-  color: rgba(31, 35, 41, 1);
-  background: rgba(245, 246, 247, 1);
+  color: var(--workspace-text-primary);
+  background: var(--workspace-control-bg);
   position: relative;
 
   word-wrap: break-word;
   white-space: pre-wrap;
 
   .prefix-title {
-    color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+    color: var(--theme-accent-text);
     white-space: nowrap;
   }
 }

@@ -526,7 +526,7 @@ export function buildMixedUnitComboOptions(
             return value === undefined || value === null ? '' : String(formatNumber(value))
           },
           position: (datum: ChartData) => (datum[countValueField] < 0 ? 'bottom' : 'top'),
-          transform: [{ type: 'contrastReverse' }, { type: 'exceedAdjust' }, { type: 'overlapHide' }],
+          transform: [ { type: 'exceedAdjust' }, { type: 'overlapHide' }],
         },
       ]
     : []
@@ -542,7 +542,7 @@ export function buildMixedUnitComboOptions(
             dx: -10,
             dy: -12,
           },
-          transform: [{ type: 'contrastReverse' }, { type: 'exceedAdjust' }, { type: 'overlapHide' }],
+          transform: [ { type: 'exceedAdjust' }, { type: 'overlapHide' }],
         },
       ]
     : []

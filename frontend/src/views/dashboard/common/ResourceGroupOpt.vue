@@ -463,7 +463,7 @@ defineExpose({
 .tree-content {
   width: 552px;
   height: 380px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
   padding: 8px;
   overflow-y: auto;
@@ -486,7 +486,7 @@ defineExpose({
       font-size: 14px;
       font-weight: 400;
       line-height: 22px;
-      color: #646a73;
+      color: var(--workspace-text-secondary);
     }
   }
 }

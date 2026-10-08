@@ -199,7 +199,7 @@ onMounted(() => {
   height: 204px;
   padding: 12px;
   border-bottom: 1px solid var(--workspace-border-soft, #eff4fa);
-  background: linear-gradient(180deg, #fbfdff 0%, #f3f7fc 100%);
+  background: linear-gradient(180deg, var(--workspace-control-bg) 0%, var(--workspace-control-bg) 100%);
 }
 
 .preview-image {
@@ -208,7 +208,7 @@ onMounted(() => {
   object-fit: contain;
   display: block;
   border-radius: 6px;
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 
 .delete-action.delete-action {
@@ -235,7 +235,7 @@ onMounted(() => {
 
   &:hover {
     :deep(path) {
-      fill: #d84b4b;
+      fill: var(--theme-danger-text);
     }
   }
 }
@@ -276,7 +276,7 @@ onMounted(() => {
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--workspace-primary-soft-bg, rgba(47, 107, 255, 0.1));
-  color: var(--primary-color, #2f6bff);
+  color: var(--theme-accent-text);
   font-size: 12px;
   line-height: 18px;
 }

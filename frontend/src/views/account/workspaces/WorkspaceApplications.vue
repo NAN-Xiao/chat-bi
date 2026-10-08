@@ -289,6 +289,7 @@ const submitApplication = () => {
 
 <style lang="less" scoped>
 .my-workspaces {
+  color: var(--workspace-text-primary);
   width: 100%;
   height: 100%;
   overflow: auto;
@@ -310,9 +311,9 @@ const submitApplication = () => {
 
   .workspace-section {
     min-width: 0;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 8px;
-    background: #fff;
+    background: var(--workspace-card-bg);
   }
 
   .application-section {
@@ -346,16 +347,16 @@ const submitApplication = () => {
     display: flex;
     align-items: center;
     gap: 12px;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 6px;
-    background: #fff;
-    color: #1f2329;
+    background: var(--workspace-card-bg);
+    color: var(--workspace-text-primary);
     text-align: left;
   }
 
   .tenant-search-result:hover {
     border-color: var(--ed-color-primary);
-    background: #eef3ff;
+    background: var(--theme-nav-active-bg);
   }
 
   .tenant-search-main {
@@ -377,7 +378,7 @@ const submitApplication = () => {
 
   .tenant-search-id,
   .tenant-search-state {
-    color: #8f959e;
+    color: var(--workspace-text-tertiary);
     font-size: 12px;
     line-height: 18px;
   }
@@ -390,8 +391,8 @@ const submitApplication = () => {
     margin-top: 8px;
     padding: 10px 12px;
     border-radius: 6px;
-    background: #f7f8fa;
-    color: #86909c;
+    background: var(--workspace-panel-bg);
+    color: var(--workspace-text-tertiary);
     font-size: 13px;
     line-height: 20px;
   }
@@ -399,9 +400,9 @@ const submitApplication = () => {
   .join-target-summary {
     margin-bottom: 16px;
     padding: 10px 12px;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 6px;
-    background: #f7f8fa;
+    background: var(--workspace-panel-bg);
   }
 
   .join-target-name {
@@ -409,7 +410,7 @@ const submitApplication = () => {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     font-size: 14px;
     line-height: 20px;
     font-weight: 500;
@@ -417,7 +418,7 @@ const submitApplication = () => {
 
   .join-target-id {
     margin-top: 2px;
-    color: #8f959e;
+    color: var(--workspace-text-tertiary);
     font-size: 12px;
     line-height: 18px;
   }

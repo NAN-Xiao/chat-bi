@@ -93,12 +93,12 @@ export class Sankey extends BaseG2Chart {
         nodePadding: 0.03,
       },
       style: {
-        nodeStroke: '#fff',
+        nodeStroke: () => getComputedStyle(this.chart.getContainer()).getPropertyValue('--theme-panel-bg').trim(),
         nodeLineWidth: 1,
         linkFillOpacity: 0.36,
         labelText: this.showLabel ? (datum: any) => nodeLabel(datum.key) : () => '',
         labelFontSize: responsive.structureLabelFontSize,
-        labelFill: '#5b6f95',
+        labelFill: () => getComputedStyle(this.chart.getContainer()).getPropertyValue('--theme-chart-label').trim(),
       },
       tooltip: {
         link: {

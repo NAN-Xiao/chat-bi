@@ -384,13 +384,13 @@ const back = () => {
   padding: 4px 0;
   width: 325px !important;
   box-shadow: 0px 4px 8px 0px #1f23291a;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   .ed-input {
     .ed-input__wrapper {
       box-shadow: none;
     }
 
-    border-bottom: 1px solid #1f232926;
+    border-bottom: 1px solid var(--workspace-border);
   }
 
   .popover {
@@ -408,14 +408,14 @@ const back = () => {
       border-radius: 6px;
       cursor: pointer;
       &:not(.empty):hover {
-        background: #1f23291a;
+        background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
       }
 
       &.empty {
         font-weight: 400;
         font-size: 14px;
         line-height: 22px;
-        color: #8f959e;
+        color: var(--workspace-text-tertiary);
         cursor: default;
       }
 
@@ -432,11 +432,11 @@ const back = () => {
       }
 
       .isSearch {
-        color: var(--ed-color-primary);
+        color: var(--theme-accent-text);
       }
 
       &.isActive {
-        color: var(--ed-color-primary);
+        color: var(--theme-accent-text);
 
         .done {
           display: block;

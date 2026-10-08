@@ -37,6 +37,7 @@ class UserModel(SnowflakeBase, BaseUserPO, table=True):
     类说明：UserModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
     """
     __tablename__ = "sys_user"
+    color_theme: str = Field(default='light', sa_column=Column(String(5), nullable=False, server_default='light'))
 
 
 class UserPlatformBase(SQLModel):

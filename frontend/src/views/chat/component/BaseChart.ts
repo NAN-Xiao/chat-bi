@@ -88,5 +88,8 @@ export abstract class BaseChart {
 
   abstract render(): void | Promise<unknown>
 
+  // DOM renderers use CSS variables; canvas renderers override this hook.
+  updateTheme(): void | Promise<unknown> {}
+
   abstract destroy(): void
 }

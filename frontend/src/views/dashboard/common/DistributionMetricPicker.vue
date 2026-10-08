@@ -212,8 +212,8 @@ function chooseAggregation(aggregation: DistributionPropertyAggregation) {
   overflow: hidden;
   border: 1px solid #8aa0ff;
   border-radius: 6px;
-  color: #3154e8;
-  background: #fff;
+  color: var(--theme-accent-text);
+  background: var(--workspace-card-bg);
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -236,7 +236,7 @@ function chooseAggregation(aggregation: DistributionPropertyAggregation) {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-height: 250px;
-  color: #303643;
+  color: var(--workspace-text-primary);
 }
 
 .distribution-metric-panel.has-aggregation {
@@ -254,7 +254,7 @@ function chooseAggregation(aggregation: DistributionPropertyAggregation) {
   gap: 5px;
   min-width: 0;
   padding: 0 4px 9px;
-  color: #4b515c;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -262,7 +262,7 @@ function chooseAggregation(aggregation: DistributionPropertyAggregation) {
 .distribution-metric-sentence strong {
   max-width: 82px;
   overflow: hidden;
-  color: #303643;
+  color: var(--workspace-text-primary);
   font-weight: 600;
   text-overflow: ellipsis;
 }
@@ -292,14 +292,14 @@ function chooseAggregation(aggregation: DistributionPropertyAggregation) {
 .distribution-property-group {
   margin-top: 3px;
   padding-top: 9px;
-  border-top: 1px solid #edf0f5;
+  border-top: 1px solid var(--workspace-border);
 }
 
 .distribution-option-heading {
   display: block;
   padding: 4px 7px 5px;
   overflow: hidden;
-  color: #8a93a3;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -316,7 +316,7 @@ function chooseAggregation(aggregation: DistributionPropertyAggregation) {
   overflow: hidden;
   border: 0;
   border-radius: 5px;
-  color: #303643;
+  color: var(--workspace-text-primary);
   background: transparent;
   cursor: pointer;
   font-size: 13px;
@@ -331,13 +331,13 @@ function chooseAggregation(aggregation: DistributionPropertyAggregation) {
 
 .distribution-menu-option:hover,
 .distribution-menu-option.is-active {
-  color: #3154e8;
-  background: #f0f2f8;
+  color: var(--theme-accent-text);
+  background: var(--workspace-control-bg);
 }
 
 .distribution-menu-empty {
   padding: 12px 8px;
-  color: #a0a7b2;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
   text-align: center;
 }
@@ -345,7 +345,7 @@ function chooseAggregation(aggregation: DistributionPropertyAggregation) {
 .distribution-aggregation-panel {
   min-width: 0;
   padding: 10px 8px 8px;
-  border-left: 1px solid #edf0f5;
+  border-left: 1px solid var(--workspace-border-soft);
 }
 
 .distribution-aggregation-list {

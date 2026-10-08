@@ -25,6 +25,7 @@ const props = withDefaults(
     disabled?: boolean
     timezone?: string
     variant?: 'default' | 'roi'
+    appearance?: 'control' | 'inline'
     showResolvedRange?: boolean
     resolvedRange?: [string, string] | null
   }>(),
@@ -32,6 +33,7 @@ const props = withDefaults(
     disabled: false,
     timezone: 'Asia/Shanghai',
     variant: 'default',
+    appearance: 'control',
     showResolvedRange: false,
   }
 )
@@ -61,7 +63,8 @@ const appliedRangeLabel = computed(() => {
   if (model.value.mode === 'preset' && model.value.preset === 'all_time') return ''
   const range = props.resolvedRange
     || dashboardDateExpressionCalendarRange(model.value, now.value, props.timezone)
-  return range.length === 2 ? `${range[0]} ~ ${range[1]}` : ''
+  const separator = props.appearance === 'inline' ? '至' : '~'
+  return range.length === 2 ? `${range[0]} ${separator} ${range[1]}` : ''
 })
 const activePreset = computed(() => (draft.value.mode === 'preset' ? draft.value.preset : ''))
 
@@ -159,13 +162,21 @@ function applyDraft() {
     @hide="handleHide"
   >
     <template #reference>
-      <el-button class="date-expression-trigger" :disabled="disabled">
-        <span v-if="appliedRangeLabel" class="date-expression-range">
+      <el-button
+        class="date-expression-trigger"
+        :class="{ 'date-expression-trigger--inline': appearance === 'inline' }"
+        :text="appearance === 'inline'"
+        :disabled="disabled"
+        :aria-expanded="visible"
+      >
+        <span v-if="appliedRangeLabel" class="date-expression-range" :title="appliedRangeLabel">
           <el-icon><Calendar /></el-icon>
           <span>{{ appliedRangeLabel }}</span>
         </span>
-        <span class="date-expression-label">{{ buttonLabel }}</span>
-        <el-icon v-if="showResolvedRange" class="date-expression-arrow"><ArrowDown /></el-icon>
+        <span class="date-expression-preset">
+          <span class="date-expression-label">{{ buttonLabel }}</span>
+          <el-icon v-if="showResolvedRange" class="date-expression-arrow"><ArrowDown /></el-icon>
+        </span>
       </el-button>
     </template>
 
@@ -288,6 +299,58 @@ function applyDraft() {
   gap: 12px;
 }
 
+.date-expression-preset {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.date-expression-trigger.date-expression-trigger--inline {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--theme-text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 24px;
+}
+
+.date-expression-trigger--inline :deep(> span) {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px 12px;
+}
+
+.date-expression-trigger--inline .date-expression-range {
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+}
+
+.date-expression-trigger--inline .date-expression-arrow {
+  color: var(--theme-text-tertiary);
+}
+
+.date-expression-trigger--inline:not(:disabled):hover {
+  background: transparent;
+  color: var(--theme-text-primary);
+}
+
+.date-expression-trigger--inline:focus-visible {
+  outline: 2px solid var(--theme-focus-ring);
+  outline-offset: 2px;
+}
+
 .date-expression-range {
   display: inline-flex;
   min-width: 0;
@@ -296,10 +359,10 @@ function applyDraft() {
   gap: 5px;
   height: 26px;
   padding: 0 9px;
-  border: 1px solid #e8edf5;
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
-  background: #f9fbff;
-  color: #51637e;
+  background: var(--workspace-control-bg);
+  color: var(--workspace-text-secondary);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -318,12 +381,12 @@ function applyDraft() {
 
 .date-expression-arrow {
   flex: 0 0 auto;
-  color: #667085;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
 }
 
 .date-expression-picker {
-  color: #1d2129;
+  color: var(--workspace-text-primary);
 }
 
 .picker-header {
@@ -331,7 +394,7 @@ function applyDraft() {
   flex-direction: column;
   gap: 3px;
   padding: 2px 8px 12px;
-  border-bottom: 1px solid #e5e6eb;
+  border-bottom: 1px solid var(--workspace-border);
 }
 
 .picker-header .picker-title,
@@ -339,7 +402,7 @@ function applyDraft() {
 .endpoint-caption,
 .preset-caption,
 .endpoint-result {
-  color: #86909c;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -355,7 +418,7 @@ function applyDraft() {
 
 .preset-options {
   padding: 12px 10px;
-  border-right: 1px solid #e5e6eb;
+  border-right: 1px solid var(--workspace-border);
 }
 
 .preset-caption {
@@ -375,14 +438,14 @@ function applyDraft() {
   padding: 0 8px;
   border: 0;
   border-radius: 4px;
-  background: #f7f8fa;
-  color: #4e5969;
+  background: var(--workspace-control-bg);
+  color: var(--workspace-text-secondary);
   cursor: pointer;
 }
 
 .preset-grid button:hover,
 .custom-range-button:hover {
-  background: #f2f3f5;
+  background: var(--workspace-control-bg);
 }
 
 .preset-grid button.active {
@@ -411,7 +474,7 @@ function applyDraft() {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   padding: 4px 6px 10px;
-  border-bottom: 1px solid #e5e6eb;
+  border-bottom: 1px solid var(--workspace-border);
 }
 
 .endpoint-panel {
@@ -469,7 +532,7 @@ function applyDraft() {
   align-items: center;
   justify-content: center;
   height: 32px;
-  color: #86909c;
+  color: var(--workspace-text-tertiary);
   font-size: 20px;
 }
 
@@ -479,10 +542,10 @@ function applyDraft() {
   align-self: flex-start;
   min-height: 32px;
   padding: 0 10px;
-  border: 1px solid #e5e6eb;
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
-  background: #f2f3f5;
-  color: #1d2129;
+  background: var(--workspace-control-bg);
+  color: var(--workspace-text-primary);
   font-size: 14px;
 }
 
@@ -511,7 +574,7 @@ function applyDraft() {
 
 .picker-error {
   padding: 0 16px 8px;
-  color: #f53f3f;
+  color: var(--theme-danger-text);
   font-size: 12px;
 }
 
@@ -520,7 +583,7 @@ function applyDraft() {
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 8px 2px;
-  border-top: 1px solid #e5e6eb;
+  border-top: 1px solid var(--workspace-border);
 }
 
 @media (max-width: 720px) {
@@ -548,7 +611,7 @@ function applyDraft() {
 
   .preset-options {
     border-right: 0;
-    border-bottom: 1px solid #e5e6eb;
+    border-bottom: 1px solid var(--workspace-border);
   }
 
   .preset-grid {

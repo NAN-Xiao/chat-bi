@@ -70,7 +70,7 @@ const handleModelClick = (item: any) => {
 .model-list_side {
   width: 280px;
   height: 100%;
-  border-right: 1px solid #1f232926;
+  border-right: 1px solid var(--workspace-border);
 
   .list-content {
     height: calc(100% - 56px);
@@ -91,12 +91,12 @@ const handleModelClick = (item: any) => {
         line-height: 22px;
       }
       &:hover {
-        background: #1f23291a;
+        background: var(--workspace-control-hover-bg);
       }
 
       &.isActive {
-        background: var(--ed-color-primary-1a, #1cba901a);
-        color: var(--ed-color-primary);
+        background: var(--theme-primary-soft-bg);
+        color: var(--theme-accent-text);
       }
     }
   }

@@ -879,18 +879,18 @@ const copyCode = () => {
       padding: 0 4px;
       align-items: center;
       justify-content: center;
-      background: #ffffff;
+      background: var(--workspace-card-bg);
       border: 1px solid var(--ed-border-color);
       border-radius: 6px;
       flex: none;
 
       .is-active {
-        background: var(--ed-color-primary-1a, #1cba901a);
+        background: var(--theme-primary-soft-bg);
         font-weight: 500;
       }
 
       .ed-button:not(.is-active) {
-        color: #1f2329;
+        color: var(--workspace-text-primary);
       }
 
       .ed-button.is-text {
@@ -938,7 +938,7 @@ const copyCode = () => {
     border: 1px solid var(--workspace-border, #e2eaf4);
     padding: 12px 42px 12px 12px;
     border-radius: 8px;
-    background: #ffffff;
+    background: var(--workspace-card-bg);
     box-shadow: none;
     cursor: pointer;
     display: flex;
@@ -1030,7 +1030,7 @@ const copyCode = () => {
         color: var(--workspace-text-primary, #1b2a41);
 
         &.is-active-status {
-          color: var(--ed-color-primary, #1cba90);
+          color: var(--theme-accent-text);
         }
 
         &.is-inactive-status {
@@ -1161,7 +1161,7 @@ const copyCode = () => {
   }
 
   .ed-form-item__label {
-    color: #646a73;
+    color: var(--workspace-text-secondary);
   }
 
   .content {
@@ -1182,7 +1182,7 @@ const copyCode = () => {
     font-weight: 400;
     font-size: 14px;
     line-height: 22px;
-    color: #ff8800;
+    color: var(--theme-warning-text);
   }
 
   .no-error.no-error {
@@ -1200,7 +1200,7 @@ const copyCode = () => {
 .popover-card_agent.popover-card_agent.popover-card_agent {
   box-shadow: 0px 4px 8px 0px #1f23291a;
   border-radius: 6px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   width: fit-content !important;
   min-width: 120px !important;
   padding: 0;
@@ -1218,7 +1218,7 @@ const copyCode = () => {
 
       .ed-icon {
         margin-right: 8px;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
       }
 
       &:hover {
@@ -1236,7 +1236,7 @@ const copyCode = () => {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #1f23291a;
+        background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
         display: none;
       }
     }

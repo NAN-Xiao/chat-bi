@@ -294,7 +294,7 @@ const emits = defineEmits(['update:item', 'del'])
   .filed-title {
     word-wrap: break-word;
     line-height: 28px;
-    color: #7e7e7e;
+    color: var(--workspace-text-secondary);
     font-size: 14px;
     white-space: nowrap;
     box-sizing: border-box;
@@ -311,7 +311,7 @@ const emits = defineEmits(['update:item', 'del'])
   }
 
   :deep(.ed-input-group__prepend) {
-    background-color: #fff;
+    background-color: var(--workspace-card-bg);
   }
 }
 </style>

@@ -228,8 +228,8 @@ const emits = defineEmits(['parentAddItemBox'])
 
 <style scoped lang="less">
 .dashboard-editor-main {
-  --dashboard-grid-line-color: rgba(31, 35, 41, 0.08);
-  --dashboard-grid-bg: #f7f9fb;
+  --dashboard-grid-line-color: var(--workspace-border-soft);
+  --dashboard-grid-bg: var(--theme-dashboard-canvas-bg);
   --dashboard-item-gap: 12px;
   width: 100%;
   height: 100%;
@@ -262,17 +262,17 @@ const emits = defineEmits(['parentAddItemBox'])
 }
 
 .is-tab-editor {
-  --dashboard-grid-bg: #ffffff;
+  --dashboard-grid-bg: var(--workspace-card-bg);
   --dashboard-item-gap: 12px;
-  background-color: #ffffff !important;
+  background-color: var(--workspace-card-bg) !important;
 
   :deep(.dragAndResize) {
-    background-color: #ffffff !important;
+    background-color: var(--workspace-card-bg) !important;
     background-image: none !important;
   }
 
   :deep(.item) {
-    background-color: #ffffff;
+    background-color: var(--workspace-card-bg);
   }
 }
 </style>

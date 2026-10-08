@@ -70,7 +70,7 @@ const SelectDsDirectly = () => {
 <style lang="less" scoped>
 .card {
   width: 100%;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   padding: 16px;
   border-radius: 12px;
   cursor: pointer;
@@ -96,7 +96,7 @@ const SelectDsDirectly = () => {
         font-weight: 400;
         font-size: 12px;
         line-height: 20px;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
       }
     }
   }
@@ -105,7 +105,7 @@ const SelectDsDirectly = () => {
     font-weight: 400;
     font-size: 14px;
     line-height: 22px;
-    color: #646a73;
+    color: var(--workspace-text-secondary);
     height: 44px;
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -130,7 +130,7 @@ const SelectDsDirectly = () => {
     .form-rate {
       display: flex;
       align-items: center;
-      color: #646a73;
+      color: var(--workspace-text-secondary);
       font-weight: 400;
       font-size: 14px;
       line-height: 22px;
@@ -150,7 +150,7 @@ const SelectDsDirectly = () => {
 
         &::after {
           content: '';
-          background-color: #1f23291a;
+          background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
           position: absolute;
           border-radius: 6px;
           width: 24px;
@@ -172,7 +172,7 @@ const SelectDsDirectly = () => {
 
   &.is-selected {
     border: 1px solid var(--ed-color-primary);
-    background: var(--ed-color-primary-1a, #1cba901a);
+    background: var(--theme-primary-soft-bg);
   }
 }
 </style>

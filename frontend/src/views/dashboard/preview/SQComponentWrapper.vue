@@ -1612,9 +1612,9 @@ defineExpose({
   --report-popover-right: var(--preview-action-right);
   --report-popover-horizontal-gap: calc(var(--report-popover-right) * 2);
   background: var(--workspace-card-bg, #ffffff);
-  border: 1px solid #e8edf5;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.035);
+  border: 1px solid var(--theme-card-border);
+  border-radius: var(--theme-card-radius);
+  box-shadow: none;
   transform-origin: center;
   transition:
     transform 0.14s ease,
@@ -1624,12 +1624,12 @@ defineExpose({
 
   &:hover {
     z-index: 20;
-    border-color: #d8e1ec;
-    box-shadow: 0 3px 10px rgba(16, 24, 40, 0.055);
+    border-color: var(--theme-card-hover-border);
+    box-shadow: none;
   }
 
   &:active {
-    box-shadow: 0 2px 8px rgba(16, 24, 40, 0.035);
+    box-shadow: none;
   }
 
   &.is-report-open {
@@ -1640,6 +1640,12 @@ defineExpose({
   &.is-report-chart-target {
     --preview-action-top: 20px;
     --report-popover-top: 48px;
+  }
+
+  // A framed chart owns its outline here. Frameless/tab charts keep their own outline.
+  &.is-report-chart-target:not(.is-frameless) :deep(.chart-base-container) {
+    border: 0;
+    border-radius: 0;
   }
 
   &.is-report-chart-target.has-chart-actions :deep(.header-bar) {
@@ -1712,18 +1718,18 @@ defineExpose({
   border-radius: 6px;
   background: transparent;
   box-shadow: none;
-  color: #394b63;
+  color: var(--workspace-text-secondary);
   line-height: 20px;
 
   &:hover,
   &:focus {
-    color: #2f6bff;
-    background: rgba(47, 107, 255, 0.1);
+    color: var(--theme-accent-text);
+    background: var(--workspace-primary-soft-bg);
   }
 
   &.is-active {
-    color: #2f6bff;
-    background: rgba(47, 107, 255, 0.12);
+    color: var(--theme-accent-text);
+    background: var(--workspace-primary-soft-bg);
   }
 }
 
@@ -1758,8 +1764,8 @@ defineExpose({
   padding: 0 8px;
   border: 1px solid rgba(79, 125, 243, 0.2);
   border-radius: 6px;
-  background: rgba(79, 125, 243, 0.08);
-  color: #2f4b7c;
+  background: var(--workspace-primary-soft-bg);
+  color: var(--theme-accent-text);
   cursor: pointer;
   font-size: 12px;
   line-height: 24px;
@@ -1770,8 +1776,8 @@ defineExpose({
   &:hover,
   &:focus {
     border-color: rgba(47, 107, 255, 0.45);
-    background: rgba(47, 107, 255, 0.12);
-    color: #1f4ed8;
+    background: var(--workspace-primary-soft-bg);
+    color: var(--theme-accent-text);
   }
 }
 
@@ -1779,7 +1785,7 @@ defineExpose({
   flex: 0 0 auto;
   min-height: 0;
   padding-top: 8px;
-  background: #ffffff;
+  background: var(--workspace-card-bg);
 }
 
 .report-conversation-footer .report-prompt-history {

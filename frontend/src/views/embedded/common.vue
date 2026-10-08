@@ -111,6 +111,6 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100vh;
   position: relative;
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 </style>

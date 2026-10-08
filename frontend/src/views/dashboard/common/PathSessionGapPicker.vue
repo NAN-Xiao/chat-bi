@@ -103,11 +103,11 @@ function handleUnitChange(value: DurationUnit) {
   min-height: 28px;
   border-radius: 6px;
   box-shadow: none;
-  background: #f0f2f6;
+  background: var(--workspace-control-bg);
 }
 
 .path-session-gap-value :deep(.el-input__inner) { text-align: center; }
-.path-session-gap-unit :deep(.el-select__selected-item) { color: #303643; }
+.path-session-gap-unit :deep(.el-select__selected-item) { color: var(--workspace-text-primary); }
 
 .path-session-gap-info {
   display: inline-flex;
@@ -117,7 +117,7 @@ function handleUnitChange(value: DurationUnit) {
   height: 15px;
   border: 1px solid #4b515c;
   border-radius: 50%;
-  color: #4b515c;
+  color: var(--workspace-text-secondary);
   font-size: 10px;
   line-height: 1;
   cursor: help;

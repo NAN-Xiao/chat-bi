@@ -475,7 +475,7 @@ const routerList = computed(() => {
     padding: 0 14px !important;
     border-bottom: 2px solid transparent !important;
     border-radius: 8px !important;
-    color: #41506a !important;
+    color: var(--theme-text-secondary) !important;
     font-size: 14px;
     font-weight: 600;
     display: inline-flex !important;
@@ -553,7 +553,7 @@ const routerList = computed(() => {
   > .ed-sub-menu:hover .ed-sub-menu__title,
   > .ed-sub-menu:focus .ed-sub-menu__title {
     background: var(--workspace-control-hover-bg, #f3f7ff) !important;
-    color: #1f2f4a !important;
+    color: var(--theme-text-primary) !important;
 
     .menu-title-text {
       font-size: 14px;
@@ -562,9 +562,9 @@ const routerList = computed(() => {
 
   > .ed-menu-item.is-active,
   > .ed-sub-menu.is-active .ed-sub-menu__title {
-    background: var(--workspace-primary-soft-bg, #eaf1ff) !important;
+    background: var(--theme-header-active-bg) !important;
     border-bottom-color: transparent !important;
-    color: var(--ed-color-primary, #2f6bff) !important;
+    color: var(--theme-focus-ring) !important;
 
     .menu-title-text {
       font-size: 14px;

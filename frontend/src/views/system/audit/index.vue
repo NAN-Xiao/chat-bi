@@ -434,7 +434,7 @@ const initOptions = () => {
         word-break: break-word;
       }
       .ed-icon {
-        color: #646a73;
+        color: var(--workspace-text-secondary);
       }
 
       .user-status-container {
@@ -460,7 +460,7 @@ const initOptions = () => {
 
           &::after {
             content: '';
-            background-color: #1f23291a;
+            background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
             position: absolute;
             border-radius: 6px;
             width: 24px;
@@ -491,7 +491,7 @@ const initOptions = () => {
         font-weight: 400;
         font-size: 14px;
         line-height: 22px;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
       }
     }
   }
@@ -502,12 +502,12 @@ const initOptions = () => {
     width: calc(100% + 48px);
     left: -24px;
     bottom: -16px;
-    border-top: 1px solid #1f232926;
+    border-top: 1px solid var(--workspace-border);
     display: flex;
-    background-color: #fff;
+    background-color: var(--workspace-card-bg);
     align-items: center;
     padding-left: 24px;
-    background-color: #fff;
+    background-color: var(--workspace-card-bg);
     z-index: 10;
 
     .danger-button {
@@ -525,7 +525,7 @@ const initOptions = () => {
 
     .primary-button {
       border: 1px solid var(--ed-color-primary);
-      color: var(--ed-color-primary);
+      color: var(--theme-accent-text);
       border-radius: var(--ed-border-radius-base);
       min-width: 80px;
       height: 32px;
@@ -540,7 +540,7 @@ const initOptions = () => {
       font-weight: 400;
       font-size: 14px;
       line-height: 22px;
-      color: #646a73;
+      color: var(--workspace-text-secondary);
       margin-right: 12px;
     }
   }
@@ -553,7 +553,7 @@ const initOptions = () => {
   }
 
   .ed-form-item__label {
-    color: #646a73;
+    color: var(--workspace-text-secondary);
   }
 
   .content {
@@ -607,7 +607,7 @@ const initOptions = () => {
     cursor: pointer;
 
     &:hover {
-      background-color: #1f23291a;
+      background-color: var(--workspace-control-hover-bg);
     }
   }
 }

@@ -1223,7 +1223,7 @@ const submitSchemaChange = async () => {
 
   &.active {
     background: var(--workspace-primary-soft-bg, #eaf1ff);
-    color: var(--ed-color-primary, #2f6bff);
+    color: var(--theme-accent-text);
   }
 }
 
@@ -1306,24 +1306,24 @@ const submitSchemaChange = async () => {
 .field-table {
   flex: 1;
   min-height: 0;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 14px;
   line-height: 20px;
-  --ed-table-header-bg-color: #fff;
-  --ed-table-row-hover-bg-color: #f7f8fb;
-  --ed-table-border-color: #eff0f1;
+  --ed-table-header-bg-color: var(--workspace-card-bg);
+  --ed-table-row-hover-bg-color: var(--workspace-control-hover-bg);
+  --ed-table-border-color: var(--workspace-border);
 
   :deep(.ed-table__inner-wrapper) {
     &::before {
-      background-color: #eff0f1;
+      background-color: var(--workspace-border);
     }
   }
 
   :deep(.ed-table__header-wrapper th.ed-table__cell) {
     height: 48px;
     padding: 0;
-    background: #fff;
-    color: #1f2329;
+    background: var(--workspace-card-bg);
+    color: var(--workspace-text-primary);
     font-size: 13px;
     font-weight: 600;
     line-height: 20px;
@@ -1337,21 +1337,21 @@ const submitSchemaChange = async () => {
   }
 
   :deep(.ed-table__body tr:nth-child(odd) > td.ed-table__cell) {
-    background: #fff;
+    background: var(--workspace-card-bg);
   }
 
   :deep(.ed-table__body tr:nth-child(even) > td.ed-table__cell) {
-    background: #fafbfc;
+    background: var(--workspace-panel-bg);
   }
 
   :deep(.ed-table__body tr:hover > td.ed-table__cell) {
-    background: #f5f6fa;
+    background: var(--workspace-control-hover-bg);
   }
 
   :deep(td.ed-table__cell) {
     height: 56px;
     padding: 0;
-    border-color: #eff0f1;
+    border-color: var(--workspace-border);
   }
 
   :deep(td.ed-table__cell .cell) {
@@ -1359,14 +1359,14 @@ const submitSchemaChange = async () => {
     align-items: center;
     min-height: 56px;
     padding: 0 12px;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     font-size: 14px;
     line-height: 20px;
   }
 
   :deep(.ed-table__expanded-cell) {
     padding: 0;
-    background: #f8fbff;
+    background: var(--workspace-panel-bg);
   }
 
   :deep(.field-row--no-values .ed-table__expand-icon) {
@@ -1391,12 +1391,12 @@ const submitSchemaChange = async () => {
 }
 
 .field-display-name {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-weight: 500;
 }
 
 .field-technical-name {
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
   line-height: 18px;
 }
@@ -1405,19 +1405,19 @@ const submitSchemaChange = async () => {
   width: fit-content;
   max-width: 100%;
   padding: 1px 6px;
-  border: 1px solid #b9d6ff;
+  border: 1px solid var(--workspace-border);
   border-radius: 4px;
-  color: #2368d1;
-  background: #f2f7ff;
+  color: var(--theme-accent-text);
+  background: var(--theme-primary-soft-bg);
   font-size: 12px;
   line-height: 18px;
 }
 
 .field-value-panel {
   padding: 14px 0 16px 0;
-  border-top: 1px solid #e7edf6;
-  border-bottom: 1px solid #e7edf6;
-  background: #f8fbff;
+  border-top: 1px solid var(--workspace-border);
+  border-bottom: 1px solid var(--workspace-border);
+  background: var(--workspace-panel-bg);
 }
 
 .field-value-head {
@@ -1425,7 +1425,7 @@ const submitSchemaChange = async () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
@@ -1434,23 +1434,23 @@ const submitSchemaChange = async () => {
 .field-value-table {
   width: calc(100% - 36px);
   margin: 0 18px;
-  border: 1px solid #e2eaf4;
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
   overflow: hidden;
 }
 
 .field-value-empty {
   padding: 14px 18px;
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 13px;
   line-height: 20px;
-  background: #f8fbff;
+  background: var(--workspace-panel-bg);
 }
 
 .field-expression {
   font-family: Consolas, Monaco, 'Courier New', monospace;
   font-size: 12px;
-  color: #4f5869;
+  color: var(--workspace-text-secondary);
 }
 
 .sidebar-empty,

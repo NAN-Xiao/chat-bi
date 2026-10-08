@@ -172,12 +172,16 @@ const registerReady = (assistantId: any) => {
   window.parent.postMessage(readyData, '*')
 }
 
+let disposed = false
+let restoreBrandColor: (() => void) | undefined
 const setPageCustomColor = (val: any) => {
+  restoreBrandColor?.()
   const ele = document.querySelector('body') as HTMLElement
-  setCurrentColor(val, ele)
+  restoreBrandColor = setCurrentColor(val, ele)
 }
 const loadAssistantConfig = (assistantId: any) => {
   request.get(`/system/assistant/${assistantId}`).then((res) => {
+    if (disposed) return
     if (res?.configuration) {
       const rawData = JSON.parse(res?.configuration)
       assistantStore.setAutoDs(rawData?.auto_ds)
@@ -206,6 +210,7 @@ const loadAssistantConfig = (assistantId: any) => {
       }
 
       nextTick(() => {
+        if (disposed) return
         setPageCustomColor(customSet.theme)
       })
     }
@@ -262,6 +267,8 @@ onBeforeMount(async () => {
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  restoreBrandColor?.()
   window.removeEventListener('message', communicationCb)
 })
 </script>
@@ -271,7 +278,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100vh;
   position: relative;
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 .shuzhi-embedded-assistant-page {
   width: 100%;
@@ -279,7 +286,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 0;
   left: 0;
-  background: #f7f8fa;
+  background: var(--workspace-panel-bg);
   box-sizing: border-box;
   overflow: auto;
   //padding-bottom: 48px;

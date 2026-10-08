@@ -47,7 +47,7 @@ defineProps<{
 
 <style scoped lang="less">
 .connection-card {
-  background-color: white;
+  background-color: var(--workspace-card-bg);
   border-radius: 16px;
   padding: 24px 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
@@ -61,8 +61,8 @@ defineProps<{
   width: 48px;
   height: 48px;
   border-radius: 8px;
-  background-color: #e8f0fe;
-  color: var(--primary-color);
+  background-color: var(--theme-primary-soft-bg);
+  color: var(--theme-accent-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -79,21 +79,21 @@ defineProps<{
   .connection-name {
     font-weight: 600;
     font-size: 18px;
-    color: #202124;
+    color: var(--workspace-text-primary);
     margin-bottom: 8px;
     line-height: 1.3;
     display: flex;
   }
 
   .connection-type {
-    color: #5f6368;
+    color: var(--workspace-text-secondary);
     margin-bottom: 8px;
     font-size: 14px;
     display: flex;
   }
 
   .connection-host {
-    color: #5f6368;
+    color: var(--workspace-text-secondary);
     margin-bottom: 8px;
     font-size: 14px;
     display: flex;
@@ -101,7 +101,7 @@ defineProps<{
   }
 
   .connection-last {
-    color: #5f6368;
+    color: var(--workspace-text-secondary);
     font-size: 14px;
     margin-bottom: 0;
     display: flex;
@@ -127,17 +127,17 @@ defineProps<{
 }
 
 .connection-status.connected {
-  background-color: #e6f4ea;
-  color: #34a853;
+  background-color: var(--theme-success-soft-bg);
+  color: var(--theme-success-text);
 }
 
 .connection-status.failed {
-  background-color: #fce8e6;
-  color: #ea4335;
+  background-color: var(--theme-danger-soft-bg);
+  color: var(--theme-danger-text);
 }
 
 .connection-status.needs-verification {
-  background-color: #fef7e0;
-  color: #fbbc05;
+  background-color: var(--theme-warning-soft-bg);
+  color: var(--theme-warning-text);
 }
 </style>

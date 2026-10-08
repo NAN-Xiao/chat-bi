@@ -46,14 +46,14 @@ function getLogList() {
   align-items: center;
   height: 38px;
   margin: 12px 0;
-  background: #f5f6f7;
+  background: var(--workspace-control-bg);
   border-radius: 6px;
   padding: 0 12px;
   font-family: PingFang SC;
   font-weight: 400;
   font-size: 14px;
   line-height: 22px;
-  color: #646a73;
+  color: var(--workspace-text-secondary);
 
   .with-leading-space {
     margin-left: 12px;
@@ -68,7 +68,7 @@ function getLogList() {
     &:hover {
       &::after {
         content: '';
-        background: #1f23291a;
+        background: var(--workspace-control-hover-bg);
         border-radius: 6px;
         top: 50%;
         left: 50%;

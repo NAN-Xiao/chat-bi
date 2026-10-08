@@ -95,9 +95,9 @@ const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
 const basePaddingLeft = ref(0)
 const basePaddingTop = ref(0)
-const PREVIEW_GRID_GAP = 10
-const PREVIEW_EDGE_GAP = 16
-const PREVIEW_TOP_GAP = 4
+const PREVIEW_GRID_GAP = 16
+const PREVIEW_EDGE_GAP = 20
+const PREVIEW_TOP_GAP = 20
 const TAB_PREVIEW_GRID_GAP = 6
 let resizeObserver: ResizeObserver | undefined
 let viewRenderTimer: ReturnType<typeof window.setTimeout> | undefined
@@ -108,7 +108,7 @@ let lastPreviewSize = {
 const { emitter } = useEmitt()
 const canvasStyle = computed(() => {
   if (props.inTab) {
-    return { background: '#ffffff' }
+    return { background: 'var(--workspace-card-bg)' }
   }
   return {
     background:
@@ -287,11 +287,11 @@ defineExpose({
 }
 
 .is-tab-preview {
-  background: #ffffff !important;
+  background: var(--workspace-card-bg) !important;
 
   :deep(.wrapper-outer),
   :deep(.wrapper-inner) {
-    background: #ffffff !important;
+    background: var(--workspace-card-bg) !important;
   }
 }
 

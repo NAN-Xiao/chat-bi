@@ -177,7 +177,7 @@ defineExpose({ showErrorMask })
       background: var(--workspace-primary-soft-bg, rgba(47, 107, 255, 0.1));
       padding: 1px 7px;
       border-radius: 999px;
-      color: var(--primary-color, #2f6bff);
+      color: var(--theme-accent-text);
       font-weight: 400;
       font-size: 12px;
       line-height: 18px;
@@ -220,7 +220,7 @@ defineExpose({ showErrorMask })
     .divide {
       height: 14px;
       width: 1px;
-      background-color: #1f232926;
+      background-color: var(--workspace-border);
       margin: 0 12px;
     }
     .more {
@@ -312,7 +312,7 @@ defineExpose({ showErrorMask })
 .popover-card_model.popover-card_model.popover-card_model {
   box-shadow: 0px 4px 8px 0px #1f23291a;
   border-radius: 6px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   width: fit-content !important;
   min-width: 120px !important;
   padding: 0;
@@ -358,7 +358,7 @@ defineExpose({ showErrorMask })
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #1f23291a;
+        background: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
         display: none;
       }
     }

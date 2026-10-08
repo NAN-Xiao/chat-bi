@@ -432,7 +432,7 @@ const modelTypeText = (row: Model) => {
 
     .model-card-empty {
       min-height: 220px;
-      background: #ffffff;
+      background: var(--workspace-card-bg);
       border: 1px solid var(--workspace-border, #e2eaf4);
       border-radius: 8px;
     }
@@ -462,13 +462,13 @@ const modelTypeText = (row: Model) => {
   padding: 4px 0;
   width: 325px !important;
   box-shadow: 0px 4px 8px 0px #1f23291a;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   .ed-input {
     .ed-input__wrapper {
       box-shadow: none;
     }
 
-    border-bottom: 1px solid #1f232926;
+    border-bottom: 1px solid var(--workspace-border);
   }
 
   .popover {
@@ -488,14 +488,14 @@ const modelTypeText = (row: Model) => {
       border-radius: 6px;
       cursor: pointer;
       &:not(.empty):hover {
-        background: #1f23291a;
+        background: var(--workspace-control-hover-bg);
       }
 
       &.empty {
         font-weight: 400;
         font-size: 15px;
         line-height: 24px;
-        color: #8f959e;
+        color: var(--workspace-text-tertiary);
         cursor: default;
       }
 
@@ -513,11 +513,11 @@ const modelTypeText = (row: Model) => {
       }
 
       .isSearch {
-        color: var(--ed-color-primary);
+        color: var(--theme-accent-text);
       }
 
       &.isActive {
-        color: var(--ed-color-primary);
+        color: var(--theme-accent-text);
 
         .done {
           display: block;
@@ -532,7 +532,7 @@ const modelTypeText = (row: Model) => {
     padding: 0;
   }
   .is-process .ed-step__line {
-    background-color: var(--ed-color-primary);
+    background-color: var(--theme-accent-text);
   }
 }
 .confirm-no_icon {

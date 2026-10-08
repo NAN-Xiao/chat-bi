@@ -369,7 +369,7 @@ defineExpose({
     }
   }
   .font12 {
-    color: #8f959e !important;
+    color: var(--workspace-text-tertiary) !important;
     font-family: var(--de-custom_font, 'PingFang');
     font-size: 14px;
     font-style: normal;
@@ -382,11 +382,11 @@ defineExpose({
     height: 40px;
     align-items: center;
     line-height: 40px;
-    background: var(--ed-color-primary-80, #d2f1e9);
+    background: var(--theme-primary-soft-bg);
     border-radius: 6px;
     padding-left: 10px;
     .icon-span {
-      color: var(--ed-color-primary);
+      color: var(--theme-accent-text);
       font-size: 18px;
       i {
         top: 3px;
@@ -411,7 +411,7 @@ defineExpose({
       display: flex;
       align-items: center;
       padding: 0 16px 0 12px;
-      border: 1px solid #dee0e3;
+      border: 1px solid var(--workspace-border);
       border-radius: 6px;
 
       .file-name {
@@ -426,7 +426,7 @@ defineExpose({
           font-weight: 400;
           font-size: 12px;
           line-height: 20px;
-          color: #8f959e;
+          color: var(--workspace-text-tertiary);
         }
       }
 
@@ -437,11 +437,11 @@ defineExpose({
       .ed-icon {
         position: relative;
         cursor: pointer;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
 
         &::after {
           content: '';
-          background-color: #1f23291a;
+          background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
           position: absolute;
           border-radius: 6px;
           width: 24px;

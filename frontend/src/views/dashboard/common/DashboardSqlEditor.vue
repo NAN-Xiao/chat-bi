@@ -9596,7 +9596,7 @@ const analysisModelFormContext = {
 }
 
 .muted {
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 13px;
 }
 
@@ -9612,14 +9612,14 @@ const analysisModelFormContext = {
   gap: 16px;
   padding: 8px 12px;
   margin: 0 0 12px;
-  border: 1px solid rgba(31, 35, 41, 0.1);
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 
 .source-section-title {
   flex: 0 0 auto;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   font-weight: 600;
 }
@@ -9648,14 +9648,14 @@ const analysisModelFormContext = {
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: #eef3ff;
-  color: #1f54d8;
+  background: var(--workspace-primary-soft-bg);
+  color: var(--theme-accent-text);
   cursor: pointer;
 }
 
 .builder-advice-button.warning {
-  background: #fff1f0;
-  color: #f04438;
+  background: var(--theme-danger-soft-bg);
+  color: var(--theme-danger-text);
 }
 
 .builder-advice-button :deep(.el-icon) {
@@ -9666,9 +9666,9 @@ const analysisModelFormContext = {
   min-height: 580px;
   max-height: 620px;
   margin-bottom: 10px;
-  border: 1px solid rgba(31, 35, 41, 0.1);
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--workspace-card-bg);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -9681,8 +9681,8 @@ const analysisModelFormContext = {
   justify-content: space-between;
   gap: 8px;
   padding: 0 10px;
-  border-bottom: 1px solid rgba(31, 35, 41, 0.08);
-  background: #fff;
+  border-bottom: 1px solid var(--workspace-border);
+  background: var(--workspace-card-bg);
 }
 
 .sql-builder-tabs {
@@ -9691,7 +9691,7 @@ const analysisModelFormContext = {
   gap: 3px;
   padding: 2px;
   border-radius: 6px;
-  background: #f4f6fb;
+  background: var(--workspace-control-bg);
 }
 
 .sql-builder-tabs button {
@@ -9700,14 +9700,14 @@ const analysisModelFormContext = {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #646a73;
+  color: var(--workspace-text-secondary);
   cursor: pointer;
   font-size: 12px;
 }
 
 .sql-builder-tabs button.active {
-  background: #fff;
-  color: #1f54d8;
+  background: var(--workspace-card-bg);
+  color: var(--theme-accent-text);
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(31, 35, 41, 0.08);
 }
@@ -9725,13 +9725,13 @@ const analysisModelFormContext = {
 }
 
 .builder-advice-title {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   font-weight: 600;
 }
 
 .builder-advice-text {
-  color: #4e5969;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
   line-height: 1.7;
   white-space: pre-wrap;
@@ -9740,7 +9740,7 @@ const analysisModelFormContext = {
 .builder-advice-list {
   margin: 0;
   padding-left: 18px;
-  color: #4e5969;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -9777,7 +9777,7 @@ const analysisModelFormContext = {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   font-weight: 600;
 }
@@ -9794,7 +9794,7 @@ const analysisModelFormContext = {
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
 }
 
 .builder-section-actions {
@@ -9859,7 +9859,7 @@ const analysisModelFormContext = {
   justify-content: start;
   gap: 10px;
   min-width: 0;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -9870,7 +9870,7 @@ const analysisModelFormContext = {
 .ranking-config-label {
   display: block;
   margin-bottom: 8px;
-  color: #8a93a3;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -9891,7 +9891,7 @@ const analysisModelFormContext = {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -9919,7 +9919,7 @@ const analysisModelFormContext = {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -9943,7 +9943,7 @@ const analysisModelFormContext = {
 
 .ranking-extra-index {
   flex: 0 0 20px;
-  color: #8a93a3;
+  color: var(--workspace-text-tertiary);
   text-align: center;
 }
 
@@ -9974,7 +9974,7 @@ const analysisModelFormContext = {
   width: auto;
   min-width: 0;
   gap: 8px;
-  color: #303643;
+  color: var(--workspace-text-primary);
   font-size: 13px;
 }
 
@@ -9995,7 +9995,7 @@ const analysisModelFormContext = {
 .interval-config-label {
   display: block;
   margin-bottom: 7px;
-  color: #8a93a3;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -10009,7 +10009,7 @@ const analysisModelFormContext = {
 .interval-event-editor:hover,
 .interval-event-editor:focus-within,
 .interval-event-editor.is-active {
-  background: #f7f8fa;
+  background: var(--workspace-control-bg);
 }
 
 .interval-event-row {
@@ -10035,7 +10035,7 @@ const analysisModelFormContext = {
   align-items: center;
   justify-content: space-between;
   width: min(100%, 360px);
-  color: #4b5563;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10045,7 +10045,7 @@ const analysisModelFormContext = {
   align-items: center;
   gap: 8px;
   max-width: 760px;
-  color: #6b7280;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10059,7 +10059,7 @@ const analysisModelFormContext = {
 
 .interval-limit-row p {
   margin: 0;
-  color: #4b5563;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10076,7 +10076,7 @@ const analysisModelFormContext = {
 }
 
 .analysis-model-info-icon {
-  color: #8a93a3;
+  color: var(--workspace-text-tertiary);
   cursor: help;
   font-size: 14px;
 }
@@ -10089,7 +10089,7 @@ const analysisModelFormContext = {
 .path-config-label {
   display: block;
   margin-bottom: 8px;
-  color: #8a93a3;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -10099,8 +10099,8 @@ const analysisModelFormContext = {
   min-height: 26px;
   padding: 0 9px;
   border-radius: 6px;
-  color: #374151;
-  background: #f0f2f6;
+  color: var(--workspace-text-primary);
+  background: var(--workspace-control-bg);
   white-space: nowrap;
 }
 
@@ -10108,7 +10108,7 @@ const analysisModelFormContext = {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #707988;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10119,8 +10119,8 @@ const analysisModelFormContext = {
   gap: 5px;
   padding: 0 8px;
   border-radius: 6px;
-  color: #374151;
-  background: #f0f2f6;
+  color: var(--workspace-text-primary);
+  background: var(--workspace-control-bg);
   line-height: 26px;
 }
 
@@ -10128,7 +10128,7 @@ const analysisModelFormContext = {
   min-height: 24px;
   max-width: 180px;
   padding: 0;
-  color: #374151;
+  color: var(--workspace-text-primary);
   background: transparent;
   line-height: 24px;
 }
@@ -10145,7 +10145,7 @@ const analysisModelFormContext = {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10157,13 +10157,13 @@ const analysisModelFormContext = {
   height: 16px;
   border: 1px solid #aab2bf;
   border-radius: 50%;
-  color: #8b94a2;
+  color: var(--workspace-text-tertiary);
   font-size: 11px;
   font-style: normal;
 }
 
 .path-session-exact {
-  color: #9aa2af;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -10200,7 +10200,7 @@ const analysisModelFormContext = {
   justify-content: start;
   gap: 10px;
   min-width: 0;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10224,7 +10224,7 @@ const analysisModelFormContext = {
 .attribution-config-label {
   display: block;
   margin-bottom: 8px;
-  color: #8a93a3;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -10235,7 +10235,7 @@ const analysisModelFormContext = {
 .attribution-settings {
   display: grid;
   gap: 14px;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10253,7 +10253,7 @@ const analysisModelFormContext = {
 .attribution-divider {
   height: 1px;
   margin: 18px -22px;
-  background: #eef0f4;
+  background: var(--workspace-control-bg);
 }
 
 .attribution-event-block {
@@ -10289,7 +10289,7 @@ const analysisModelFormContext = {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10298,7 +10298,7 @@ const analysisModelFormContext = {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10320,7 +10320,7 @@ const analysisModelFormContext = {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10336,7 +10336,7 @@ const analysisModelFormContext = {
 
 .revenue-observation-row :deep(.el-input-number) {
   width: 80px;
-  color: #6b7280;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10361,7 +10361,7 @@ const analysisModelFormContext = {
   margin-left: 4px;
   border: 1px solid #aab2bf;
   border-radius: 50%;
-  color: #8b94a2;
+  color: var(--workspace-text-tertiary);
   font-size: 10px;
   font-style: normal;
 }
@@ -10421,7 +10421,7 @@ const analysisModelFormContext = {
   align-items: center;
   justify-content: start;
   gap: 10px;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10437,7 +10437,7 @@ const analysisModelFormContext = {
 }
 
 .distribution-config-label {
-  color: #8a93a3;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -10451,7 +10451,7 @@ const analysisModelFormContext = {
 .distribution-event-editor:hover,
 .distribution-event-editor:focus-within,
 .distribution-event-editor.is-active {
-  background: #f7f8fa;
+  background: var(--workspace-control-bg);
 }
 
 .distribution-event-row {
@@ -10460,7 +10460,7 @@ const analysisModelFormContext = {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #6b7280;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10474,7 +10474,7 @@ const analysisModelFormContext = {
   flex-direction: column;
   align-items: flex-start;
   gap: 12px;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
 }
 
@@ -10518,7 +10518,7 @@ const analysisModelFormContext = {
   align-items: center;
   justify-content: start;
   gap: 10px;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10571,7 +10571,7 @@ const analysisModelFormContext = {
 .funnel-step-editor:hover,
 .funnel-step-editor:focus-within,
 .funnel-step-editor.is-active {
-  background: #f7f8fa;
+  background: var(--workspace-control-bg);
 }
 
 .funnel-step-alias-row,
@@ -10614,7 +10614,7 @@ const analysisModelFormContext = {
 
 .funnel-step-alias-text {
   min-width: 0;
-  color: #303643;
+  color: var(--workspace-text-primary);
   font-size: 14px;
   line-height: 24px;
   overflow: hidden;
@@ -10649,7 +10649,7 @@ const analysisModelFormContext = {
   align-items: flex-start;
   gap: 14px;
   margin-top: 24px;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
 }
 
@@ -10678,7 +10678,7 @@ const analysisModelFormContext = {
   align-items: center;
   justify-content: start;
   gap: 10px;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 
@@ -10847,7 +10847,7 @@ const analysisModelFormContext = {
 .retention-event-editor:hover,
 .retention-event-editor:focus-within,
 .retention-event-editor.is-active {
-  background: #f7f8fa;
+  background: var(--workspace-control-bg);
 }
 
 .retention-event-alias-row,
@@ -10890,7 +10890,7 @@ const analysisModelFormContext = {
 
 .retention-event-alias-text {
   min-width: 0;
-  color: #303643;
+  color: var(--workspace-text-primary);
   font-size: 14px;
   line-height: 24px;
   overflow: hidden;
@@ -10922,7 +10922,7 @@ const analysisModelFormContext = {
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: #7b8190;
+  color: var(--workspace-text-secondary);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -10932,13 +10932,13 @@ const analysisModelFormContext = {
 
 .retention-event-action:hover,
 .retention-event-action.is-active {
-  background: #eef3ff;
-  color: #2f6bff;
+  background: var(--workspace-primary-soft-bg);
+  color: var(--theme-accent-text);
 }
 
 .retention-event-action:disabled {
   background: transparent;
-  color: #c4c9d2;
+  color: var(--workspace-text-tertiary);
   cursor: not-allowed;
 }
 
@@ -10947,12 +10947,12 @@ const analysisModelFormContext = {
   min-width: 0;
   margin-top: 4px;
   padding-top: 10px;
-  border-top: 1px solid #edf0f5;
+  border-top: 1px solid var(--workspace-border);
 }
 
 .retention-config-label {
   padding: 0;
-  color: #6b7280;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
   line-height: 20px;
 }
@@ -10972,18 +10972,18 @@ const analysisModelFormContext = {
   flex-direction: column;
   align-items: flex-start;
   gap: 9px;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
 }
 
 .retention-option-title {
-  color: #4e5969;
+  color: var(--workspace-text-secondary);
   line-height: 20px;
 }
 
 .retention-option-description {
   margin-top: 4px;
-  color: #667085;
+  color: var(--workspace-text-secondary);
   line-height: 20px;
 }
 
@@ -11015,7 +11015,7 @@ const analysisModelFormContext = {
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: #505968;
+  color: var(--workspace-text-secondary);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -11023,13 +11023,13 @@ const analysisModelFormContext = {
 }
 
 .builder-icon-button:hover {
-  background: #eef3ff;
-  color: #2f6bff;
+  background: var(--workspace-primary-soft-bg);
+  color: var(--theme-accent-text);
 }
 
 .builder-icon-button.danger:hover {
-  background: #fff1f0;
-  color: #f04438;
+  background: var(--theme-danger-soft-bg);
+  color: var(--theme-danger-text);
 }
 
 .group-row :deep(.builder-field-picker-trigger) {
@@ -11074,7 +11074,7 @@ const analysisModelFormContext = {
 
 .metric-title {
   margin-bottom: 8px;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
@@ -11090,7 +11090,7 @@ const analysisModelFormContext = {
   min-height: 24px;
   padding: 0 8px;
   box-shadow: none;
-  background: #f7f8fb;
+  background: var(--workspace-control-bg);
   border: 1px solid transparent;
   border-radius: 6px;
 }
@@ -11099,7 +11099,7 @@ const analysisModelFormContext = {
 .metric-title-input :deep(.el-input__wrapper.is-focus),
 .formula-metric-title-input :deep(.el-input__wrapper:hover),
 .formula-metric-title-input :deep(.el-input__wrapper.is-focus) {
-  background: #fff;
+  background: var(--workspace-card-bg);
   border-color: #2f6bff;
   box-shadow: none;
 }
@@ -11107,7 +11107,7 @@ const analysisModelFormContext = {
 .metric-title-input :deep(.el-input__inner),
 .formula-metric-title-input :deep(.el-input__inner) {
   height: 22px;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   font-weight: 600;
   line-height: 22px;
@@ -11161,7 +11161,7 @@ const analysisModelFormContext = {
 }
 
 .formula-metric-title {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
@@ -11173,8 +11173,8 @@ const analysisModelFormContext = {
   height: 22px;
   padding: 0 8px;
   border-radius: 7px;
-  background: #f4f6fb;
-  color: #1f2329;
+  background: var(--workspace-control-bg);
+  color: var(--workspace-text-primary);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -11192,7 +11192,7 @@ const analysisModelFormContext = {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #7b8190;
+  color: var(--workspace-text-secondary);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -11201,12 +11201,12 @@ const analysisModelFormContext = {
 }
 
 .formula-icon-button:hover {
-  background: #eef3ff;
-  color: #2f6bff;
+  background: var(--workspace-primary-soft-bg);
+  color: var(--theme-accent-text);
 }
 
 .formula-icon-button.danger:hover {
-  background: #fff0f0;
+  background: var(--theme-danger-soft-bg);
   color: #f56c6c;
 }
 
@@ -11216,7 +11216,7 @@ const analysisModelFormContext = {
 }
 
 .metric-of {
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
   text-align: center;
 }
@@ -11254,8 +11254,8 @@ const analysisModelFormContext = {
   min-height: 32px;
   padding: 7px 10px;
   border-radius: 6px;
-  background: #fff;
-  color: #1f2329;
+  background: var(--workspace-card-bg);
+  color: var(--workspace-text-primary);
   font-size: 13px;
   line-height: 18px;
   word-break: break-word;
@@ -11264,11 +11264,11 @@ const analysisModelFormContext = {
 }
 
 .formula-display.is-empty {
-  color: #a8abb2;
+  color: var(--workspace-text-tertiary);
 }
 
 .formula-display.is-invalid {
-  background: #fff7f7;
+  background: var(--theme-danger-soft-bg);
 }
 
 .formula-error {
@@ -11288,7 +11288,7 @@ const analysisModelFormContext = {
   max-width: 100%;
   padding: 10px 12px;
   border-radius: 0 0 12px 12px;
-  background: #fff;
+  background: var(--workspace-card-bg);
   box-shadow: 0 14px 32px rgba(31, 35, 41, 0.12);
 }
 
@@ -11325,7 +11325,7 @@ const analysisModelFormContext = {
 }
 
 .formula-placeholder {
-  color: #a8abb2;
+  color: var(--workspace-text-tertiary);
   pointer-events: none;
 }
 
@@ -11336,7 +11336,7 @@ const analysisModelFormContext = {
   padding: 0;
   border-radius: 6px;
   background: transparent;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   cursor: pointer;
   user-select: none;
   gap: 4px;
@@ -11359,21 +11359,21 @@ const analysisModelFormContext = {
 
 .formula-token-atomicMetric,
 .formula-token-metric {
-  color: #1f3a8a;
+  color: var(--theme-accent-text);
 }
 
 .formula-token-operator,
 .formula-token-paren {
   padding: 2px 7px;
-  background: #f5f7fb;
-  color: #2f3542;
+  background: var(--workspace-control-bg);
+  color: var(--workspace-text-primary);
   font-weight: 700;
 }
 
 .formula-token-number {
   padding: 2px 7px;
-  background: #f2f5fb;
-  color: #1f3a8a;
+  background: var(--workspace-control-bg);
+  color: var(--theme-accent-text);
 }
 
 .formula-atomic-event,
@@ -11383,8 +11383,8 @@ const analysisModelFormContext = {
   min-height: 24px;
   padding: 2px 8px;
   border-radius: 7px;
-  background: #f4f6fb;
-  color: #1f2329;
+  background: var(--workspace-control-bg);
+  color: var(--workspace-text-primary);
   font-size: 12px;
   line-height: 18px;
 }
@@ -11399,7 +11399,7 @@ const analysisModelFormContext = {
 .formula-token-editor-row :deep(.builder-field-picker-trigger) {
   width: 160px;
   max-width: 180px;
-  background: #f4f6fb;
+  background: var(--workspace-control-bg);
 }
 
 .formula-token-aggregation {
@@ -11414,8 +11414,8 @@ const analysisModelFormContext = {
   height: 24px;
   border: 0;
   border-radius: 7px;
-  background: #f4f6fb;
-  color: #7b8190;
+  background: var(--workspace-control-bg);
+  color: var(--workspace-text-secondary);
   cursor: pointer;
 }
 
@@ -11424,7 +11424,7 @@ const analysisModelFormContext = {
 }
 
 .formula-token-of {
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -11440,7 +11440,7 @@ const analysisModelFormContext = {
 }
 
 .formula-insert-target:hover {
-  background: #eef3ff;
+  background: var(--workspace-primary-soft-bg);
 }
 
 .formula-insert-target.is-active {
@@ -11465,8 +11465,8 @@ const analysisModelFormContext = {
   height: 26px;
   border: 0;
   border-radius: 6px;
-  background: #f2f5fb;
-  color: #171d4f;
+  background: var(--workspace-control-bg);
+  color: var(--theme-accent-text);
   cursor: pointer;
   font-size: 12px;
   white-space: nowrap;
@@ -11474,8 +11474,8 @@ const analysisModelFormContext = {
 
 .formula-key-button:hover,
 .formula-action-button:hover {
-  background: #e8efff;
-  color: #2f6bff;
+  background: var(--workspace-primary-soft-bg);
+  color: var(--theme-accent-text);
 }
 
 .formula-number-key:last-child {
@@ -11499,8 +11499,8 @@ const analysisModelFormContext = {
   padding: 0 12px;
   border: 0;
   border-radius: 6px;
-  background: #f2f5fb;
-  color: #171d4f;
+  background: var(--workspace-control-bg);
+  color: var(--theme-accent-text);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
@@ -11508,7 +11508,7 @@ const analysisModelFormContext = {
 }
 
 .formula-shortcut-hint {
-  color: #b8beca;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
   line-height: 16px;
   text-align: center;
@@ -11524,7 +11524,7 @@ const analysisModelFormContext = {
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: #2f6bff;
+  color: var(--theme-accent-text);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -11533,7 +11533,7 @@ const analysisModelFormContext = {
 }
 
 .builder-add-link:hover {
-  background: #eef3ff;
+  background: var(--workspace-primary-soft-bg);
 }
 
 .builder-inline-actions {
@@ -11564,8 +11564,8 @@ const analysisModelFormContext = {
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  background: #f5f6fa;
-  color: #8f959e;
+  background: var(--workspace-control-bg);
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -11592,7 +11592,7 @@ const analysisModelFormContext = {
 .property-metric-editor:hover,
 .property-metric-editor:focus-within,
 .property-metric-editor.is-active {
-  background: #f7f8fa;
+  background: var(--workspace-control-bg);
 }
 
 .property-metric-alias-row,
@@ -11637,7 +11637,7 @@ const analysisModelFormContext = {
   min-height: 28px;
   display: inline-flex;
   align-items: center;
-  color: #303133;
+  color: var(--workspace-text-primary);
   font-size: 13px;
 }
 
@@ -11669,9 +11669,9 @@ const analysisModelFormContext = {
 
 .property-audience-group {
   padding: 10px 12px 8px;
-  border: 1px solid rgba(31, 35, 41, 0.08);
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
-  background: #f8f9fb;
+  background: var(--workspace-control-bg);
 }
 
 .property-audience-head {
@@ -11685,8 +11685,8 @@ const analysisModelFormContext = {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #e8efff;
-  color: #2f6bff;
+  background: var(--workspace-primary-soft-bg);
+  color: var(--theme-accent-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -11697,7 +11697,7 @@ const analysisModelFormContext = {
 .property-audience-name {
   flex: 1;
   min-width: 0;
-  color: #303133;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   font-weight: 600;
 }
@@ -11714,7 +11714,7 @@ const analysisModelFormContext = {
 
 .property-audience-all-users {
   margin: 8px 0 2px 26px;
-  color: #646a73;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
 }
 
@@ -11724,7 +11724,7 @@ const analysisModelFormContext = {
 
 .heatmap-comparison-section {
   margin-top: 16px;
-  border-top: 1px solid rgba(31, 35, 41, 0.08);
+  border-top: 1px solid var(--workspace-border);
   padding-top: 12px;
 }
 
@@ -11740,9 +11740,9 @@ const analysisModelFormContext = {
 
 .heatmap-comparison-group {
   padding: 10px 12px 8px;
-  border: 1px solid rgba(31, 35, 41, 0.08);
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
-  background: #f8f9fb;
+  background: var(--workspace-control-bg);
 }
 
 .heatmap-comparison-group-head {
@@ -11801,7 +11801,7 @@ const analysisModelFormContext = {
 }
 
 .property-group-settings-button {
-  color: #606a80;
+  color: var(--workspace-text-secondary);
 }
 
 .property-group-settings {
@@ -11813,7 +11813,7 @@ const analysisModelFormContext = {
 .property-group-settings-title {
   font-size: 13px;
   font-weight: 600;
-  color: #30343b;
+  color: var(--workspace-text-primary);
 }
 
 .property-group-time-grain-select {
@@ -11824,8 +11824,8 @@ const analysisModelFormContext = {
   width: 24px;
   height: 24px;
   border-radius: 7px;
-  background: #f5f6fa;
-  color: #8f959e;
+  background: var(--workspace-control-bg);
+  color: var(--workspace-text-tertiary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -11834,7 +11834,7 @@ const analysisModelFormContext = {
 
 .builder-empty {
   padding: 4px 0 2px;
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -11842,8 +11842,8 @@ const analysisModelFormContext = {
   flex: 0 0 44px;
   height: 44px;
   padding: 7px 22px;
-  border-top: 1px solid rgba(31, 35, 41, 0.08);
-  background: #fff;
+  border-top: 1px solid var(--workspace-border);
+  background: var(--workspace-card-bg);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -11889,7 +11889,7 @@ const analysisModelFormContext = {
   margin-bottom: 16px;
   border: 1px solid rgba(47, 107, 255, 0.18);
   border-radius: 6px;
-  background: #f8fbff;
+  background: var(--workspace-control-bg);
 }
 
 .mcp-editor-panel :deep(.ed-form-item:last-child),
@@ -11899,20 +11899,20 @@ const analysisModelFormContext = {
 
 .mcp-tool-description {
   margin: -4px 0 14px;
-  color: #646a73;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
   line-height: 18px;
 }
 
 .mcp-schema-details {
   margin: -4px 0 14px;
-  color: #646a73;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
 }
 
 .mcp-schema-details summary {
   cursor: pointer;
-  color: #2f6bff;
+  color: var(--theme-accent-text);
   line-height: 20px;
 }
 
@@ -11922,8 +11922,8 @@ const analysisModelFormContext = {
   margin: 8px 0 0;
   padding: 8px 10px;
   border-radius: 4px;
-  background: #fff;
-  color: #1f2329;
+  background: var(--workspace-card-bg);
+  color: var(--workspace-text-primary);
   font-size: 12px;
   line-height: 18px;
   white-space: pre-wrap;
@@ -11959,7 +11959,7 @@ const analysisModelFormContext = {
 }
 
 .forecast-config-caption {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   font-weight: 500;
 }
@@ -11979,7 +11979,7 @@ const analysisModelFormContext = {
 }
 
 .insight-config-caption {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   line-height: 20px;
 }
@@ -12003,7 +12003,7 @@ const analysisModelFormContext = {
 }
 
 .pivot-config-caption {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 13px;
   font-weight: 500;
   line-height: 20px;
@@ -12027,7 +12027,7 @@ const analysisModelFormContext = {
 :global(.pivot-group-values-select-popper .el-select-dropdown__item:first-child),
 :global(.pivot-group-values-select-popper .ed-select-dropdown__item:nth-child(2)),
 :global(.pivot-group-values-select-popper .el-select-dropdown__item:nth-child(2)) {
-  color: var(--ed-color-primary, #2f6bff);
+  color: var(--theme-accent-text);
   font-weight: 600;
 }
 
@@ -12037,12 +12037,12 @@ const analysisModelFormContext = {
 }
 
 :global(.pivot-group-values-select-popper .pivot-group-values-action-option:nth-child(2)) {
-  border-bottom: 1px solid rgba(31, 35, 41, 0.08);
+  border-bottom: 1px solid var(--workspace-border);
   margin-bottom: 4px;
 }
 
 .preview-title {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
@@ -12051,10 +12051,10 @@ const analysisModelFormContext = {
 
 .chart-preview {
   height: 300px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   border-radius: 6px;
   padding: 12px;
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 
 .empty-preview {
@@ -12062,7 +12062,7 @@ const analysisModelFormContext = {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
 }
 
 .data-preview-table {
@@ -12119,7 +12119,7 @@ const analysisModelFormContext = {
 .heatmap-metric-row > span,
 .heatmap-axis-row > span {
   flex: none;
-  color: #646a73;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -12156,12 +12156,12 @@ const analysisModelFormContext = {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #646a73;
+  color: var(--workspace-text-secondary);
   font-size: 12px;
 }
 
 .heatmap-map-file-empty {
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -12185,7 +12185,7 @@ const analysisModelFormContext = {
   display: flex;
   align-items: center;
   gap: 9px;
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 14px;
   white-space: nowrap;
   flex: 1;
@@ -12194,14 +12194,14 @@ const analysisModelFormContext = {
 .heatmap-map-step:not(:last-child)::after {
   content: '';
   height: 1px;
-  background: #e5e6eb;
+  background: var(--workspace-border);
   flex: 1;
   margin: 0 14px;
 }
 
 .heatmap-map-step.active,
 .heatmap-map-step.done {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
 }
 
 .heatmap-map-step-index {
@@ -12211,8 +12211,8 @@ const analysisModelFormContext = {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #f1f2f5;
-  color: #646a73;
+  background: var(--workspace-control-bg);
+  color: var(--workspace-text-secondary);
   flex: none;
 }
 
@@ -12222,8 +12222,8 @@ const analysisModelFormContext = {
 }
 
 .heatmap-map-step.done .heatmap-map-step-index {
-  background: #eef0ff;
-  color: #4355f5;
+  background: var(--workspace-primary-soft-bg);
+  color: var(--theme-accent-text);
 }
 
 .heatmap-map-upload-step,
@@ -12241,7 +12241,7 @@ const analysisModelFormContext = {
 .heatmap-map-uploader :deep(.el-upload-dragger) {
   height: 280px;
   border-radius: 8px;
-  border-color: #d9dce5;
+  border-color: var(--workspace-border);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -12249,24 +12249,24 @@ const analysisModelFormContext = {
 }
 
 .heatmap-map-upload-icon {
-  color: #3478f6;
+  color: var(--theme-accent-text);
   font-size: 56px;
   margin-bottom: 12px;
 }
 
 .heatmap-map-upload-text {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 14px;
 }
 
 .heatmap-map-upload-text span {
-  color: #4355f5;
+  color: var(--theme-accent-text);
   margin-left: 4px;
 }
 
 .heatmap-map-upload-tip,
 .heatmap-map-recent-empty {
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
   line-height: 20px;
   margin-top: 8px;
@@ -12274,7 +12274,7 @@ const analysisModelFormContext = {
 }
 
 .heatmap-map-recent-title {
-  color: #646a73;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
   margin: 8px 0 12px;
 }
@@ -12282,7 +12282,7 @@ const analysisModelFormContext = {
 .heatmap-map-recent-item {
   background: transparent;
   border: 0;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -12359,7 +12359,7 @@ const analysisModelFormContext = {
 }
 
 .heatmap-map-coordinate-title {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 14px;
   font-weight: 500;
   margin-bottom: 2px;
@@ -12402,12 +12402,12 @@ const analysisModelFormContext = {
 }
 
 .heatmap-map-confirm-info span {
-  color: #8f959e;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
 .heatmap-map-confirm-info strong {
-  color: #1f2329;
+  color: var(--workspace-text-primary);
   font-size: 14px;
   font-weight: 400;
 }

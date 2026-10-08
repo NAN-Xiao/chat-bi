@@ -145,17 +145,17 @@ const props = withDefaults(
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(31, 35, 41, 0.1);
+    background: var(--workspace-control-hover-bg);
     cursor: pointer;
     margin-left: 8px;
     &:hover {
-      color: var(--ed-color-primary-15-d, #189e7a);
-      background: #1f23291a;
+      color: var(--theme-accent-text);
+      background: var(--workspace-control-hover-bg);
     }
   }
   .title-active {
-    color: rgba(24, 158, 122, 1);
-    background: rgba(28, 186, 144, 0.2);
+    color: var(--theme-success-text);
+    background: var(--theme-success-soft-bg);
   }
   .quick_question_content {
     height: 168px;
@@ -186,7 +186,7 @@ const props = withDefaults(
     right: 4px;
     z-index: 1;
     &:hover {
-      background-color: #1f23291a !important;
+      background-color: var(--workspace-control-hover-bg) !important;
     }
   }
 
@@ -194,7 +194,7 @@ const props = withDefaults(
     font-size: 14px;
     font-weight: 400;
     line-height: 22px;
-    color: rgba(100, 106, 115, 1);
+    color: var(--workspace-text-secondary);
 
     .tool-btn-inner {
       display: flex;
@@ -203,10 +203,10 @@ const props = withDefaults(
     }
 
     &:hover {
-      background: rgba(31, 35, 41, 0.1);
+      background: var(--workspace-control-hover-bg);
     }
     &:active {
-      background: rgba(31, 35, 41, 0.1);
+      background: var(--workspace-control-hover-bg);
     }
   }
 

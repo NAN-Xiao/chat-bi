@@ -24,6 +24,7 @@ import 'tinymce/plugins/directionality'
 import 'tinymce/plugins/nonbreaking'
 import 'tinymce/plugins/pagebreak'
 import { propTypes } from '@/utils/propTypes'
+import { subscribeTheme } from '@/utils/theme'
 const props = defineProps({
   modelValue: {
     type: String,
@@ -52,6 +53,26 @@ watch(
 
 const tinymceId = 'tinymce-view-pf'
 const init = ref({
+  setup: (editor: import('tinymce').Editor) => {
+    let unsubscribe = () => {}
+    let themeStyle: HTMLStyleElement | undefined
+    const syncTheme = () => {
+      const body = editor.getBody()
+      const doc = editor.getDoc()
+      if (!body || doc === document) return // Inline editors already inherit the page tokens.
+      const colors = getComputedStyle(editor.getContainer())
+      if (!themeStyle) {
+        themeStyle = doc.createElement('style')
+        doc.head.appendChild(themeStyle)
+      }
+      themeStyle.textContent = `body { background: ${colors.getPropertyValue('--workspace-card-bg')}; color: ${colors.getPropertyValue('--workspace-text-primary')}; color-scheme: ${document.documentElement.dataset.theme}; }`
+    }
+    editor.on('init', () => {
+      syncTheme()
+      unsubscribe = subscribeTheme(syncTheme)
+    })
+    editor.on('remove', () => { unsubscribe(); themeStyle?.remove() })
+  },
   selector: '#' + tinymceId,
   toolbar_items_size: 'small',
   language_url: formatAssetUrl('./tinymce-private/langs/zh_CN.js'), // 汉化路径是自定义的，一般放在public或static里面

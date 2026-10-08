@@ -736,7 +736,7 @@ onMounted(async () => {
   width: 100%;
   height: 100%;
   position: relative;
-  color-scheme: light;
+  color-scheme: var(--theme-color-scheme);
 
   .tool-left {
     display: flex;
@@ -789,10 +789,10 @@ onMounted(async () => {
     display: flex;
     align-items: center;
     padding: 0 12px;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 6px;
-    color: #1f2329;
-    background: #f8f9fb;
+    color: var(--workspace-text-primary);
+    background: var(--workspace-panel-bg);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -814,11 +814,9 @@ onMounted(async () => {
     min-width: 0;
     min-height: 0;
     padding: 16px;
-    border: 1px solid #e2eaf4;
+    border: 1px solid var(--workspace-border);
     border-radius: 8px;
-    background:
-      linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(243, 248, 255, 0.98)),
-      var(--theme-card-bg, #ffffff);
+    background: var(--workspace-panel-bg);
     box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
     display: flex;
     flex-direction: column;
@@ -833,8 +831,8 @@ onMounted(async () => {
     height: 24px;
     padding: 0 10px;
     border-radius: 999px;
-    background: rgba(47, 107, 255, 0.1);
-    color: #2f6bff;
+    background: var(--theme-primary-soft-bg);
+    color: var(--theme-accent-text);
     font-size: 12px;
     font-weight: 600;
     line-height: 24px;
@@ -859,8 +857,8 @@ onMounted(async () => {
     width: fit-content;
     padding: 5px 10px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.88);
-    border: 1px solid rgba(222, 232, 246, 0.9);
+    background: var(--workspace-card-bg);
+    border: 1px solid var(--workspace-border);
     color: var(--theme-text-secondary);
     font-size: 12px;
     line-height: 18px;
@@ -871,7 +869,7 @@ onMounted(async () => {
     flex-direction: column;
     gap: 4px;
     padding: 10px;
-    border: 1px solid #dfe9fb;
+    border: 1px solid var(--workspace-border);
     border-radius: 8px;
     background: linear-gradient(180deg, rgba(91, 143, 249, 0.08) 0%, rgba(91, 143, 249, 0.02) 100%);
 
@@ -885,7 +883,7 @@ onMounted(async () => {
   }
 
   .overview-total-label {
-    color: #4f6fb7;
+    color: var(--theme-accent-text);
     font-size: 12px;
     font-weight: 600;
     line-height: 18px;
@@ -900,9 +898,9 @@ onMounted(async () => {
   .overview-highlight {
     min-width: 0;
     padding: 8px;
-    border: 1px solid #edf2f8;
+    border: 1px solid var(--workspace-border);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.88);
+    background: var(--workspace-card-bg);
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -916,7 +914,7 @@ onMounted(async () => {
   }
 
   .overview-highlight-label {
-    color: #8a97aa;
+    color: var(--workspace-text-tertiary);
     font-size: 12px;
     line-height: 18px;
   }
@@ -924,9 +922,9 @@ onMounted(async () => {
   .overview-visual,
   .chart-card {
     min-width: 0;
-    border: 1px solid var(--theme-border-color, #ebeef5);
+    border: 1px solid var(--workspace-border);
     border-radius: 8px;
-    background: var(--theme-card-bg, #ffffff);
+    background: var(--workspace-card-bg);
     box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
   }
 
@@ -957,7 +955,7 @@ onMounted(async () => {
   .chart-surface {
     height: 248px;
     border-radius: 8px;
-    background: linear-gradient(180deg, #fcfdff 0%, #f7faff 100%);
+    background: var(--workspace-panel-bg);
     overflow: hidden;
   }
 
@@ -1060,9 +1058,9 @@ onMounted(async () => {
     padding: 8px 12px;
     border: 1px solid rgba(91, 124, 250, 0.16);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.92);
+    background: var(--workspace-card-bg);
     box-shadow: 0 10px 28px rgba(24, 46, 86, 0.08);
-    color: #66758d;
+    color: var(--workspace-text-secondary);
     font-size: 13px;
     line-height: 20px;
   }
@@ -1084,10 +1082,10 @@ onMounted(async () => {
 
   .summary-item {
     min-width: 0;
-    border: 1px solid #e2eaf4;
+    border: 1px solid var(--workspace-border);
     border-radius: 8px;
     padding: 14px 14px 12px;
-    background: #ffffff;
+    background: var(--workspace-card-bg);
     box-shadow: 0 10px 24px rgba(17, 37, 73, 0.05);
   }
 
@@ -1119,21 +1117,21 @@ onMounted(async () => {
   }
 
   .summary-label {
-    color: #5b6676;
+    color: var(--workspace-text-secondary);
     font-size: 12px;
     line-height: 18px;
   }
 
   .summary-note {
     margin-top: 2px;
-    color: #9aa6b8;
+    color: var(--workspace-text-tertiary);
     font-size: 12px;
     line-height: 18px;
   }
 
   .summary-value {
     margin-top: 14px;
-    color: #1b2a41;
+    color: var(--workspace-text-primary);
     font-size: 28px;
     font-weight: 600;
     line-height: 34px;
@@ -1178,11 +1176,11 @@ onMounted(async () => {
     font-size: 15px;
     font-weight: 600;
     line-height: 22px;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
   }
 
   .muted {
-    color: #8f959e;
+    color: var(--workspace-text-tertiary);
     font-size: 12px;
     font-weight: 400;
   }
@@ -1205,12 +1203,12 @@ onMounted(async () => {
   }
 
   .user-key {
-    color: #8f959e;
+    color: var(--workspace-text-tertiary);
     font-size: 12px;
   }
 
   .danger {
-    color: #d93026;
+    color: var(--theme-danger-text);
     font-weight: 500;
   }
 }

@@ -172,17 +172,30 @@ const customSet = reactive({
 const logo = ref()
 const basePath = import.meta.env.VITE_API_BASE_URL
 const baseUrl = basePath + '/system/assistant/picture/'
+let disposed = false
+let restoreBrandColor: (() => void) | undefined
 const setPageCustomColor = (val: any) => {
+  restoreBrandColor?.()
   const ele = document.querySelector('body') as HTMLElement
-  setCurrentColor(val, ele)
+  restoreBrandColor = setCurrentColor(val, ele)
 }
 
+let restoreHeaderColor: (() => void) | undefined
 const setPageHeaderFontColor = (val: any) => {
+  restoreHeaderColor?.()
   const ele = document.querySelector('body') as HTMLElement
-  ele.style.setProperty('--ed-text-color-primary', val)
+  const key = '--ed-text-color-primary'
+  const previous = ele.style.getPropertyValue(key)
+  const priority = ele.style.getPropertyPriority(key)
+  ele.style.setProperty(key, val)
+  restoreHeaderColor = () => {
+    if (previous) ele.style.setProperty(key, previous, priority)
+    else ele.style.removeProperty(key)
+  }
 }
 const loadAssistantConfig = (assistantId: any) => {
   request.get(`/system/assistant/${assistantId}`).then((res) => {
+    if (disposed) return
     if (res.name) {
       appName.value = res.name
     }
@@ -214,6 +227,7 @@ const loadAssistantConfig = (assistantId: any) => {
       }
 
       nextTick(() => {
+        if (disposed) return
         setPageCustomColor(customSet.theme)
         setPageHeaderFontColor(customSet.header_font_color)
       })
@@ -262,6 +276,9 @@ onBeforeMount(async () => {
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  restoreHeaderColor?.()
+  restoreBrandColor?.()
   window.removeEventListener('message', communicationCb)
 })
 </script>
@@ -270,7 +287,7 @@ onBeforeUnmount(() => {
 .shuzhi-assistant-container {
   height: 100vh;
   width: 100%;
-  color: rgb(31, 35, 41);
+  color: var(--workspace-text-primary);
   .header {
     width: 100%;
     left: 0;
@@ -278,7 +295,7 @@ onBeforeUnmount(() => {
     z-index: 100;
     height: 56px;
     line-height: 56px;
-    background: var(--ed-color-primary-1a, #1cba901a);
+    background: var(--ed-color-primary-1a, var(--theme-primary-soft-bg));
     height: 56px;
     padding: 0 16px;
     display: flex;
@@ -301,7 +318,7 @@ onBeforeUnmount(() => {
 
       &::after {
         content: '';
-        background-color: #1f23291a;
+        background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
         position: absolute;
         border-radius: 6px;
         width: 28px;
@@ -338,10 +355,10 @@ onBeforeUnmount(() => {
     left: 0;
     top: 0;
     width: 50%;
-    background: #f5f6f7;
+    background: var(--workspace-control-bg);
     box-shadow: 0px 6px 24px 0px #1f232914;
     padding: 16px;
-    border-right: 1px solid #dee0e3;
+    border-right: 1px solid var(--workspace-border);
     display: none;
   }
 }

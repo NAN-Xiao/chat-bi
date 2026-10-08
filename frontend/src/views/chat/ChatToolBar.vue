@@ -41,7 +41,7 @@ defineProps<{
     font-size: 14px;
     font-weight: 400;
     line-height: 22px;
-    color: rgba(100, 106, 115, 1);
+    color: var(--workspace-text-secondary);
 
     display: flex;
     flex-direction: row;

@@ -137,7 +137,7 @@ onMounted(() => {
     justify-content: center;
     font-size: 16px;
     z-index: 10;
-    color: rgba(100, 106, 115, 1);
+    color: var(--workspace-text-secondary);
   }
   div::-webkit-scrollbar {
     width: 0px !important;

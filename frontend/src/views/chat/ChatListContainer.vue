@@ -394,7 +394,7 @@ function onChatRenamed(chat: Chat) {
         min-height: 34px;
         padding: 0 10px;
         border-radius: 10px;
-        background-color: #ffffff;
+        background-color: var(--workspace-card-bg);
         box-shadow:
           0 0 0 1px rgba(118, 134, 166, 0.22) inset,
           0 4px 12px rgba(18, 34, 66, 0.04);

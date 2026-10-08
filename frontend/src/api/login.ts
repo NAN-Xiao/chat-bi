@@ -1,5 +1,13 @@
 import { request, type FullRequestConfig } from '@/utils/request'
 export const AuthApi = {
+  colorTheme: (accountId: string) => request.get<{ theme: 'light' | 'dark' }>('/user/color-theme', {
+    headers: { 'X-SHUZHI-ACCOUNT-ID': accountId },
+    requestOptions: { workspaceMode: 'none', customError: true, retryCount: 0 },
+  }),
+  saveColorTheme: (theme: 'light' | 'dark', accountId: string) => request.put<{ theme: 'light' | 'dark' }>('/user/color-theme', { theme }, {
+    headers: { 'X-SHUZHI-ACCOUNT-ID': accountId },
+    requestOptions: { workspaceMode: 'none', customError: true, retryCount: 0 },
+  }),
   login: (credentials: { username: string; password: string }) => {
     const entryCredentials = {
       username: credentials.username,

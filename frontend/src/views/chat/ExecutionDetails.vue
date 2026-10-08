@@ -149,7 +149,7 @@ defineExpose({
       width: calc(50% - 8px);
       height: 86px;
       border-radius: 12px;
-      border: 1px solid #dee0e3;
+      border: 1px solid var(--workspace-border);
       padding: 16px;
 
       .ed-icon {
@@ -159,7 +159,7 @@ defineExpose({
 
       .name {
         float: left;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
         font-weight: 400;
         font-size: 14px;
         line-height: 22px;
@@ -171,7 +171,7 @@ defineExpose({
         font-weight: 500;
         font-size: 20px;
         line-height: 28px;
-        color: #1f2329;
+        color: var(--workspace-text-primary);
         margin-top: 4px;
       }
     }
@@ -181,7 +181,7 @@ defineExpose({
     .list-item {
       width: 100%;
       border-radius: 12px;
-      border: 1px solid #dee0e3;
+      border: 1px solid var(--workspace-border);
       padding: 16px;
       margin-bottom: 8px;
       cursor: pointer;
@@ -232,7 +232,7 @@ defineExpose({
         font-weight: 400;
         font-size: 14px;
         line-height: 22px;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
       }
 
       .ed-icon {

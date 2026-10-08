@@ -110,7 +110,7 @@ const emit = defineEmits(['handleCommand'])
 .menu-more_popper {
   box-shadow: 0px 4px 8px 0px #1f23291a !important;
   border-radius: 6px;
-  border: 1px solid #dee0e3 !important;
+  border: 1px solid var(--workspace-border) !important;
   width: max-content !important;
   min-width: 120px !important;
   max-width: min(280px, calc(100vw - 24px)) !important;
@@ -123,7 +123,7 @@ const emit = defineEmits(['handleCommand'])
 
   .handle-icon {
     flex: 0 0 auto;
-    color: #646a73;
+    color: var(--workspace-text-secondary);
     margin-right: 8px;
   }
 
@@ -140,16 +140,16 @@ const emit = defineEmits(['handleCommand'])
     max-width: min(280px, calc(100vw - 24px));
     padding: 0 12px;
     background: none;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     line-height: 20px;
     white-space: nowrap;
     &:focus {
       background: none;
-      color: #1f2329;
+      color: var(--workspace-text-primary);
     }
     &:hover {
       background: none;
-      color: #1f2329;
+      color: var(--workspace-text-primary);
 
       &::after {
         content: '';
@@ -160,7 +160,7 @@ const emit = defineEmits(['handleCommand'])
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #1f23291a;
+        background: var(--workspace-control-hover-bg);
       }
     }
   }
@@ -206,7 +206,7 @@ const emit = defineEmits(['handleCommand'])
 
   .handle-icon {
     margin-right: 8px;
-    color: #646a73;
+    color: var(--workspace-text-secondary);
   }
 
   .ed-dropdown-menu__item:hover::after {

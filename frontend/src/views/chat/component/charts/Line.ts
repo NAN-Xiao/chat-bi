@@ -139,7 +139,6 @@ export class Line extends BaseG2Chart {
                     dy: -12,
                   },
                   transform: [
-                    { type: 'contrastReverse' },
                     { type: 'exceedAdjust' },
                     { type: 'overlapHide' },
                   ],

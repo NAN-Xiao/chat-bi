@@ -172,8 +172,8 @@ function isPresetActive(value: number) {
   padding: 0 9px;
   border: 1px solid #8aa0ff;
   border-radius: 6px;
-  color: #3154e8;
-  background: #fff;
+  color: var(--theme-accent-text);
+  background: var(--workspace-card-bg);
   cursor: pointer;
   font-size: 13px;
 }
@@ -193,12 +193,12 @@ function isPresetActive(value: number) {
   display: grid;
   grid-template-columns: 142px 1fr;
   min-height: 188px;
-  color: #303643;
+  color: var(--workspace-text-primary);
 }
 
 .funnel-window-menu {
   padding: 6px;
-  border-right: 1px solid #edf0f5;
+  border-right: 1px solid var(--workspace-border);
 }
 
 .funnel-window-current {
@@ -207,12 +207,12 @@ function isPresetActive(value: number) {
   gap: 5px;
   height: 32px;
   padding: 0 8px;
-  color: #3154e8;
+  color: var(--theme-accent-text);
   font-weight: 600;
 }
 
 .funnel-window-current .el-icon {
-  color: #6f7785;
+  color: var(--workspace-text-secondary);
   cursor: help;
 }
 
@@ -223,7 +223,7 @@ function isPresetActive(value: number) {
   padding: 0 8px;
   border: 0;
   border-radius: 5px;
-  color: #4b515c;
+  color: var(--workspace-text-secondary);
   background: transparent;
   cursor: pointer;
   font-size: 13px;
@@ -240,8 +240,8 @@ function isPresetActive(value: number) {
 .funnel-window-menu button.is-active,
 .funnel-window-values button:hover,
 .funnel-window-values button.is-active {
-  color: #3154e8;
-  background: #f0f2f8;
+  color: var(--theme-accent-text);
+  background: var(--workspace-control-bg);
 }
 
 .funnel-window-values {
@@ -255,7 +255,7 @@ function isPresetActive(value: number) {
   justify-content: start;
   gap: 8px;
   margin: 5px 8px 0;
-  color: #4b515c;
+  color: var(--workspace-text-secondary);
   font-size: 13px;
 }
 

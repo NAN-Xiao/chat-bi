@@ -1,66 +1,35 @@
-# 颜色主题切换入口临时隐藏备忘
+# 深浅主题切换维护说明
 
-记录日期：2026-06-25
+更新日期：2026-09-29。深浅主题已启用，并按登录账户保存。
 
-## 背景
+## 当前状态
 
-深色主题仍有较多视觉细节未修完。为了避免用户切换后遇到不完整体验，颜色主题切换入口暂时全部隐藏，应用默认保持浅色主题。
+- `frontend/src/utils/themeConfig.ts` 中 `COLOR_THEME_SWITCHING_ENABLED = true`，`DEFAULT_THEME = 'light'`。
+- `frontend/src/utils/theme.ts` 继续重新导出原有常量和类型，原调用方无需改导入路径。
+- 复用顶栏现有 `ThemeSwitcher.vue`。账户偏好持久化于 `sys_user.color_theme`，通过 `GET/PUT /user/color-theme` 读取或更新；同一账户跨工作空间、浏览器及设备恢复选择。默认浅色，不跟随系统外观。
+- Vite 的 `plugins/themeBootstrap.ts` 首屏使用默认浅色，身份校验后由 `accountTheme.ts` 加载服务器偏好；不读取旧的未区分账户的浏览器偏好，避免串号。短暂默认浅色到个人主题的切换是异步账户加载的正常过程。
+- `theme.ts` 只负责应用视觉状态。`shuzhi-theme-mode:<用户ID>` 仅发送已保存设置的失效通知，接收方重新查询服务器，不信任事件携带的旧值，也不作为服务器读取失败的兜底。存储受限不影响服务器保存。
+- 保存时立即预览并禁用重复点击；失败恢复已确认配色并提示。同账号并发标签页写入会重新读取服务器结果。退出或切换账号时清除运行期绑定，旧请求不能改变新会话配色。
+- 账户校验头 `X-SHUZHI-ACCOUNT-ID` 只用于断言请求所属账号，不能指定更新其他用户；嵌入式身份不读取或修改助手所有者的账户偏好。
+- `frontend/src/styles/theme-tokens.less` 是页面和图表配色源。`--theme-*`、`--workspace-*`、两套组件库变量继续供现有组件使用。
+- G2 通过交互状态 reducer 更新视觉，S2 在原实例更新主题，DOM 指标和摘要色点读取 CSS 变量。切换不查询业务数据。
 
-这次处理是临时屏蔽，不是删除深色主题能力。
+## 回退为强制浅色
 
-## 当前实现
+将 `themeConfig.ts` 中开关改为 `false` 后重新构建即可。初始化、运行期 API、按钮和 logo 都必须遵守开关，旧 dark 缓存不能绕过它；暂停读取/写入账户配色但不删除账户已保存设置。保留组件、存储键、事件名、样式和图表适配器。
 
-前端主题工具位置：
+不要增加第二个开关、URL 调试后门或系统自动跟随。历史说明中“applyTheme 会无条件写回 light 缓存”的行为已经移除：初始化不再无意义地重写偏好。
 
-```text
-frontend/src/utils/theme.ts
-```
+## 图表升级注意事项
 
-当前通过固定开关关闭入口和深色应用：
+`g2ThemeGuides.ts` 显式适配当前 G2 5 交互状态缓存 `__ordinal__` / `__states__`，防止重新选中图例时恢复旧主题。升级 G2 或其 GUI 依赖时，必须运行真实浏览器的图例筛选、重选、滑块、滚动条及连续图例测试。
 
-```ts
-export const COLOR_THEME_SWITCHING_ENABLED = false
-export const DEFAULT_THEME: ThemeMode = 'light'
-```
+分类色按当前 scale 的类别 ID 取值，不按“可见图例行号”重新分配。DOM 摘要和 canvas 共用 `--theme-chart-series-*`。
 
-当 `COLOR_THEME_SWITCHING_ENABLED` 为 `false` 时：
+## 验证
 
-- `getInitialTheme()` 固定返回浅色，忽略旧的本地深色缓存。
-- `applyTheme(...)` 会把任何传入主题折回浅色，并写回本地缓存。
-- `getNextTheme(...)` 固定返回浅色。
-- `ThemeSwitcher.vue` 不渲染按钮入口。
+详见 `docs/testing/light-dark-theme-checklist.md`。验证前端命令均在任务工作树的 `frontend` 目录执行。
 
-## 必须保留的内容
+账户偏好新增迁移 `171_account_color_theme.py`，部署顺序为数据库迁移、后端、前端。迁移只新增带默认值和 light/dark 约束的字段；不要把旧的浏览器全局值批量归属给任何账户。
 
-以下内容暂时不要删除，除非后续明确决定彻底下线深色主题：
-
-- `frontend/src/components/layout/ThemeSwitcher.vue`
-- `frontend/src/utils/theme.ts` 中的主题工具函数、事件名和存储 key
-- `frontend/src/style.less` 以及相关页面中的 `:root[data-theme='dark']` 兼容样式
-- 依赖 `THEME_CHANGE_EVENT` 或 `getInitialTheme()` 做品牌/logo 适配的逻辑
-
-## 恢复方式
-
-如果后续深色主题修完，需要重新显示颜色主题切换入口，先完成视觉回归后把：
-
-```ts
-export const COLOR_THEME_SWITCHING_ENABLED = false
-```
-
-改为：
-
-```ts
-export const COLOR_THEME_SWITCHING_ENABLED = true
-```
-
-然后运行前端类型检查：
-
-```bash
-npm exec vue-tsc -- -b --force
-```
-
-## 注意事项
-
-- 不要新增其他主题切换入口、系统深色自动跟随或绕过 `COLOR_THEME_SWITCHING_ENABLED` 的调用。
-- 不要把这次临时隐藏误判为废弃代码清理。
-- 恢复前需要覆盖主布局、系统管理、智能问答、看板预览、弹窗、表格、图表、登录页等关键界面。
+账户专项回归：`frontend/tests/accountTheme.test.mjs`、`theme.test.mjs`、`themeBootstrap.test.mjs`；后端 `backend/tests/test_account_color_theme.py` 验证持久化、跨空间一致、账户隔离、参数校验和嵌入拒绝。

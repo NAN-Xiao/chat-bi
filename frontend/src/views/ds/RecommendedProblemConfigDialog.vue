@@ -176,12 +176,12 @@ defineExpose({
   cursor: pointer;
 
   &:hover {
-    background-color: #1f23291a;
+    background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
   }
 }
 .add-question_dialog {
   .ed-input-group__append {
-    background-color: #fff;
+    background-color: var(--workspace-card-bg);
     padding: 0 12px;
   }
   .recommended-form-item {
@@ -205,7 +205,7 @@ defineExpose({
 
   .value-input {
     .ed-input-group__append {
-      color: #1f2329;
+      color: var(--workspace-text-primary);
       position: relative;
       &:hover {
         &::after {
@@ -215,7 +215,7 @@ defineExpose({
           top: 0;
           width: calc(100% - 1px);
           height: calc(100% - 2px);
-          background: var(--ed-color-primary-1a, #1cba901a);
+          background: var(--theme-primary-soft-bg);
           border: 1px solid var(--ed-color-primary);
           border-bottom-right-radius: 6px;
           border-top-right-radius: 6px;

@@ -638,17 +638,17 @@ const handleCurrentChange = (val: number) => {
       padding-left: 4px;
       padding-right: 4px;
       display: inline-flex;
-      background: #ffffff;
+      background: var(--workspace-card-bg);
       align-items: center;
-      border: 1px solid #d9dcdf;
+      border: 1px solid var(--workspace-border);
       border-radius: 6px;
 
       .is-active {
-        background: var(--ed-color-primary-1a, #1cba901a);
+        background: var(--theme-primary-soft-bg);
       }
 
       .ed-button:not(.is-active) {
-        color: #1f2329;
+        color: var(--workspace-text-primary);
       }
       .ed-button.is-text {
         height: 24px;
@@ -677,19 +677,19 @@ const handleCurrentChange = (val: number) => {
 
     .preview-or-schema {
       .system-flag {
-        background-color: var(--ed-color-primary-33, #1cba9033);
+        background: var(--theme-primary-soft-bg);
         border-radius: 6px;
         height: 16px;
         line-height: 16px;
         padding: 0 4px;
         font-size: 10px;
         margin-left: 4px;
-        color: var(--ed-color-primary-15-d, #189e7a);
+        color: var(--theme-accent-text);
       }
 
       &:not(:has(.ellipsis)) {
         .ed-icon {
-          color: #646a73;
+          color: var(--workspace-text-secondary);
         }
       }
 
@@ -703,7 +703,7 @@ const handleCurrentChange = (val: number) => {
 
           &::after {
             content: '';
-            background-color: #1f23291a;
+            background-color: color-mix(in srgb, var(--workspace-text-primary) 10%, transparent);
             position: absolute;
             border-radius: 6px;
             width: 24px;
@@ -722,7 +722,7 @@ const handleCurrentChange = (val: number) => {
 
           &.not-allow {
             cursor: not-allowed;
-            color: #bbbfc4;
+            color: var(--ed-disabled-text-color);
           }
         }
         .ed-icon + .ed-icon {
@@ -735,7 +735,7 @@ const handleCurrentChange = (val: number) => {
         font-weight: 400;
         font-size: 14px;
         line-height: 22px;
-        color: #646a73;
+        color: var(--workspace-text-secondary);
       }
     }
   }
@@ -746,12 +746,12 @@ const handleCurrentChange = (val: number) => {
     width: calc(100% + 48px);
     left: -24px;
     bottom: -16px;
-    border-top: 1px solid #1f232926;
+    border-top: 1px solid var(--workspace-border);
     display: flex;
-    background-color: #fff;
+    background-color: var(--workspace-card-bg);
     align-items: center;
     padding-left: 24px;
-    background-color: #fff;
+    background-color: var(--workspace-card-bg);
     z-index: 10;
 
     .danger-button {
@@ -771,7 +771,7 @@ const handleCurrentChange = (val: number) => {
       font-weight: 400;
       font-size: 14px;
       line-height: 22px;
-      color: #646a73;
+      color: var(--workspace-text-secondary);
       margin-right: 12px;
     }
   }
@@ -806,7 +806,7 @@ const handleCurrentChange = (val: number) => {
     cursor: pointer;
 
     &:hover {
-      background-color: #1f23291a;
+      background-color: var(--workspace-control-hover-bg);
     }
   }
   .value-list {
@@ -823,7 +823,7 @@ const handleCurrentChange = (val: number) => {
 
         &.not-allow {
           cursor: not-allowed;
-          color: #bbbfc4;
+          color: var(--ed-disabled-text-color);
         }
       }
     }
@@ -842,7 +842,7 @@ const handleCurrentChange = (val: number) => {
       content: '';
       height: 1px;
       width: 10px;
-      background: #1f2329;
+      background: var(--workspace-text-primary);
       position: absolute;
       top: 50%;
       left: 50%;

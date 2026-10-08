@@ -6,7 +6,7 @@ import {
   isPercentAxis,
   toNullableNumber,
 } from '@/views/chat/component/charts/utils.ts'
-import { chartPalette } from '@/views/chat/component/charts/theme.ts'
+
 import { resolveMetricLayout } from '@/views/chat/component/charts/metricLayout.ts'
 
 export class Metric extends BaseChart {
@@ -107,15 +107,15 @@ export class Metric extends BaseChart {
   private compareTone(value: any) {
     const numericValue = toNullableNumber(value)
     if (numericValue === null) {
-      return '#667891'
+      return 'var(--theme-insight-secondary)'
     }
     if (numericValue > 0) {
-      return '#0c9b6d'
+      return 'var(--theme-insight-positive)'
     }
     if (numericValue < 0) {
-      return '#e05252'
+      return 'var(--theme-insight-negative)'
     }
-    return '#667891'
+    return 'var(--theme-insight-secondary)'
   }
 
   private formatCompareValue(value: any, axis: ChartAxis) {
@@ -193,7 +193,7 @@ export class Metric extends BaseChart {
         width: '100%',
         border: '0',
         borderRadius: '8px',
-        background: '#fff',
+        background: 'var(--workspace-card-bg)',
         padding: layout.cardPadding,
         display: 'flex',
         flexDirection: 'column',
@@ -208,7 +208,7 @@ export class Metric extends BaseChart {
       const metricLabel = this.displayAxisName(axis)
       label.textContent = metricLabel
       Object.assign(label.style, {
-        color: context.surface === 'dashboard' ? '#667085' : '#6b7a90',
+        color: 'var(--workspace-text-secondary)',
         fontSize: isMini ? '11px' : '13px',
         lineHeight: isMini ? '15px' : '20px',
         maxWidth: '100%',
@@ -222,7 +222,7 @@ export class Metric extends BaseChart {
       if (dateAxis) {
         date.textContent = String(firstRow[dateAxis.value])
         Object.assign(date.style, {
-          color: '#6b7a90',
+          color: 'var(--workspace-text-tertiary)',
           fontSize: '11px',
           lineHeight: `${layout.dateLineHeight}px`,
           marginTop: layout.showInnerLabel && metricLabel ? (isMini ? '1px' : '6px') : '0',
@@ -245,7 +245,7 @@ export class Metric extends BaseChart {
       const rawValue = firstRow[axis.value]
       value.textContent = this.formatValue(rawValue, axis)
       Object.assign(value.style, {
-        color: context.surface === 'dashboard' ? '#101828' : '#15233b',
+        color: 'var(--workspace-text-primary)',
         fontSize: `${layout.valueFontSize}px`,
         fontWeight: context.surface === 'dashboard' ? '600' : '700',
         lineHeight: `${layout.valueLineHeight}px`,
@@ -264,7 +264,7 @@ export class Metric extends BaseChart {
         gap: layout.comparisonGap,
         minHeight: `${layout.comparisonLineHeight}px`,
         marginTop: layout.comparisonMarginTop,
-        color: '#667891',
+        color: 'var(--workspace-text-secondary)',
         fontSize: `${layout.comparisonFontSize}px`,
         lineHeight: `${layout.comparisonLineHeight}px`,
         width: '100%',
@@ -299,7 +299,7 @@ export class Metric extends BaseChart {
         width: isMini ? '28px' : '36px',
         height: '4px',
         borderRadius: '999px',
-        background: chartPalette[axes.indexOf(axis) % chartPalette.length],
+        background: `var(--theme-chart-series-${axes.indexOf(axis) % 10 + 1})`,
         marginTop: isMini ? '6px' : '10px',
       })
 

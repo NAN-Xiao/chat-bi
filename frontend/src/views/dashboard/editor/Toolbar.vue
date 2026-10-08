@@ -329,9 +329,9 @@ const previewInner = () => {
   height: 56px;
   display: flex;
   align-items: center;
-  background: #fff;
+  background: var(--workspace-card-bg);
   padding-left: 24px;
-  border-bottom: 1px solid rgba(31, 35, 41, 0.15);
+  border-bottom: 1px solid var(--workspace-border);
 
   .left-area {
     margin-left: 12px;
@@ -348,13 +348,14 @@ const previewInner = () => {
       font-weight: 500;
       overflow: hidden;
       cursor: pointer;
-      color: #1f2329;
+      color: var(--workspace-text-primary);
 
       input {
         position: absolute;
         left: 0;
         width: 100%;
-        background-color: #f5f6f7;
+        background-color: var(--workspace-control-bg);
+        color: var(--workspace-text-primary);
         outline: none;
         font-size: 16px;
         border: 1px solid var(--ed-color-primary);
@@ -367,7 +368,7 @@ const previewInner = () => {
     .opt-area {
       width: 300px;
       text-align: left;
-      color: #a6a6a6;
+      color: var(--workspace-text-tertiary);
       display: none;
 
       .opt-icon-redo {
@@ -393,7 +394,7 @@ const previewInner = () => {
 .toolbar-icon {
   width: 20px;
   height: 20px;
-  color: #fff;
+  color: var(--workspace-text-primary);
 }
 
 .back-icon {
@@ -406,11 +407,11 @@ const previewInner = () => {
   font-size: 18px !important;
   width: 26px !important;
   height: 26px !important;
-  color: rgba(255, 255, 255, 1);
+  color: var(--workspace-text-primary);
   border-radius: 6px;
 
   &:hover {
-    background: rgba(235, 235, 235, 0.1);
+    background: var(--workspace-control-hover-bg);
   }
 
   &:active {

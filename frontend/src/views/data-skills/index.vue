@@ -778,7 +778,7 @@ useEmitt({
 .data-skills-page {
   height: 100%;
   padding: 0 0 24px;
-  color: #1f2329;
+  color: var(--workspace-text-primary);
 
   .page-header {
     display: flex;
@@ -807,12 +807,12 @@ useEmitt({
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #8f959e;
+    color: var(--workspace-text-tertiary);
     font-size: 14px;
     line-height: 22px;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 8px;
-    background: #fff;
+    background: var(--workspace-card-bg);
   }
 
   .skill-content {
@@ -846,10 +846,10 @@ useEmitt({
   }
 
   .skill-card {
-    --skill-source-color: #667085;
-    --skill-source-bg: #f2f4f7;
-    --skill-source-border: #d0d5dd;
-    --skill-source-card-bg: #ffffff;
+    --skill-source-color: var(--workspace-text-secondary);
+    --skill-source-bg: var(--workspace-control-bg);
+    --skill-source-border: var(--workspace-border);
+    --skill-source-card-bg: var(--workspace-card-bg);
     width: 100%;
     min-height: 104px;
     border: 1px solid var(--skill-source-border);
@@ -869,29 +869,29 @@ useEmitt({
 
     &:hover {
       border-color: var(--skill-source-color);
-      box-shadow: 0 8px 18px rgba(16, 24, 40, 0.08);
+      box-shadow: var(--theme-card-shadow);
       transform: translateY(-1px);
     }
 
     &.is-saas {
-      --skill-source-color: #7a5af8;
-      --skill-source-bg: #f3f0ff;
-      --skill-source-border: #d8ccff;
-      --skill-source-card-bg: #fcfbff;
+      --skill-source-color: var(--theme-platform-text);
+      --skill-source-bg: var(--theme-platform-bg);
+      --skill-source-border: var(--theme-platform-border);
+      --skill-source-card-bg: var(--theme-platform-card-bg);
     }
 
     &.is-workspace {
-      --skill-source-color: #1570ef;
-      --skill-source-bg: #eaf2ff;
-      --skill-source-border: #b9d6ff;
-      --skill-source-card-bg: #fbfdff;
+      --skill-source-color: var(--theme-workspace-text);
+      --skill-source-bg: var(--theme-workspace-bg);
+      --skill-source-border: var(--theme-workspace-border);
+      --skill-source-card-bg: var(--theme-workspace-card-bg);
     }
 
     &.is-personal {
-      --skill-source-color: #12a076;
-      --skill-source-bg: #e9f8f2;
-      --skill-source-border: #a9e7d0;
-      --skill-source-card-bg: #fbfffd;
+      --skill-source-color: var(--theme-personal-text);
+      --skill-source-bg: var(--theme-personal-bg);
+      --skill-source-border: var(--theme-personal-border);
+      --skill-source-card-bg: var(--theme-personal-card-bg);
     }
 
     .skill-card-head {
@@ -912,7 +912,7 @@ useEmitt({
       display: block;
       min-width: 0;
       max-width: 100%;
-      color: #101828;
+      color: var(--workspace-text-primary);
       font-weight: 600;
       font-size: 14px;
       line-height: 22px;
@@ -945,7 +945,7 @@ useEmitt({
     .skill-sub-meta {
       display: block;
       min-width: 0;
-      color: #667085;
+      color: var(--workspace-text-secondary);
       font-size: 12px;
       line-height: 18px;
     }
@@ -972,14 +972,14 @@ useEmitt({
       padding: 0;
       border: 0;
       background: transparent;
-      color: #8a8f98;
+      color: var(--workspace-text-tertiary);
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
 
       &:hover {
-        color: #344054;
+        color: var(--workspace-text-primary);
       }
 
       svg {
@@ -991,14 +991,14 @@ useEmitt({
     .action-divider {
       width: 1px;
       height: 18px;
-      background: #eceef3;
+      background: var(--workspace-border-soft);
     }
 
     .skill-preview {
       display: -webkit-box;
       margin-top: 12px;
       overflow: hidden;
-      color: #475467;
+      color: var(--workspace-text-secondary);
       font-size: 13px;
       line-height: 20px;
       -webkit-line-clamp: 2;
@@ -1013,16 +1013,16 @@ useEmitt({
   .fixed-project,
   .detail-content {
     width: 100%;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
     line-height: 22px;
     word-break: break-word;
   }
 
   .fixed-project {
     padding: 8px 12px;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 6px;
-    background: #f7faf9;
+    background: var(--workspace-panel-bg);
   }
 
   .datasource-scope-editor {
@@ -1048,7 +1048,7 @@ useEmitt({
 
     .scope-mode-tip {
       margin-top: 8px;
-      color: #646a73;
+      color: var(--workspace-text-secondary);
       font-size: 12px;
       line-height: 20px;
     }
@@ -1059,14 +1059,14 @@ useEmitt({
   }
 
   .muted {
-    color: #8f959e;
+    color: var(--workspace-text-tertiary);
   }
 }
 
 .popover-card_skill.popover-card_skill.popover-card_skill {
-  box-shadow: 0px 4px 8px 0px #1f23291a;
+  box-shadow: var(--theme-control-shadow);
   border-radius: 6px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
   width: fit-content !important;
   min-width: 120px !important;
   padding: 0;
@@ -1084,7 +1084,7 @@ useEmitt({
 
         .ed-icon {
           margin-right: 8px;
-          color: #646a73;
+          color: var(--workspace-text-secondary);
           position: relative;
           z-index: 1;
         }
@@ -1109,7 +1109,7 @@ useEmitt({
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #1f23291a;
+        background: var(--workspace-control-hover-bg);
         display: none;
       }
     }

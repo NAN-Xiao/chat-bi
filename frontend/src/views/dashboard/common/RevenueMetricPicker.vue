@@ -95,8 +95,8 @@ function chooseMethod(method: RevenueMetricMethod) {
   padding: 0 9px;
   border: 1px solid #8aa0ff;
   border-radius: 6px;
-  color: #3154e8;
-  background: #fff;
+  color: var(--theme-accent-text);
+  background: var(--workspace-card-bg);
   cursor: pointer;
   font-size: 13px;
 }
@@ -119,7 +119,7 @@ function chooseMethod(method: RevenueMetricMethod) {
 }
 
 .revenue-metric-panel {
-  color: #303643;
+  color: var(--workspace-text-primary);
 }
 
 .revenue-metric-search {
@@ -129,26 +129,26 @@ function chooseMethod(method: RevenueMetricMethod) {
   gap: 4px;
   height: 38px;
   padding: 0 10px;
-  border-bottom: 1px solid #edf0f5;
-  color: #8b94a2;
+  border-bottom: 1px solid var(--workspace-border);
+  color: var(--workspace-text-tertiary);
 }
 
 .revenue-metric-search input {
   min-width: 0;
   border: 0;
   outline: 0;
-  color: #303643;
+  color: var(--workspace-text-primary);
   background: transparent;
   font: inherit;
 }
 
 .revenue-metric-search input::placeholder {
-  color: #b3bac5;
+  color: var(--workspace-text-tertiary);
 }
 
 .revenue-metric-group-title {
   padding: 9px 12px 5px;
-  color: #8b94a2;
+  color: var(--workspace-text-tertiary);
   font-size: 12px;
 }
 
@@ -164,7 +164,7 @@ function chooseMethod(method: RevenueMetricMethod) {
   padding: 7px 10px;
   border: 0;
   border-radius: 6px;
-  color: #3e4653;
+  color: var(--workspace-text-secondary);
   background: transparent;
   cursor: pointer;
   font-size: 13px;
@@ -173,8 +173,8 @@ function chooseMethod(method: RevenueMetricMethod) {
 
 .revenue-metric-list button:hover,
 .revenue-metric-list button.is-active {
-  color: #273eac;
-  background: #f0f2f8;
+  color: var(--theme-accent-text);
+  background: var(--workspace-control-bg);
 }
 
 :global(.revenue-metric-popper) {

@@ -581,6 +581,7 @@ onMounted(() => {
 
 <style lang="less" scoped>
 .my-workspaces {
+  color: var(--workspace-text-primary);
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -600,14 +601,14 @@ onMounted(() => {
     font-size: 20px;
     line-height: 28px;
     font-weight: 600;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
   }
 
   .page-subtitle {
     margin-top: 4px;
     font-size: 13px;
     line-height: 20px;
-    color: #646a73;
+    color: var(--workspace-text-secondary);
   }
 
   .workspace-grid {
@@ -632,9 +633,9 @@ onMounted(() => {
     flex: 1;
     display: flex;
     flex-direction: column;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 8px;
-    background: #fff;
+    background: var(--workspace-card-bg);
     overflow: hidden;
   }
 
@@ -645,11 +646,11 @@ onMounted(() => {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    border-bottom: 1px solid #dee0e3;
-    background: #f8f9fa;
+    border-bottom: 1px solid var(--workspace-border);
+    background: var(--workspace-panel-bg);
     font-size: 15px;
     font-weight: 600;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
   }
 
   .current-workspace-label {
@@ -657,7 +658,7 @@ onMounted(() => {
     align-items: center;
     gap: 4px;
     min-width: 0;
-    color: #1f5fbf;
+    color: var(--theme-accent-text);
     font-size: 13px;
     line-height: 20px;
     font-weight: 500;
@@ -702,8 +703,8 @@ onMounted(() => {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    border-top: 1px solid #eff0f1;
-    background: #fff;
+    border-top: 1px solid var(--workspace-border-soft);
+    background: var(--workspace-card-bg);
   }
 
   .joined-empty {
@@ -725,7 +726,7 @@ onMounted(() => {
     padding: 0;
     border: none;
     background: transparent;
-    color: var(--ed-color-primary);
+    color: var(--theme-accent-text);
     font-size: 13px;
     line-height: 20px;
     font-weight: 500;
@@ -744,24 +745,25 @@ onMounted(() => {
     }
 
     &:hover {
-      color: #1d4ed8;
+      color: var(--theme-accent-text);
+      text-decoration: underline;
     }
   }
 
   .workspace-name {
     font-weight: 500;
-    color: #1f2329;
+    color: var(--workspace-text-primary);
   }
 
   .muted,
   .empty-text {
-    color: #8f959e;
+    color: var(--workspace-text-tertiary);
     font-size: 12px;
     line-height: 18px;
   }
 
   .active-text {
-    color: #24714d;
+    color: var(--theme-success-text);
     font-size: 13px;
   }
 
@@ -779,10 +781,10 @@ onMounted(() => {
   }
 
   .request-type-cell {
-    color: #1f2329;
+    color: var(--workspace-text-primary);
 
     .ed-icon {
-      color: #646a73;
+      color: var(--workspace-text-secondary);
     }
 
     svg [fill] {
@@ -801,7 +803,7 @@ onMounted(() => {
     font-size: 13px;
     line-height: 20px;
     font-weight: 500;
-    color: #646a73;
+    color: var(--workspace-text-secondary);
   }
 
   .status-icon {
@@ -814,7 +816,7 @@ onMounted(() => {
   }
 
   .status-pending {
-    color: #f54a45;
+    color: var(--theme-danger-text);
 
     .status-icon {
       border: 1.5px solid currentColor;
@@ -844,7 +846,7 @@ onMounted(() => {
   }
 
   .status-approved {
-    color: #24714d;
+    color: var(--theme-success-text);
 
     .status-icon::before {
       content: '';
@@ -860,7 +862,7 @@ onMounted(() => {
   }
 
   .status-rejected {
-    color: #c02a2a;
+    color: var(--theme-danger-text);
 
     .status-icon::before,
     .status-icon::after {
@@ -884,7 +886,7 @@ onMounted(() => {
   }
 
   .status-cancelled {
-    color: #646a73;
+    color: var(--workspace-text-secondary);
 
     .status-icon::before {
       content: '';
@@ -908,17 +910,17 @@ onMounted(() => {
     font-size: 13px;
     line-height: 20px;
     font-weight: 500;
-    color: #646a73;
+    color: var(--workspace-text-secondary);
 
     &.is-pending {
-      color: #f54a45;
+      color: var(--theme-danger-text);
     }
   }
 
   .request-time-detail {
     font-size: 12px;
     line-height: 18px;
-    color: #8f959e;
+    color: var(--workspace-text-tertiary);
   }
 
   .tenant-search-results {
@@ -935,17 +937,17 @@ onMounted(() => {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 2px 10px;
-    border: 1px solid #dee0e3;
+    border: 1px solid var(--workspace-border);
     border-radius: 6px;
-    background: #fff;
-    color: #1f2329;
+    background: var(--workspace-card-bg);
+    color: var(--workspace-text-primary);
     text-align: left;
     cursor: pointer;
 
     &:hover,
     &.selected {
       border-color: var(--ed-color-primary);
-      background: #eef3ff;
+      background: var(--theme-nav-active-bg);
     }
 
     &:disabled {
@@ -966,7 +968,7 @@ onMounted(() => {
 
   .tenant-search-id,
   .tenant-search-state {
-    color: #8f959e;
+    color: var(--workspace-text-tertiary);
     font-size: 12px;
     line-height: 18px;
   }

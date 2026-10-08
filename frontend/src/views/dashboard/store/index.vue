@@ -395,7 +395,7 @@ watch(currentWorkspaceId, () => {
   height: 100%;
   border-radius: 12px;
   overflow: hidden;
-  background: #fff;
+  background: var(--workspace-card-bg);
 }
 
 .dialog-dashboard-preview {
@@ -433,7 +433,7 @@ watch(currentWorkspaceId, () => {
   align-items: center;
   justify-content: center;
   background: linear-gradient(180deg, #f7f9fc 0%, #eef2f7 100%);
-  color: #646a73;
+  color: var(--workspace-text-secondary);
 }
 
 .cover-title {
@@ -454,7 +454,7 @@ watch(currentWorkspaceId, () => {
   padding: 4px 0;
   width: 180px !important;
   box-shadow: 0px 4px 8px 0px #1f23291a;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border);
 
   .popover {
     padding: 4px;
@@ -472,7 +472,7 @@ watch(currentWorkspaceId, () => {
     cursor: pointer;
 
     &:hover {
-      background: #1f23291a;
+      background: var(--workspace-control-hover-bg);
     }
 
     .filter-name {
@@ -486,7 +486,7 @@ watch(currentWorkspaceId, () => {
     }
 
     &.isActive {
-      color: var(--ed-color-primary);
+      color: var(--theme-accent-text);
 
       .done {
         display: block;
