@@ -90,7 +90,7 @@ import {
   buildInsightLayoutStateKey,
   buildInsightColumns,
   detectTrendAxisGranularity,
-  resolveInsightDisplay,
+  resolveDashboardCardInsightDisplay,
   type InsightDisplayStrategy,
   type InsightDensity,
   type InsightLayout,
@@ -493,6 +493,10 @@ const showDashboardDateExpression = computed(
     showDashboardDateFilter.value
     && dateExpressionPickerEnabled.value
     && dashboardDateExpression.value !== null
+)
+const showDashboardDateControl = computed(
+  () => showDashboardDateExpression.value
+    || (showDashboardDateFilter.value && !dateExpressionPickerEnabled.value)
 )
 const dateFilterState = ref(
   getOrCreateDashboardDateFilterState(props.viewInfo, dateFilterCapability.value)
@@ -2138,7 +2142,7 @@ const mainInsightDisplay = computed(() => {
     previousInsightDensity = undefined
   }
   const measuredFrame = frameSize.value
-  const display = resolveInsightDisplay({
+  const display = resolveDashboardCardInsightDisplay({
     chartType: chartType.value,
     data: displayData.value,
     x: renderXAxis.value,
@@ -2556,12 +2560,13 @@ defineExpose({
     :style="tabInsightControlsStyle"
     :class="[
       `insight-density-${insightDensity}`,
+      isDashboardSurface ? 'dashboard-card-layout' : '',
       isTabDashboardSurface ? 'dashboard-layout-surface-tab' : '',
       isTabDashboardSurface ? `tab-controls-${tabInsightControlsVariant}` : '',
     ]"
   >
     <div class="header-bar">
-      <div class="title">
+      <div class="title" :title="viewInfo.chart.title">
         {{ viewInfo.chart.title }}
       </div>
       <div v-if="showPosition === 'multiplexing'" class="buttons-bar">
@@ -2607,6 +2612,8 @@ defineExpose({
       <DashboardDateExpressionPicker
         :model-value="dashboardDateExpression"
         variant="roi"
+        show-resolved-range
+        :resolved-range="insightDateRange"
         timezone="Asia/Shanghai"
         :disabled="dashboardDateExpressionApplying"
         @apply="applyDashboardDateExpression"
@@ -2669,7 +2676,26 @@ defineExpose({
         aria-hidden="true"
       />
       <div v-if="pivotEnabled" class="pivot-toolbar">
+      <div
+        v-if="showDashboardDateExpression || (showDashboardDateFilter && !dateExpressionPickerEnabled)"
+        class="pivot-granularity-tabs"
+        role="group"
+        :aria-label="pivotGranularityOptions.map(option => option.label).join(' / ')"
+      >
+        <button
+          v-for="option in pivotGranularityOptions"
+          :key="option.value"
+          type="button"
+          class="pivot-granularity-tab"
+          :class="{ active: pivotState.granularity === option.value }"
+          :aria-pressed="pivotState.granularity === option.value"
+          @click="setPivotGranularity(option.value)"
+        >
+          {{ option.label }}
+        </button>
+      </div>
       <el-popover
+        v-else
         :visible="pivotModePopoverVisible"
         trigger="manual"
         placement="bottom-start"
@@ -2858,6 +2884,7 @@ defineExpose({
         {{ t('dashboard.chart_no_data_found') }}
       </div>
       <ChartInsightHeader
+        :surface="isDashboardSurface ? 'dashboard' : 'default'"
         v-else-if="canShowInsightHeader && effectiveInsightLayout === 'top'"
         :compact="compactInsightHeader"
         :density="insightDensity"
@@ -2870,6 +2897,7 @@ defineExpose({
         :data="displayData"
         :sql="viewInfo.sql"
         :date-range="insightDateRange"
+        :show-date-context="!showDashboardDateControl"
         :insight="viewInfo.chart?.insight"
       />
       <div
@@ -2878,6 +2906,7 @@ defineExpose({
         :class="{ 'side-layout': effectiveInsightLayout === 'side' }"
       >
         <ChartInsightHeader
+          :surface="isDashboardSurface ? 'dashboard' : 'default'"
           v-if="canShowInsightHeader && effectiveInsightLayout === 'side'"
           :compact="compactInsightHeader"
           :density="insightDensity"
@@ -2891,6 +2920,7 @@ defineExpose({
           :data="displayData"
           :sql="viewInfo.sql"
           :date-range="insightDateRange"
+          :show-date-context="!showDashboardDateControl"
           :insight="viewInfo.chart?.insight"
           :featured-side="isFeaturedSideInsight"
         />
@@ -2956,10 +2986,10 @@ defineExpose({
 
 <style scoped lang="less">
 .chart-base-container {
-  --insight-frame-compact-padding-inline: 16px;
-  --insight-frame-compact-padding-block: 14px;
+  --insight-frame-compact-padding-inline: 20px;
+  --insight-frame-compact-padding-block: 18px;
   --insight-frame-compact-header-height: 34px;
-  --insight-frame-compact-header-gap: 10px;
+  --insight-frame-compact-header-gap: 12px;
 
   width: 100%;
   height: 100%;
@@ -2967,7 +2997,7 @@ defineExpose({
   padding: var(--insight-frame-compact-padding-block)
     var(--insight-frame-compact-padding-inline) !important;
   border: 0;
-  border-radius: 0;
+  border-radius: 10px;
   box-shadow: none;
   overflow: hidden;
   container-type: inline-size;
@@ -2988,6 +3018,11 @@ defineExpose({
     .dashboard-filter-controls--combined {
       flex-wrap: nowrap;
       margin-block: 0;
+
+      > .date-filter-toolbar {
+        flex: 0 1 auto;
+        min-width: 0;
+      }
 
       > .pivot-toolbar,
       > .date-filter-toolbar {
@@ -3058,11 +3093,11 @@ defineExpose({
       overflow: hidden;
       text-overflow: ellipsis;
 
-      color: var(--workspace-text-primary, rgba(31, 35, 41, 1));
+      color: #1d2939;
       font-weight: 600;
       font-size: 15px;
       line-height: 24px;
-      letter-spacing: 0.01em;
+      letter-spacing: 0;
     }
 
     .buttons-bar {
@@ -3114,12 +3149,12 @@ defineExpose({
 
   &.insight-density-mini,
   &.insight-density-basic {
-    padding: 10px 12px !important;
+    --insight-frame-compact-padding-inline: 16px;
+    --insight-frame-compact-padding-block: 14px;
+    --insight-frame-compact-header-height: 28px;
+    --insight-frame-compact-header-gap: 6px;
 
     .header-bar {
-      min-height: 28px;
-      margin-bottom: 6px;
-
       .title {
         font-size: 14px;
         line-height: 22px;
@@ -3128,17 +3163,25 @@ defineExpose({
   }
 
   &.insight-density-basic {
-    padding: 8px 10px !important;
+    --insight-frame-compact-padding-inline: 14px;
+    --insight-frame-compact-padding-block: 12px;
+    --insight-frame-compact-header-height: 24px;
+    --insight-frame-compact-header-gap: 4px;
+  }
 
-    .header-bar {
-      min-height: 24px;
-      margin-bottom: 4px;
-    }
+  &.dashboard-card-layout {
+    --insight-frame-compact-padding-inline: 16px;
+    --insight-frame-compact-padding-block: 16px;
+    --insight-frame-compact-header-height: 28px;
+    --insight-frame-compact-header-gap: 8px;
+
+    .header-bar .title { font-size: 15px; line-height: 24px; }
   }
 
   .date-filter-toolbar {
     width: fit-content;
     max-width: 100%;
+    align-self: flex-end;
     min-height: 30px;
     margin: -2px 0 8px;
     display: flex;
@@ -3204,28 +3247,64 @@ defineExpose({
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    align-self: flex-start;
-    width: fit-content;
+    align-self: stretch;
+    width: 100%;
     max-width: 100%;
-    gap: 0;
+    gap: 12px;
     margin: -2px 0 8px;
 
     > .pivot-toolbar {
       order: 0;
-      flex: 1 1 0;
-      min-width: 0;
-      margin-top: 0;
-      margin-bottom: 0;
-    }
-
-    > .dashboard-filter-divider {
-      order: 1;
+      flex: 0 0 auto;
+      max-width: 100%;
+      margin: 0;
     }
 
     > .date-filter-toolbar {
-      order: 2;
-      margin-top: 0;
-      margin-bottom: 0;
+      order: 1;
+      flex: 0 0 auto;
+      max-width: 100%;
+      align-self: center;
+      margin: 0 0 0 auto;
+    }
+
+    .pivot-granularity-tabs {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 2px;
+      height: 28px;
+      padding: 2px;
+      border-radius: 6px;
+      background: #f3f6fb;
+    }
+
+    .pivot-granularity-tab {
+      min-width: 46px;
+      height: 24px;
+      padding: 0 8px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      background: transparent;
+      color: #667085;
+      cursor: pointer;
+      font: inherit;
+      font-size: 11px;
+      line-height: 22px;
+
+      &:hover,
+      &:focus-visible {
+        color: #2f6bff;
+        outline: none;
+      }
+
+      &.active {
+        border-color: #b7d0ff;
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+        color: #2f6bff;
+        font-weight: 600;
+      }
     }
 
     > .pivot-toolbar .pivot-chip.pivot-link {
@@ -3236,10 +3315,10 @@ defineExpose({
     }
 
     > .date-filter-toolbar :deep(.date-expression-trigger) {
-      height: 24px;
-      min-height: 24px;
+      height: 28px;
+      min-height: 28px;
       font-size: 12px;
-      line-height: 24px;
+      line-height: 26px;
       font-weight: 400;
     }
 
@@ -3250,11 +3329,7 @@ defineExpose({
     }
 
     .dashboard-filter-divider {
-      flex: 0 0 1px;
-      width: 1px;
-      height: 16px;
-      margin: 0 8px;
-      border-left: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
+      display: none;
     }
   }
 
@@ -3290,6 +3365,11 @@ defineExpose({
       .date-filter-trigger {
         width: 100%;
       }
+    }
+
+    .date-expression-toolbar {
+      width: auto;
+      max-width: 100%;
     }
   }
 
@@ -3734,6 +3814,19 @@ defineExpose({
       flex-direction: row;
       align-items: stretch;
     }
+  }
+}
+
+.chart-base-container {
+  .chart-show-area :deep(.chart-container) {
+    padding: 2px 0 0;
+  }
+
+  .chart-empty-info,
+  .error-info {
+    color: #667085;
+    font-size: 12px;
+    line-height: 18px;
   }
 }
 

@@ -156,6 +156,129 @@ const sideHistory = resolveInsightDisplay({
 assert.equal(topHistory.layout, 'top', '布局迟滞区允许保留 top 历史')
 assert.equal(sideHistory.layout, 'side', '布局迟滞区允许保留 side 历史')
 
+const multiMetricColumn = {
+  chartType: 'column',
+  data: [
+    { week: '2026-09-21', day1: 100, day2: 10 },
+    { week: '2026-09-28', day1: 90, day2: 12 },
+  ],
+  x: [{ value: 'week' }],
+  y: [
+    { value: 'day1' },
+    { value: 'day2' },
+    { value: 'day3' },
+    { value: 'day4' },
+  ],
+  series: [],
+  dashboard: true,
+}
+
+const paddingByDensity = { regular: 20, compact: 20, mini: 16, basic: 14 }
+
+function simulateLayoutWidthFeedback(chart, borderBoxWidth, height) {
+  let previousLayout
+  let previousDensity
+  const trail = []
+  for (let index = 0; index < 8; index += 1) {
+    const measuredWidth = borderBoxWidth - 2 * paddingByDensity[previousDensity || 'compact']
+    const display = resolveInsightDisplay({
+      ...chart,
+      width: measuredWidth,
+      height,
+      previousLayout,
+      previousDensity,
+    })
+    trail.push(`${display.layout}:${display.density}@${measuredWidth}`)
+    if (display.layout === previousLayout && display.density === previousDensity) {
+      return { converged: true, trail }
+    }
+    previousLayout = display.layout
+    previousDensity = display.density
+  }
+  return { converged: false, trail }
+}
+
+const multiMetricFeedback = simulateLayoutWidthFeedback(multiMetricColumn, 710, 320)
+assert.ok(
+  multiMetricFeedback.converged,
+  `多指标卡片的顶部/侧边摘要必须在内边距反馈下收敛：${multiMetricFeedback.trail.join(' -> ')}`
+)
+
+
+const paddingBlockByDensity = { regular: 18, compact: 18, mini: 14, basic: 12 }
+const headerBlockByDensity = { regular: 46, compact: 46, mini: 34, basic: 28 }
+
+function simulateLayoutHeightFeedback(chart, borderBoxHeight, controlsBlock) {
+  let previousLayout
+  let previousDensity
+  const trail = []
+  for (let index = 0; index < 8; index += 1) {
+    const density = previousDensity || 'compact'
+    const measuredHeight = borderBoxHeight
+      - 2 * paddingBlockByDensity[density]
+      - headerBlockByDensity[density]
+      - controlsBlock
+    const display = resolveInsightDisplay({
+      ...chart,
+      width: 1380,
+      height: measuredHeight,
+      previousLayout,
+      previousDensity,
+    })
+    trail.push(`${display.layout}:${display.density}@${measuredHeight}`)
+    if (display.layout === previousLayout && display.density === previousDensity) {
+      return { converged: true, trail }
+    }
+    previousLayout = display.layout
+    previousDensity = display.density
+  }
+  return { converged: false, trail }
+}
+
+const multiMetricHeightFeedback = simulateLayoutHeightFeedback(multiMetricColumn, 374, 36)
+assert.ok(
+  multiMetricHeightFeedback.converged,
+  `多指标卡片的顶部/侧边摘要必须在高度反馈下收敛：${multiMetricHeightFeedback.trail.join(' -> ')}`
+)
+
+const wideTrendFeedback = simulateLayoutWidthFeedback(trend, 1130, 300)
+assert.ok(
+  wideTrendFeedback.converged,
+  `宽屏趋势卡片的顶部/侧边摘要必须在内边距反馈下收敛：${wideTrendFeedback.trail.join(' -> ')}`
+)
+
+assert.equal(
+  resolveInsightDisplay({ ...multiMetricColumn, width: 640, height: 320, previousLayout: 'side' }).layout,
+  'top',
+  '多指标卡片真正变窄后应退出侧边摘要'
+)
+assert.equal(
+  resolveInsightDisplay({ ...multiMetricColumn, width: 720, height: 320, previousLayout: 'top' }).layout,
+  'side',
+  '多指标卡片真正变宽后应进入侧边摘要'
+)
+assert.equal(
+  resolveInsightDisplay({ ...multiMetricColumn, width: 720, height: 250, previousLayout: 'side' }).layout,
+  'top',
+  '多指标卡片真正变矮后应退出侧边摘要'
+)
+assert.equal(
+  resolveInsightDisplay({ ...multiMetricColumn, width: 720, height: 310, previousLayout: 'top' }).layout,
+  'side',
+  '多指标卡片真正变高后应进入侧边摘要'
+)
+
+assert.equal(
+  resolveInsightDisplay({ ...trend, width: 1200, height: 540, previousLayout: 'top' }).layout,
+  'top',
+  '宽屏趋势图的宽高比处于切换带时应保留顶部布局'
+)
+assert.equal(
+  resolveInsightDisplay({ ...trend, width: 1200, height: 540, previousLayout: 'side' }).layout,
+  'side',
+  '宽屏趋势图的宽高比处于切换带时应保留侧边布局'
+)
+
 const stateKey = buildInsightLayoutStateKey({
   viewId: 'chart-a',
   chartType: 'line',

@@ -2,7 +2,7 @@ import type { ChartAxis, ChartData, ChartTypes } from '@/views/chat/component/Ba
 import {
   buildInsightDataStructureKey,
   buildInsightLayoutStateKey,
-  resolveInsightDisplay,
+  resolveDashboardCardInsightDisplay,
   type InsightDensity,
   type InsightDisplayStrategy,
   type InsightLayout,
@@ -53,7 +53,7 @@ export interface TabInsightLayoutTransition {
   error?: unknown
 }
 
-export type TabInsightDisplayResolver = typeof resolveInsightDisplay
+export type TabInsightDisplayResolver = typeof resolveDashboardCardInsightDisplay
 
 const CONTROLS_RESERVE: Record<TabInsightControlsVariant, number> = {
   none: 0,
@@ -134,7 +134,7 @@ function buildTabInsightLayoutSignature(input: TabInsightLayoutInput) {
 export function transitionTabInsightLayout(
   state: TabInsightLayoutState,
   input: TabInsightLayoutInput,
-  resolver: TabInsightDisplayResolver = resolveInsightDisplay
+  resolver: TabInsightDisplayResolver = resolveDashboardCardInsightDisplay
 ): TabInsightLayoutTransition {
   const signature = buildTabInsightLayoutSignature(input)
   if (!signature || signature === state.lastAttemptedSignature) {

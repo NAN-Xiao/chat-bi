@@ -48,6 +48,8 @@ const props = withDefaults(
     columns?: Array<ChartAxis>
     sql?: string
     dateRange?: [string, string] | null
+    showDateContext?: boolean
+    surface?: 'default' | 'dashboard'
     compact?: boolean
     maxStats?: number
     layout?: InsightLayout
@@ -63,6 +65,8 @@ const props = withDefaults(
     columns: () => [],
     sql: '',
     dateRange: null,
+    showDateContext: true,
+    surface: 'default',
     compact: false,
     maxStats: 4,
     layout: 'top',
@@ -528,6 +532,9 @@ function comparisonLabel(metric: TrendComparisonMetric, granularity: TrendTimeGr
 }
 
 function aggregateLabel(metric: TrendAggregateMetric) {
+  if (props.surface === 'dashboard' && (metric === 'average' || metric === 'sum')) {
+    return t(metric === 'average' ? 'chat.insight_card_average' : 'chat.insight_card_sum')
+  }
   const labels: Record<TrendAggregateMetric, string> = {
     average: insightText('chat.insight_period_average', 'dashboard.insight_period_average', 'average'),
     sum: insightText('chat.insight_period_sum', 'dashboard.insight_period_sum', 'sum'),
@@ -901,7 +908,7 @@ function buildConfiguredTrendSummary(
     })
   }
 
-  if (comparisonStats.length === 0 && aggregateStats.length === 0) {
+  if (props.surface !== 'dashboard' && comparisonStats.length === 0 && aggregateStats.length === 0) {
     return null
   }
 
@@ -1154,6 +1161,13 @@ const configuredTrendSummary = computed<ConfiguredTrendSummary | null>(() => {
   return buildConfiguredTrendSummary(axis, points)
 })
 
+const configuredTrendValueTitle = computed(() => {
+  const summary = configuredTrendSummary.value
+  if (!summary) return ''
+  const metric = displayAxisName(valueAxes.value[0]) || valueAxes.value[0]?.value || ''
+  return [metric, summary.anchorLabel, summary.latestValue].filter(Boolean).join(' · ')
+})
+
 const dataDateRangeLabel = computed(() => {
   if (rows.value.length === 0) {
     return ''
@@ -1224,11 +1238,13 @@ const inferredDataDateRangeLabel = computed(() => {
 
 const metaItems = computed(() => {
   const items: Array<string> = []
-  const dataPeriod = formatInsightDateRange(props.dateRange)
-    || dataDateRangeLabel.value
-    || inferredDataDateRangeLabel.value
-  if (dataPeriod) {
-    items.push(t('chat.insight_data_period', [dataPeriod]))
+  if (props.showDateContext) {
+    const dataPeriod = formatInsightDateRange(props.dateRange)
+      || dataDateRangeLabel.value
+      || inferredDataDateRangeLabel.value
+    if (dataPeriod) {
+      items.push(t('chat.insight_data_period', [dataPeriod]))
+    }
   }
   return items
 })
@@ -1250,10 +1266,40 @@ const anchorLabel = computed(() => {
     return t('chat.insight_trend_summary')
   }
   if (isTrendLike.value && latestAnchorValue.value) {
+    if (!props.showDateContext && isDateLikeValue(latestAnchorValue.value)) {
+      return ''
+    }
     return t('chat.insight_latest', [stringifyValue(latestAnchorValue.value)])
   }
   return t('chat.insight_top', [stats.value.length])
 })
+
+const usesLatestCardSummary = computed(() =>
+  !usesConversionFunnelStats.value
+  && !structureChartTypes.has(props.chartType)
+  && props.chartType !== 'sankey'
+  && isTrendLike.value
+)
+const cardSummaryCaption = computed(() =>
+  usesLatestCardSummary.value ? t('chat.insight_latest_value') : anchorLabel.value
+)
+
+function cardStatTitle(item: StatItem) {
+  const dateLabel = usesLatestCardSummary.value ? stringifyValue(latestAnchorValue.value) : ''
+  return [
+    cardSummaryCaption.value,
+    item.label,
+    dateLabel,
+    item.subLabel !== dateLabel ? item.subLabel : '',
+    item.value,
+    item.meta,
+  ].filter(Boolean).join(' · ')
+}
+
+function showCardStatDetail(item: StatItem) {
+  return Boolean(item.subLabel)
+    && (props.showDateContext || !isDateLikeValue(item.subLabel))
+}
 
 const layoutClass = computed(() => props.layout)
 const densityClass = computed(() => props.density)
@@ -1388,7 +1434,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    v-if="shouldShow && stats.length > 0"
+    v-if="shouldShow && (configuredTrendSummary || stats.length > 0)"
     ref="headerRef"
     class="chart-insight-header"
     :style="fitStyle"
@@ -1398,6 +1444,7 @@ onBeforeUnmount(() => {
       {
         compact,
         'configured-trend': Boolean(configuredTrendSummary),
+        'dashboard-card-summary': surface === 'dashboard',
         'featured-side': featuredSide,
       },
     ]"
@@ -1410,10 +1457,13 @@ onBeforeUnmount(() => {
         <template v-if="configuredTrendSummary">
           <div class="configured-trend-layout">
             <div class="configured-trend-primary">
-              <div class="configured-trend-anchor" :title="configuredTrendSummary.anchorLabel">
+              <div v-if="surface === 'dashboard'" class="configured-trend-caption">
+                {{ t('chat.insight_latest_value') }}
+              </div>
+              <div v-if="showDateContext" class="configured-trend-anchor" :title="configuredTrendSummary.anchorLabel">
                 {{ configuredTrendSummary.anchorLabel }}
               </div>
-              <div class="configured-trend-value" :title="configuredTrendSummary.latestValue">
+              <div class="configured-trend-value" :title="configuredTrendValueTitle">
                 {{ configuredTrendSummary.latestValue }}
               </div>
             </div>
@@ -1432,7 +1482,9 @@ onBeforeUnmount(() => {
                   :title="item.subLabel ? `${item.label} ${item.subLabel}` : item.label"
                 >
                   <span class="configured-trend-item-label">{{ item.label }}</span>
-                  <span class="configured-trend-item-value" :class="item.tone">{{ item.value }}</span>
+                  <span class="configured-trend-item-value" :class="item.tone">
+                    <span v-if="surface === 'dashboard' && (item.tone === 'positive' || item.tone === 'negative')" aria-hidden="true">{{ item.tone === 'positive' ? '↑ ' : '↓ ' }}</span>{{ item.value }}
+                  </span>
                 </div>
               </div>
               <div
@@ -1456,6 +1508,21 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </template>
+        <div v-else-if="surface === 'dashboard'" class="card-general-summary">
+          <div v-if="!usesLatestCardSummary && cardSummaryCaption" class="card-summary-caption">{{ cardSummaryCaption }}</div>
+          <div class="card-summary-grid">
+            <div v-for="item in visibleStats" :key="`${item.label}-${item.value}`" class="card-summary-stat" :title="cardStatTitle(item)">
+              <div v-if="item.label || usesLatestCardSummary" class="card-summary-label">
+                <span v-if="usesLatestCardSummary" class="card-summary-context">{{ cardSummaryCaption }}</span>
+                <span v-if="item.label" class="card-summary-color" :style="{ backgroundColor: item.color }" />
+                <span v-if="item.label" class="card-summary-label-text">{{ item.label }}</span>
+              </div>
+              <div class="card-summary-value">{{ item.value }}</div>
+              <div v-if="showCardStatDetail(item)" class="card-summary-detail">{{ item.subLabel }}</div>
+              <div v-if="item.meta" class="card-summary-change" :class="item.tone">{{ item.meta }}</div>
+            </div>
+          </div>
+        </div>
         <template v-else>
           <div v-if="showAnchor && anchorLabel" class="insight-anchor">{{ anchorLabel }}</div>
           <div class="insight-stat-grid">
@@ -2317,4 +2384,154 @@ onBeforeUnmount(() => {
     }
   }
 }
+
+/* 卡片摘要采用固定信息顺序；宽度只控制换行，不改变摘要所在区域。 */
+.chart-insight-header.dashboard-card-summary {
+  min-width: 0;
+  padding: 0 0 10px;
+  margin-bottom: 8px;
+
+  .insight-stat-row { display: block; }
+  .card-general-summary { width: 100%; min-width: 0; }
+  .card-summary-caption {
+    color: #63748c;
+    font-size: 12px;
+    line-height: 18px;
+    margin-bottom: 6px;
+  }
+  .card-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(112px, 100%), 1fr));
+    gap: 12px 20px;
+  }
+  .card-summary-stat { min-width: 0; }
+  .card-summary-context { flex: 0 0 auto; }
+  .card-summary-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #63748c;
+    font-size: 12px;
+    line-height: 18px;
+  }
+  .card-summary-label-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-summary-color {
+    width: 6px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-radius: 2px;
+  }
+  .card-summary-value {
+    margin-top: 2px;
+    color: #14243a;
+    font-size: 24px;
+    line-height: 30px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-summary-detail,
+  .card-summary-change {
+    margin-top: 3px;
+    color: #63748c;
+    font-size: 12px;
+    line-height: 18px;
+    overflow-wrap: anywhere;
+  }
+  .card-summary-change.positive { color: #0c9b6d; }
+  .card-summary-change.negative { color: #e05252; }
+
+  &.side .card-summary-grid { grid-template-columns: minmax(0, 1fr); }
+
+  &.configured-trend {
+    .insight-stat-row { margin-top: 0; }
+    .configured-trend-layout {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      min-height: 64px;
+      gap: 12px 20px;
+    }
+    .configured-trend-primary { flex: 0 0 96px; min-width: 0; }
+    .configured-trend-caption {
+      color: #63748c;
+      font-size: 12px;
+      font-weight: 400;
+      line-height: 18px;
+    }
+    .configured-trend-value {
+      margin-top: 2px;
+      font-size: 28px;
+      line-height: 34px;
+      font-variant-numeric: tabular-nums;
+    }
+    .configured-trend-metrics { display: contents; }
+    .configured-trend-comparison {
+      display: flex;
+      flex: 0 0 auto;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    .configured-trend-comparison-item { gap: 8px; }
+    .configured-trend-item-label { font-size: 12px; line-height: 18px; }
+    .configured-trend-item-value { font-size: 12px; line-height: 18px; }
+    .configured-trend-aggregate {
+      display: flex;
+      flex: 0 1 auto;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: flex-end;
+      gap: 12px 0;
+      margin-left: auto;
+    }
+    .configured-trend-aggregate-item {
+      flex: 0 0 104px;
+      min-width: 0;
+      padding-left: 16px;
+      border-left: 1px solid #eaf0f8;
+    }
+    .configured-trend-aggregate-row {
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 4px;
+    }
+    .configured-trend-aggregate-value {
+      font-size: 18px;
+      line-height: 24px;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+}
+
+@container (max-width: 560px) {
+  .chart-insight-header.dashboard-card-summary {
+    .card-summary-grid {
+      grid-template-columns: repeat(auto-fit, minmax(min(88px, 100%), 1fr));
+      gap: 12px;
+    }
+    .card-summary-value { font-size: 22px; line-height: 28px; }
+  }
+  .chart-insight-header.dashboard-card-summary.configured-trend {
+    .configured-trend-layout { gap: 8px 16px; min-height: 56px; }
+    .configured-trend-primary { flex-basis: 88px; }
+    .configured-trend-value { font-size: 24px; line-height: 30px; }
+    .configured-trend-aggregate {
+      flex-basis: 100%;
+      margin-left: 0;
+    }
+    .configured-trend-aggregate-item { flex-basis: 96px; padding-left: 12px; }
+    .configured-trend-aggregate-value { font-size: 16px; line-height: 22px; }
+  }
+}
+
 </style>

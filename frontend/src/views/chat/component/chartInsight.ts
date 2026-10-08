@@ -37,6 +37,9 @@ const SIDE_COMPACT_MAX_HEIGHT = 390
 // 其窗口必须大于最大 header 高差（compact↔basic 约 10px），避免一次外部 resize 的回摆
 // 立即反向切换档位，导致摘要布局频繁改变。
 const DENSITY_HYSTERESIS = 20
+// 侧边与顶部摘要使用不同的紧凑内边距；测量宽高回摆时保留原布局，避免反复重绘。
+const LAYOUT_HYSTERESIS = 20
+const WIDE_TREND_ASPECT_HYSTERESIS = 0.05
 const WIDE_TREND_SIDE_MIN_WIDTH = 1100
 const WIDE_TREND_SIDE_MIN_HEIGHT = 260
 const WIDE_TREND_SIDE_MIN_ASPECT_RATIO = 2.2
@@ -154,6 +157,21 @@ function isBelowDensityThreshold(
     return value < threshold - DENSITY_HYSTERESIS
   }
   return value < threshold
+}
+
+function isAboveLayoutThreshold(
+  value: number,
+  threshold: number,
+  previousLayout?: InsightLayout,
+  hysteresis = LAYOUT_HYSTERESIS
+) {
+  if (previousLayout === 'side') {
+    return value >= threshold - hysteresis
+  }
+  if (previousLayout === 'top') {
+    return value >= threshold + hysteresis
+  }
+  return value >= threshold
 }
 
 function resolveSideMaxStats(height: number, fallback: number) {
@@ -405,8 +423,9 @@ export function resolveInsightDisplay(params: {
   dashboard?: boolean
   previousLayout?: InsightLayout
   previousDensity?: InsightDensity
+  layout?: InsightLayout
 }): InsightDisplayStrategy {
-  const preferredLayout = resolveInsightLayout(params)
+  const preferredLayout = params.layout ?? resolveInsightLayout(params)
   const width = params.width || 0
   const height = params.height || 0
   const visibleMetricCount = axisValues(params.y).length
@@ -419,15 +438,21 @@ export function resolveInsightDisplay(params: {
   const wideTrendMinHeight =
     params.previousLayout === 'side' ? WIDE_TREND_SIDE_MIN_HEIGHT : SIDE_MIN_HEIGHT
   const isWideSingleMetricTrend =
+    params.layout === undefined &&
     params.dashboard &&
     preferredLayout === 'top' &&
     ['line', 'area'].includes(params.chartType) &&
     axisValues(params.y).length === 1 &&
     axisValues(params.series).length === 0 &&
     trendGranularity !== null &&
-    width >= WIDE_TREND_SIDE_MIN_WIDTH &&
+    isAboveLayoutThreshold(width, WIDE_TREND_SIDE_MIN_WIDTH, params.previousLayout) &&
     height >= wideTrendMinHeight &&
-    width / Math.max(height, 1) >= WIDE_TREND_SIDE_MIN_ASPECT_RATIO
+    isAboveLayoutThreshold(
+      width / Math.max(height, 1),
+      WIDE_TREND_SIDE_MIN_ASPECT_RATIO,
+      params.previousLayout,
+      WIDE_TREND_ASPECT_HYSTERESIS
+    )
 
   if (!params.dashboard || width <= 0 || height <= 0) {
     return {
@@ -440,9 +465,11 @@ export function resolveInsightDisplay(params: {
   }
 
   const sideAllowed =
-    (preferredLayout === 'side' && width >= WIDE_SIDE_MIN_WIDTH && height >= SIDE_MIN_HEIGHT) ||
+    (preferredLayout === 'side'
+      && isAboveLayoutThreshold(width, WIDE_SIDE_MIN_WIDTH, params.previousLayout)
+      && isAboveLayoutThreshold(height, SIDE_MIN_HEIGHT, params.previousLayout)) ||
     isWideSingleMetricTrend
-  const layout: InsightLayout = sideAllowed ? 'side' : 'top'
+  const layout: InsightLayout = params.layout ?? (sideAllowed ? 'side' : 'top')
 
   if (width < TINY_MIN_WIDTH || height < TINY_MIN_HEIGHT) {
     return {
@@ -559,4 +586,21 @@ export function resolveInsightDisplay(params: {
     maxStats: resolveSideMaxStats(height, useCompactDensity ? 3 : 4),
     featuredSide: isWideSingleMetricTrend,
   }
+}
+
+
+// 看板趋势卡片固定使用顶部摘要；其他图表仍按其结构选择摘要布局。
+export function resolveDashboardCardInsightDisplay(
+  params: Parameters<typeof resolveInsightDisplay>[0]
+): InsightDisplayStrategy {
+  const dashboard = params.dashboard !== false
+  const display = resolveInsightDisplay({
+    ...params,
+    dashboard,
+    layout: dashboard && ['line', 'area'].includes(params.chartType) ? 'top' : params.layout,
+  })
+  // 顶部卡片通过换行容纳摘要，不再因紧凑密度缩减为单个分组。
+  return dashboard && display.show && display.layout === 'top'
+    ? { ...display, maxStats: Math.max(display.maxStats, 4) }
+    : display
 }

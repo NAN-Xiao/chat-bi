@@ -1124,7 +1124,7 @@ defineExpose({
 .dv-preview {
   --dashboard-preview-card-bg: #ffffff;
   --dashboard-preview-canvas-bg: #fbfbff;
-  --dashboard-preview-sidebar-bg: #f3f7fc;
+  --dashboard-preview-sidebar-bg: #eaf1f8;
 
   width: 100%;
   height: 100%;

@@ -75,7 +75,11 @@ const sixGroups = {
 const fiveResult = transitionTabInsightLayout(createTabInsightLayoutState(), fiveGroups)
 const sixResult = transitionTabInsightLayout(fiveResult.state, sixGroups)
 assert.equal(sixResult.processed, true, 'series 从 5 组到 6 组必须产生一次结构转换')
-assert.notEqual(sixResult.display?.layout, fiveResult.display?.layout)
+assert.equal(fiveResult.display?.layout, 'top')
+assert.equal(sixResult.display?.layout, 'top', '趋势卡片分组增多后仍使用顶部摘要')
+const fiveColumnResult = transitionTabInsightLayout(createTabInsightLayoutState(), { ...fiveGroups, chartType: 'column' })
+const sixColumnResult = transitionTabInsightLayout(fiveColumnResult.state, { ...sixGroups, chartType: 'column' })
+assert.notEqual(sixColumnResult.display?.layout, fiveColumnResult.display?.layout, '柱状图保留按数据结构选择摘要布局的能力')
 
 const summaryOff = transitionTabInsightLayout(stableState, {
   ...baseInput,

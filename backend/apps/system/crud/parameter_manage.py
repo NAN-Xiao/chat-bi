@@ -2,13 +2,23 @@
 脚本说明：这个脚本封装系统管理的增删改查和保存逻辑，让接口层不直接处理太多细节。
 """
 import json
+import re
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from sqlmodel import select
 
 from common.core.deps import SessionDep
 from common.utils.file_utils import AppFileUtils
 from apps.system.models.system_model import SysArgModel
+
+APP_VERSION_KEY = 'platform.app_version'
+DEFAULT_APP_VERSION = 'v1.3.0'
+APP_VERSION_PATTERN = re.compile(r'^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$')
+
+
+def get_app_version(session: SessionDep) -> str:
+    row = session.exec(select(SysArgModel).where(SysArgModel.pkey == APP_VERSION_KEY)).first()
+    return row.pval if row else DEFAULT_APP_VERSION
 
 
 async def get_group_args(session: SessionDep, flag: str | None = None) -> list[SysArgModel]:
@@ -98,6 +108,11 @@ async def save_parameter_args(session: SessionDep, request: Request):
         for item in json.loads(json_text)
         if "pkey" in item
     ]
+    for item in sys_args:
+        if item.pkey == APP_VERSION_KEY:
+            item.pval = (item.pval or '').strip()
+            if not APP_VERSION_PATTERN.fullmatch(item.pval):
+                raise HTTPException(status_code=400, detail='版本号格式应为 v1.3.0')
     if not sys_args:
         return
     file_mapping = None

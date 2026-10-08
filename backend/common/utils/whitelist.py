@@ -37,7 +37,8 @@ wlist = [
     "/system/assistant/info/*",
     "/system/assistant/app/*",
     "/system/assistant/picture/*",
-    "/system/parameter/login"
+    "/system/parameter/login",
+    "/system/parameter/version",
 ]
 
 class WhitelistChecker:

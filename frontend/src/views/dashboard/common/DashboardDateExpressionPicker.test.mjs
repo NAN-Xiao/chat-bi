@@ -25,6 +25,12 @@ assert.match(source, /动态时间/)
 assert.match(source, /静态时间/)
 assert.match(source, /endpoint-connector/)
 assert.match(source, /endpoint-static-badge/)
+assert.match(source, /showResolvedRange\?: boolean/)
+assert.match(source, /resolvedRange\?: \[string, string\] \| null/)
+assert.match(source, /props\.resolvedRange\s*\|\|\s*dashboardDateExpressionCalendarRange\(model\.value, now\.value, props\.timezone\)/)
+assert.match(source, /model\.value\.preset === 'all_time'/)
+assert.match(source, /class="date-expression-range"[\s\S]*?<Calendar \/>/)
+assert.match(source, /class="date-expression-arrow"[\s\S]*?<ArrowDown \/>/)
 assert.match(source, /side === 'start' && draft\[side\]\.mode === 'static'/)
 assert.match(
   source,
@@ -67,7 +73,7 @@ assert.match(
   /@media \(max-width: 560px\)[\s\S]*?\.picker-body\s*{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/
 )
 const compactViewportStyles = source.match(
-  /@media \(max-width: 720px\) \{([\s\S]*?)\n\}\n\n@media \(max-width: 560px\)/
+  /@media \(max-width: 720px\) \{([\s\S]*?)\r?\n\}\r?\n\r?\n@media \(max-width: 560px\)/
 )?.[1] || ''
 assert.match(compactViewportStyles, /\.calendar-panel\s*{[\s\S]*?min-width:\s*502px/)
 assert.doesNotMatch(source, /resourceId|dashboardMode|ROI看板|sq-view/)

@@ -208,7 +208,7 @@ export class Metric extends BaseChart {
       const metricLabel = this.displayAxisName(axis)
       label.textContent = metricLabel
       Object.assign(label.style, {
-        color: '#6b7a90',
+        color: context.surface === 'dashboard' ? '#667085' : '#6b7a90',
         fontSize: isMini ? '11px' : '13px',
         lineHeight: isMini ? '15px' : '20px',
         maxWidth: '100%',
@@ -245,9 +245,9 @@ export class Metric extends BaseChart {
       const rawValue = firstRow[axis.value]
       value.textContent = this.formatValue(rawValue, axis)
       Object.assign(value.style, {
-        color: '#15233b',
+        color: context.surface === 'dashboard' ? '#101828' : '#15233b',
         fontSize: `${layout.valueFontSize}px`,
-        fontWeight: '700',
+        fontWeight: context.surface === 'dashboard' ? '600' : '700',
         lineHeight: `${layout.valueLineHeight}px`,
         marginTop: layout.valueMarginTop,
         maxWidth: '100%',
