@@ -12,7 +12,7 @@ const { descriptor } = parse(source)
 const translations = JSON.parse(readFileSync(new URL('../../i18n/zh-CN.json', import.meta.url), 'utf8'))
 const t = key => key.split('.').reduce((value, part) => value?.[part], translations) || key
 
-function setup() {
+function setup(extra = {}) {
   const ast = ts.createSourceFile('index.ts', descriptor.scriptSetup.content, ts.ScriptTarget.Latest, true)
   const script = ast.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(ast)).join('\n')
   const context = vm.createContext({
@@ -21,8 +21,9 @@ function setup() {
     watch: () => {}, onBeforeUnmount: () => {},
     formatTimestamp: () => '-',
     ElMessage: { success() {}, warning() {} },
+    ...extra,
   })
-  vm.runInContext(ts.transpileModule(`${script}\nglobalThis.state = { form, pendingFile, openCreateCard, openEditCard, beforeKnowledgeUpload, releaseVersionText, t, cardList, filteredCards, formatCardTime, sourceText, sourceClass, releaseVersionClass };`, {
+  vm.runInContext(ts.transpileModule(`${script}\nglobalThis.state = { form, formRef, saving, drawerVisible, saveCard, pendingFile, openCreateCard, openEditCard, beforeKnowledgeUpload, releaseVersionText, t, cardList, filteredCards, formatCardTime, sourceText, sourceClass, releaseVersionClass };`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText, context)
   return context.state
@@ -45,6 +46,44 @@ test('replacement file preserves the explicit enabled or disabled setting', () =
     assert.equal(state.form.value.active, active)
   }
 })
+
+for (const result of [
+  { status: 'READY', active: true, error_message: null },
+  { status: 'FAILED', active: false, error_message: '文档正文为空，无法处理。' },
+  { status: 'READY', active: false, error_message: '知识库上下文超过容量限制。' },
+]) {
+  test(`save reports the final inline parsing result: ${result.status} ${result.error_message || 'success'}`, async () => {
+    const messages = []
+    let finishValidation
+    let finishSave
+    const state = setup({
+      knowledgeBaseApi: {
+        save: () => new Promise(resolve => { finishSave = resolve }),
+        list: async () => [],
+      },
+      ElMessage: {
+        success: message => messages.push(['success', message]),
+        error: message => messages.push(['error', message]),
+        warning() {},
+      },
+    })
+    state.openCreateCard()
+    state.beforeKnowledgeUpload({ name: 'document.md', size: 100 })
+    messages.length = 0
+    state.formRef.value = { validate: callback => { finishValidation = callback(true) } }
+    state.saveCard()
+    assert.equal(state.saving.value, true)
+    assert.equal(state.drawerVisible.value, true)
+    assert.deepEqual(messages, [])
+    finishSave(result)
+    await finishValidation
+    assert.deepEqual(messages, result.error_message
+      ? [['error', result.error_message]]
+      : [['success', t('common.save_success')]])
+    assert.equal(state.saving.value, false)
+    assert.equal(state.drawerVisible.value, false)
+  })
+}
 
 test('enabled documents show processing and failure rather than published before ready', () => {
   const state = setup()

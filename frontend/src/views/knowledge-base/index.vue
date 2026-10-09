@@ -256,7 +256,7 @@ function saveCard() {
     }
     saving.value = true
     try {
-      await knowledgeBaseApi.save({
+      const savedCard = await knowledgeBaseApi.save({
         id: form.value.id,
         tenant_id: selectedWorkspaceTenantId.value,
         name: form.value.name.trim(),
@@ -265,7 +265,11 @@ function saveCard() {
         visibility_scope: defaultScope.value,
         file: pendingFile.value,
       })
-      ElMessage.success(t('common.save_success'))
+      if (savedCard.error_message) {
+        ElMessage.error(savedCard.error_message)
+      } else {
+        ElMessage.success(t('common.save_success'))
+      }
       closeForm()
       await loadCards()
     } catch (error) {

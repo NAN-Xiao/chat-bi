@@ -120,7 +120,9 @@ def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
     expected_file_id = payload.get("file_id")
 
-    with Session(engine) as session:
+    # Keep the selected file metadata after commit, without reopening a database
+    # connection for file extraction. The row is explicitly reloaded before writeback.
+    with Session(engine, expire_on_commit=False) as session:
         record = session.get(KnowledgeBase, record_id, with_for_update=True)
         if record is None or int(record.tenant_id) != tenant_id:
             return {"id": record_id, "tenant_id": tenant_id, "status": "missing"}
@@ -143,7 +145,6 @@ def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
         record.update_time = now
         session.add(record)
         session.commit()
-        session.refresh(record)
 
         try:
             content = _extract_content(record)
@@ -166,7 +167,9 @@ def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
 
         # Reload under a row lock so replacement and manual deactivation during
         # extraction cannot be overwritten by this processing task.
-        session.refresh(record, with_for_update=True)
+        record = session.get(KnowledgeBase, record_id, with_for_update=True, populate_existing=True)
+        if record is None:
+            return {"id": record_id, "tenant_id": tenant_id, "status": "missing"}
         if record.file_id != expected_file_id:
             return {"id": record_id, "tenant_id": tenant_id, "status": "superseded"}
         if record.status != KnowledgeBaseStatusEnum.PROCESSING:

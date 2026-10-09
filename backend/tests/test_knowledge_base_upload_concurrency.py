@@ -6,7 +6,7 @@ from io import BytesIO
 from threading import Barrier, BrokenBarrierError
 
 import pytest
-from fastapi import BackgroundTasks, UploadFile
+from fastapi import HTTPException, UploadFile
 from sqlmodel import Session
 
 from apps.knowledge_base.api import knowledge_base as api
@@ -19,18 +19,19 @@ pytestmark = pytest.mark.skipif(not os.getenv("KNOWLEDGE_TEST_POSTGRES_URL"), re
 
 def test_concurrent_replacements_do_not_block_the_api_event_loop(workspace, monkeypatch):
     document = upload(workspace, active="false").json()
+    original_save = api._save_upload
 
     async def save_file(file):
         # Match the yield made by reading a disk-spooled UploadFile.
         await asyncio.sleep(0.05)
-        return file.filename, file.filename, ".md"
+        return await original_save(file)
 
     monkeypatch.setattr(api, "_save_upload", save_file)
 
     async def save(filename):
         with Session(workspace.engine) as session:
             return await api.save_knowledge_base(
-                session, workspace.user, BackgroundTasks(), id=document["id"], name="文档",
+                session, workspace.user, id=document["id"], name="文档",
                 description="", active=False, visibility_scope="ADMIN_PUBLIC", tenant_id=23,
                 file=UploadFile(filename=filename, file=BytesIO(b"body")),
             )
@@ -39,17 +40,26 @@ def test_concurrent_replacements_do_not_block_the_api_event_loop(workspace, monk
         first = asyncio.create_task(save("first.md"))
         await asyncio.sleep(0.01)
         second = asyncio.create_task(save("second.md"))
-        return await asyncio.gather(first, second)
+        return await asyncio.gather(first, second, return_exceptions=True)
 
     results = asyncio.run(concurrent())
     assert len(results) == 2
-    assert get_document(workspace)["file_id"] == "second.md"
+    for result in results:
+        if isinstance(result, HTTPException):
+            assert result.status_code == 409
+            assert result.detail["code"] == "knowledge_upload_superseded"
+        else:
+            assert not isinstance(result, Exception), result
+            assert result.status == "READY"
+    assert not isinstance(results[1], Exception)
+    latest = get_document(workspace)
+    assert latest["file_name"] == "second.md"
+    assert latest["status"] == "READY"
+    assert latest["content"] == "body"
 
 
 def test_parallel_processing_cannot_exceed_combined_context_capacity(workspace, monkeypatch):
     monkeypatch.setattr(api.settings, "KNOWLEDGE_CONTEXT_MAX_CHARS", 2000)
-    first = upload(workspace, content="a" * 1000, active="true").json()
-    second = upload(workspace, content="b" * 1000, active="true").json()
     extraction_barrier = Barrier(2)
     validation_barrier = Barrier(2)
     original_extract = tasks._extract_content
@@ -72,9 +82,13 @@ def test_parallel_processing_cannot_exceed_combined_context_capacity(workspace, 
     monkeypatch.setattr(tasks, "_extract_content", extract)
     monkeypatch.setattr(tasks, "build_knowledge_context", validate)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [pool.submit(process, workspace, item) for item in (first, second)]
+        futures = [pool.submit(upload, workspace, content=body, active="true")
+                   for body in ("a" * 1000, "b" * 1000)]
         for future in futures:
-            future.result(timeout=5)
+            response = future.result(timeout=10)
+            assert response.status_code == 200, response.text
+            assert response.json()["status"] == "READY"
+            assert response.json()["task_id"] is None
     documents = workspace.client.get("/knowledge-base/list", params={"visibility_scope": "ADMIN_PUBLIC"}).json()
     assert sum(document["active"] for document in documents) == 1
     assert any("超过" in (document["error_message"] or "") for document in documents)

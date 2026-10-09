@@ -9,7 +9,6 @@ from typing import Optional
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     File,
     Form,
     HTTPException,
@@ -39,8 +38,6 @@ from apps.system.crud.user import is_platform_admin, is_platform_workspace_deleg
 from apps.system.schemas.access_context import require_current_tenant_id
 from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
-from common.core.task_queue import enqueue_task
-from common.core.task_registry import register_builtin_tasks
 from common.utils.file_utils import AppFileUtils
 
 router = APIRouter(tags=["KnowledgeBase"], prefix="/knowledge-base", include_in_schema=False)
@@ -303,7 +300,6 @@ async def list_knowledge_base(
 async def save_knowledge_base(
     session: SessionDep,
     current_user: CurrentUser,
-    background_tasks: BackgroundTasks,
     id: Optional[int] = Form(None),
     name: str = Form(...),
     description: str = Form(""),
@@ -403,32 +399,27 @@ async def save_knowledge_base(
             session.rollback()
             raise _knowledge_http_error(400, exc.code, exc.message, details=exc.details) from exc
         record.error_message = None
+    process_payload = (
+        {"id": int(record.id), "tenant_id": int(record.tenant_id), "file_id": record.file_id}
+        if should_process else None
+    )
     session.commit()
-    session.refresh(record)
 
-    if should_process:
-        process_payload = {"id": int(record.id), "tenant_id": int(record.tenant_id), "file_id": record.file_id}
-        try:
-            register_builtin_tasks()
-            task = await enqueue_task(
-                "knowledge_base.process_document",
-                process_payload,
-                created_by=int(current_user.id),
-                tenant_id=int(record.tenant_id),
+    if process_payload is not None:
+        # Finish parsing where the file was uploaded. Await the local thread
+        # without holding an API connection needed by the processing session.
+        result = await run_in_threadpool(process_knowledge_base_document, process_payload)
+        record = await run_in_threadpool(
+            session.get, KnowledgeBase, process_payload["id"], populate_existing=True,
+        )
+        if record is None:
+            raise _knowledge_http_error(404, "knowledge_not_found", "知识库已被删除，请刷新列表。")
+        if result["status"] == "superseded" or record.file_id != process_payload["file_id"]:
+            raise _knowledge_http_error(
+                409, "knowledge_upload_superseded", "文档已被另一上传替换，请刷新列表查看最新文档。",
             )
-            task_id = task.get("id")
-        except Exception:
-            task_id = None
-            background_tasks.add_task(
-                process_knowledge_base_document,
-                process_payload,
-            )
-        await run_in_threadpool(session.refresh, record, with_for_update=True)
-        if record.file_id == process_payload["file_id"]:
-            record.task_id = task_id
-            session.add(record)
-            session.commit()
-            session.refresh(record)
+    else:
+        session.refresh(record)
 
     return _serialize_record(current_user, record, scope_tenant_id)
 
