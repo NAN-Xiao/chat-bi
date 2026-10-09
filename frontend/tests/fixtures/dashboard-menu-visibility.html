@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>看板操作菜单可见性回归</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h, markRaw } from 'vue'
+      import ElementPlus from 'element-plus-secondary'
+      import VueDOMPurifyHTML from 'vue-dompurify-html'
+      import { store } from '/src/stores/index.ts'
+      import { i18n } from '/src/i18n/index.ts'
+      import ComponentBar from '/src/views/dashboard/canvas/ComponentBar.vue'
+      import HandleMore from '/src/views/dashboard/common/HandleMore.vue'
+      import iconEdit from '/src/assets/svg/icon_sql_outlined.svg'
+      import '/node_modules/element-plus-secondary/dist/index.css'
+      import '/src/style.less'
+
+      i18n.global.locale.value = 'zh-CN'
+      const events = []
+      const menuList = [
+        { label: '编辑', command: 'edit', svgName: markRaw(iconEdit) },
+        { label: '禁用操作', command: 'disabled', disabled: true },
+        { label: '删除', command: 'delete', divided: true },
+      ]
+      createApp({
+        setup: () => () =>
+          h('main', [
+            h('h1', '看板操作菜单可见性'),
+            ...[
+              ['canvas', { canEdit: true, canShare: true, canEditSql: true }],
+              ['readonly', { canEdit: false, canShare: true, canEditSql: false }],
+            ].map(([id, permissions]) =>
+              h('section', { 'data-fixture': id }, [
+                h('span', id),
+                h(ComponentBar, {
+                  active: true,
+                  configItem: { id, component: 'SQView' },
+                  ...permissions,
+                  onEnlargeView: () => events.push('preview'),
+                  onEditSql: () => events.push('editSql'),
+                }),
+              ])
+            ),
+            ...[
+              ['resource', {}],
+              ['compact', { compactTextOnly: true }],
+              ['create', { createMenu: true }],
+            ].map(([id, options]) =>
+              h('section', { 'data-fixture': id }, [
+                h('span', id),
+                h(HandleMore, {
+                  menuList,
+                  ...options,
+                  onHandleCommand: (command) => events.push(command),
+                }),
+              ])
+            ),
+          ]),
+      })
+        .use(store)
+        .use(i18n)
+        .use(ElementPlus)
+        .use(VueDOMPurifyHTML)
+        .mount('#app')
+      window.menuVisibilityQA = { events }
+    </script>
+    <style>
+      main {
+        padding: 32px;
+      }
+      h1 {
+        font-size: 20px;
+        margin-bottom: 24px;
+      }
+      section {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 480px;
+        height: 80px;
+        margin: 16px 0;
+        padding: 16px;
+        background: var(--workspace-card-bg);
+        border: 1px solid var(--workspace-border);
+      }
+    </style>
+  </body>
+</html>

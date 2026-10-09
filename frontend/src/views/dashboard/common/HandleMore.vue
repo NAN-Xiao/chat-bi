@@ -139,29 +139,15 @@ const emit = defineEmits(['handleCommand'])
     min-height: 36px;
     max-width: min(280px, calc(100vw - 24px));
     padding: 0 12px;
+    border-radius: 6px;
     background: none;
     color: var(--workspace-text-primary);
     line-height: 20px;
     white-space: nowrap;
-    &:focus {
-      background: none;
+    &:not(.is-disabled):focus,
+    &:not(.is-disabled):hover {
+      background: var(--workspace-control-hover-bg);
       color: var(--workspace-text-primary);
-    }
-    &:hover {
-      background: none;
-      color: var(--workspace-text-primary);
-
-      &::after {
-        content: '';
-        width: calc(100% - 8px);
-        height: 32px;
-        border-radius: 6px;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: var(--workspace-control-hover-bg);
-      }
     }
   }
 }
@@ -180,11 +166,6 @@ const emit = defineEmits(['handleCommand'])
     padding: 0 10px;
     font-size: 13px;
     line-height: 18px;
-  }
-
-  .ed-dropdown-menu__item:hover::after {
-    width: calc(100% - 4px);
-    height: 24px;
   }
 }
 
@@ -207,11 +188,6 @@ const emit = defineEmits(['handleCommand'])
   .handle-icon {
     margin-right: 8px;
     color: var(--workspace-text-secondary);
-  }
-
-  .ed-dropdown-menu__item:hover::after {
-    width: calc(100% - 8px);
-    height: 32px;
   }
 }
 </style>
