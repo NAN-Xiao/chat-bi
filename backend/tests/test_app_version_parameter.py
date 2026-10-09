@@ -32,7 +32,7 @@ class FakeRequest:
 
 
 def test_app_version_defaults_only_when_not_configured():
-    assert get_app_version(FakeSession()) == "v1.3.0"
+    assert get_app_version(FakeSession()) == "v2.1.0"
     assert get_app_version(FakeSession("v2.4.1")) == "v2.4.1"
     assert get_app_version(FakeSession("")) == ""
 

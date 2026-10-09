@@ -15,7 +15,7 @@ const state = reactive({
     'chat.limit_rows': false,
     'chat.show_sql': false,
     'chat.show_log': false,
-    'platform.app_version': 'v1.3.0',
+    'platform.app_version': 'v2.1.0',
   }),
   feishuForm: reactive<any>({
     enable: false,
@@ -200,7 +200,7 @@ const buildParam = () => {
 const saveHandler = () => {
   const version = String(state.parameterForm['platform.app_version'] ?? '').trim()
   if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
-    ElMessage.error('版本号格式应为 v1.3.0')
+    ElMessage.error('版本号格式应为 v2.1.0')
     return
   }
   state.parameterForm['platform.app_version'] = version
@@ -264,7 +264,7 @@ onMounted(() => {
           <div class="card-item">
             <div class="label">展示版本号</div>
             <div class="value">
-              <el-input v-model="state.parameterForm['platform.app_version']" maxlength="32" placeholder="v1.3.0" />
+              <el-input v-model="state.parameterForm['platform.app_version']" maxlength="32" placeholder="v2.1.0" />
             </div>
           </div>
         </el-row>

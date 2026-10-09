@@ -12,7 +12,7 @@ from common.utils.file_utils import AppFileUtils
 from apps.system.models.system_model import SysArgModel
 
 APP_VERSION_KEY = 'platform.app_version'
-DEFAULT_APP_VERSION = 'v1.3.0'
+DEFAULT_APP_VERSION = 'v2.1.0'
 APP_VERSION_PATTERN = re.compile(r'^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$')
 
 
@@ -112,7 +112,7 @@ async def save_parameter_args(session: SessionDep, request: Request):
         if item.pkey == APP_VERSION_KEY:
             item.pval = (item.pval or '').strip()
             if not APP_VERSION_PATTERN.fullmatch(item.pval):
-                raise HTTPException(status_code=400, detail='版本号格式应为 v1.3.0')
+                raise HTTPException(status_code=400, detail='版本号格式应为 v2.1.0')
     if not sys_args:
         return
     file_mapping = None

@@ -35,7 +35,7 @@ interface AppearanceState {
 }
 
 const DEFAULT_BRAND_NAME = '星通数智'
-const DEFAULT_APP_VERSION = 'v1.3.0'
+const DEFAULT_APP_VERSION = 'v2.1.0'
 
 export const useAppearanceStore = defineStore('appearanceStore', {
   state: (): AppearanceState => {
