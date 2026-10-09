@@ -299,23 +299,34 @@ function openDetail(row: KnowledgeBaseItem) {
   detailVisible.value = true
 }
 
+function canDownloadCard(row: KnowledgeBaseItem) {
+  return Boolean(row.file_id || (row.status === 'READY' && row.content?.trim()))
+}
+
 async function downloadCard(row: KnowledgeBaseItem) {
-  if (!row.file_id) {
+  if (!canDownloadCard(row)) {
     ElMessage.warning(t('knowledge_base.file_not_found'))
     return
   }
   try {
-    const blob = await knowledgeBaseApi.download(row.id, selectedWorkspaceTenantId.value)
+    const { blob, filename, recovered } = await knowledgeBaseApi.download(row.id, selectedWorkspaceTenantId.value)
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = row.file_name || `${row.name}.${row.file_ext || 'md'}`
+    link.download = filename
     document.body.appendChild(link)
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
+    if (recovered) {
+      ElMessage.success(t('knowledge_base.download_recovered'))
+      await loadCards()
+    }
   } catch (error) {
     console.error(error)
+    if (!(error as { isAxiosError?: boolean })?.isAxiosError) {
+      ElMessage.error(t('knowledge_base.download_failed'))
+    }
   }
 }
 
@@ -451,7 +462,7 @@ onBeforeUnmount(() => {
                 <el-button link type="primary" @click="openDetail(row)">{{
                   t('menu.Details')
                 }}</el-button>
-                <el-button link type="primary" :disabled="!row.file_id" @click="downloadCard(row)">
+                <el-button link type="primary" :disabled="!canDownloadCard(row)" @click="downloadCard(row)">
                   <el-icon><Download /></el-icon>
                   {{ t('knowledge_base.download') }}
                 </el-button>

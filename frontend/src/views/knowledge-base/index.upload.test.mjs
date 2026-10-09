@@ -23,7 +23,7 @@ function setup(extra = {}) {
     ElMessage: { success() {}, warning() {} },
     ...extra,
   })
-  vm.runInContext(ts.transpileModule(`${script}\nglobalThis.state = { form, formRef, saving, drawerVisible, saveCard, pendingFile, openCreateCard, openEditCard, beforeKnowledgeUpload, releaseVersionText, t, cardList, filteredCards, formatCardTime, sourceText, sourceClass, releaseVersionClass };`, {
+  vm.runInContext(ts.transpileModule(`${script}\nglobalThis.state = { form, formRef, saving, drawerVisible, saveCard, pendingFile, openCreateCard, openEditCard, beforeKnowledgeUpload, releaseVersionText, t, cardList, filteredCards, formatCardTime, sourceText, sourceClass, releaseVersionClass, downloadCard, canDownloadCard };`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText, context)
   return context.state
@@ -45,6 +45,13 @@ test('replacement file preserves the explicit enabled or disabled setting', () =
     state.beforeKnowledgeUpload({ name: 'replacement.md', size: 100 })
     assert.equal(state.form.value.active, active)
   }
+})
+
+test('enabled documents show processing and failure rather than published before ready', () => {
+  const state = setup()
+  assert.equal(state.releaseVersionText({ active: true, status: 'PENDING' }), t('knowledge_base.process_pending'))
+  assert.equal(state.releaseVersionText({ active: true, status: 'PROCESSING' }), t('knowledge_base.process_processing'))
+  assert.equal(state.releaseVersionText({ active: true, status: 'READY' }), t('knowledge_base.published'))
 })
 
 for (const result of [
@@ -85,11 +92,30 @@ for (const result of [
   })
 }
 
-test('enabled documents show processing and failure rather than published before ready', () => {
+test('body-only document downloads the filename provided by the server', async () => {
+  const link = { href: '', download: '', click() {}, remove() {} }
+  const blob = new Blob(['恢复正文'], { type: 'text/markdown' })
+  const state = setup({
+    Blob,
+    knowledgeBaseApi: {
+      download: async () => ({ blob, filename: '业务术语_正文.md', recovered: true }),
+      list: async () => [],
+    },
+    document: { createElement: () => link, body: { appendChild() {} } },
+    URL: { createObjectURL: () => 'blob:recovered', revokeObjectURL() {} },
+  })
+  await state.downloadCard({ id: 1, name: '术语', file_id: null, file_name: '业务术语.docx',
+    file_ext: '.docx', content: '恢复正文', status: 'READY' })
+  assert.equal(link.href, 'blob:recovered')
+  assert.equal(link.download, '业务术语_正文.md')
+})
+
+test('download is enabled for completed body-only records but not unfinished or empty records', () => {
   const state = setup()
-  assert.equal(state.releaseVersionText({ active: true, status: 'PENDING' }), t('knowledge_base.process_pending'))
-  assert.equal(state.releaseVersionText({ active: true, status: 'PROCESSING' }), t('knowledge_base.process_processing'))
-  assert.equal(state.releaseVersionText({ active: true, status: 'READY' }), t('knowledge_base.published'))
+  assert.equal(state.canDownloadCard({ file_id: null, content: '正文', status: 'READY' }), true)
+  assert.equal(state.canDownloadCard({ file_id: null, content: '正文', status: 'PROCESSING' }), false)
+  assert.equal(state.canDownloadCard({ file_id: null, content: ' \n ', status: 'READY' }), false)
+  assert.equal(state.canDownloadCard({ file_id: 'source.md', content: null, status: 'PENDING' }), true)
 })
 
 test('更新 column renders the upload name and unknown history as a dash', () => {

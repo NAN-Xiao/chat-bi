@@ -3,9 +3,13 @@
 """
 from __future__ import annotations
 
+import logging
+import os
+import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import BinaryIO, Optional
 
 from fastapi import (
     APIRouter,
@@ -15,9 +19,11 @@ from fastapi import (
     Query,
     UploadFile,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from starlette.types import Receive, Scope, Send
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy import desc, or_
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import select
 
 from apps.knowledge_base.context import KnowledgeContextError, build_knowledge_context, lock_knowledge_activation
@@ -44,6 +50,7 @@ router = APIRouter(tags=["KnowledgeBase"], prefix="/knowledge-base", include_in_
 
 ALLOWED_EXTENSIONS = {".md", ".markdown", ".docx"}
 KNOWLEDGE_FILE_MAX_BYTES = 50 * 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 def _knowledge_http_error(
@@ -424,6 +431,111 @@ async def save_knowledge_base(
     return _serialize_record(current_user, record, scope_tenant_id)
 
 
+class _KnowledgeDownloadResponse(StreamingResponse):
+    """Stream an already-open file, retaining its snapshot across replacements."""
+
+    def __init__(self, source: BinaryIO, path: Path, filename: str, *, recovered: bool):
+        self.source = source
+        metadata = FileResponse(
+            path=path, filename=filename, stat_result=os.fstat(source.fileno()),
+            media_type="text/markdown; charset=utf-8" if recovered else "application/octet-stream",
+            headers={
+                "X-Knowledge-Document-Recovered": "true" if recovered else "false",
+                "Access-Control-Expose-Headers": "Content-Disposition, X-Knowledge-Document-Recovered",
+            },
+        )
+        # This download streams the complete document rather than serving ranges.
+        del metadata.headers["accept-ranges"]
+
+        def chunks():
+            with source:
+                while chunk := source.read(64 * 1024):
+                    yield chunk
+
+        super().__init__(chunks(), headers=dict(metadata.headers))
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self.source.close()
+
+
+def _knowledge_download_file(session: SessionDep, record: KnowledgeBase) -> _KnowledgeDownloadResponse:
+    """Lock, restore when needed, and open the selected document before unlocking."""
+    record_id = int(record.id)
+    record = session.get(KnowledgeBase, record_id, with_for_update=True, populate_existing=True)
+    if record is None:
+        raise _knowledge_http_error(404, "knowledge_not_found", "知识库不存在。")
+
+    temporary_path = None
+    restored_path = None
+    opened_source = None
+    try:
+        if record.file_id:
+            source_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, record.file_id)
+            if source_path.is_file():
+                try:
+                    opened_source = source_path.open("rb")
+                except FileNotFoundError:
+                    # A missing file is the explicitly supported recovery case.
+                    opened_source = None
+                if opened_source is not None:
+                    response = _KnowledgeDownloadResponse(
+                        opened_source, source_path, record.file_name or record.file_id, recovered=False,
+                    )
+                    session.commit()
+                    return response
+
+        content = record.content or ""
+        if not content.strip():
+            raise _knowledge_http_error(
+                404, "knowledge_file_not_found", "知识库源文件和可恢复正文均不存在，无法下载。",
+            )
+        if record.status != KnowledgeBaseStatusEnum.READY:
+            raise _knowledge_http_error(
+                409, "knowledge_content_not_ready", "文档正文尚未处理完成，无法恢复源文件。",
+            )
+
+        file_id = f"{uuid.uuid4().hex}.md"
+        restored_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, file_id)
+        restored_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="\n", dir=restored_path.parent,
+            prefix=".knowledge-", suffix=".tmp", delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(content)
+        os.replace(temporary_path, restored_path)
+        stem = Path(record.file_name).stem if record.file_name else record.name
+        record.file_id = file_id
+        record.file_name = f"{stem[:240]}_正文.md"
+        record.file_ext = ".md"
+        opened_source = restored_path.open("rb")
+        response = _KnowledgeDownloadResponse(
+            opened_source, restored_path, record.file_name, recovered=True,
+        )
+        # Recovery is not a new upload or a business-content update: retain
+        # uploaded_by, update_time, status, active and task identity.
+        session.add(record)
+        session.commit()
+    except (OSError, SQLAlchemyError) as exc:
+        session.rollback()
+        if opened_source is not None:
+            opened_source.close()
+        for candidate in (temporary_path, restored_path):
+            if candidate is not None:
+                try:
+                    candidate.unlink(missing_ok=True)
+                except OSError:
+                    logger.exception("Failed to clean up recovered knowledge file: %s", candidate)
+        logger.exception("Failed to prepare knowledge download: id=%s", record_id)
+        raise _knowledge_http_error(
+            500, "knowledge_file_recovery_failed", "知识库正文文件重建失败，请检查上传目录后重试。",
+        ) from exc
+    return response
+
+
 @router.get("/{id}/download")
 async def download_knowledge_base_file(
     session: SessionDep,
@@ -432,23 +544,14 @@ async def download_knowledge_base_file(
     tenant_id: Optional[int] = Query(None),
 ):
     """Download the source document after applying the same scope checks as management."""
-    record = session.get(KnowledgeBase, int(id))
+    record = await run_in_threadpool(session.get, KnowledgeBase, int(id))
     if not record:
         raise _knowledge_http_error(404, "knowledge_not_found", "知识库不存在。")
     scope = _parse_scope(record.visibility_scope)
     scope_tenant_id = _scope_tenant_id(session, current_user, scope, tenant_id)
     if int(record.tenant_id) != scope_tenant_id:
         raise _knowledge_http_error(404, "knowledge_not_found", "知识库不存在。")
-    if not record.file_id:
-        raise _knowledge_http_error(404, "knowledge_file_not_found", "知识库源文件不存在。")
-    file_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, record.file_id)
-    if not file_path.is_file():
-        raise _knowledge_http_error(404, "knowledge_file_not_found", "知识库源文件不存在。")
-    return FileResponse(
-        path=file_path,
-        filename=record.file_name or record.file_id,
-        media_type="application/octet-stream",
-    )
+    return await run_in_threadpool(_knowledge_download_file, session, record)
 
 
 @router.delete("/{id}")

@@ -3,6 +3,7 @@ import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
+from pathlib import Path
 from threading import Barrier, BrokenBarrierError
 
 import pytest
@@ -95,3 +96,38 @@ def test_parallel_processing_cannot_exceed_combined_context_capacity(workspace, 
     with Session(workspace.engine) as session:
         context = build_knowledge_context(session, tenant_id=23, surface="test")
         assert context.total_chars <= 2000
+
+
+def test_concurrent_downloads_recover_only_one_source_file(workspace, monkeypatch):
+    document = upload(workspace, content="并发恢复正文", active="false").json()
+    process(workspace, document)
+    Path(api.settings.UPLOAD_DIR, document["file_id"]).unlink()
+    boundary = Barrier(2)
+    recover = api._knowledge_download_file
+
+    def simultaneous_recovery(session, record):
+        boundary.wait(timeout=3)
+        return recover(session, record)
+
+    monkeypatch.setattr(api, "_knowledge_download_file", simultaneous_recovery)
+
+    async def download():
+        with Session(workspace.engine) as session:
+            return await api.download_knowledge_base_file(
+                session, workspace.user, id=document["id"], tenant_id=None,
+            )
+
+    async def concurrent():
+        return await asyncio.gather(download(), download())
+
+    async def read_responses():
+        responses = await concurrent()
+        bodies = [b"".join([chunk async for chunk in response.body_iterator]) for response in responses]
+        return responses, bodies
+
+    responses, bodies = asyncio.run(read_responses())
+    assert sum(response.headers["x-knowledge-document-recovered"] == "true" for response in responses) == 1
+    assert responses[0].headers["content-disposition"] == responses[1].headers["content-disposition"]
+    assert bodies == ["并发恢复正文".encode("utf-8")] * 2
+    restored = get_document(workspace)
+    assert list(Path(api.settings.UPLOAD_DIR).iterdir()) == [Path(api.settings.UPLOAD_DIR, restored["file_id"])]

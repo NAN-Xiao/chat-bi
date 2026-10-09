@@ -2165,6 +2165,8 @@
     "replace_document": "Upload",
     "more": "More",
     "file_not_found": "Source file not found",
+    "download_recovered": "The missing source file has been recreated as Markdown from the saved content.",
+    "download_failed": "Download failed. Please try again.",
     "workspace_knowledge_base": "Workspace Knowledge Base",
     "select_workspace": "Select a workspace",
     "platform_knowledge_base": "Platform Knowledge Base",
