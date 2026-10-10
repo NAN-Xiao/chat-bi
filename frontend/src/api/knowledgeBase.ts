@@ -1,4 +1,5 @@
 import { request } from '@/utils/request'
+import type { AxiosResponse } from 'axios'
 
 export type KnowledgeBaseScope = 'ADMIN_PUBLIC' | 'PLATFORM_PUBLIC'
 export type KnowledgeBaseStatus = 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED'
@@ -35,6 +36,22 @@ export interface KnowledgeBaseSavePayload {
   file?: File | null
 }
 
+export interface KnowledgeDocumentDownload {
+  blob: Blob
+  filename: string
+  recovered: boolean
+}
+
+function downloadFilename(disposition: string): string {
+  const encoded = disposition.match(/(?:^|;)\s*filename\*=utf-8''([^;]+)/i)
+  const plain = disposition.match(/(?:^|;)\s*filename=(?:"([^"]+)"|([^;]+))/i)
+  const filename = encoded
+    ? decodeURIComponent(encoded[1].trim())
+    : (plain?.[1] || plain?.[2] || '').trim()
+  if (!filename) throw new Error('下载文件名缺失，无法保存文件。')
+  return filename
+}
+
 const buildFormData = (payload: KnowledgeBaseSavePayload) => {
   const formData = new FormData()
   if (payload.id) formData.append('id', String(payload.id))
@@ -63,8 +80,16 @@ export const knowledgeBaseApi = {
     request.delete(`/knowledge-base/${id}`, {
       params: tenantId === undefined ? undefined : { tenant_id: tenantId },
     }),
-  download: (id: number | string, tenantId?: number | string) =>
-    request.download(`/knowledge-base/${id}/download`, {
+  download: async (id: number | string, tenantId?: number | string): Promise<KnowledgeDocumentDownload> => {
+    const response = await request.get<AxiosResponse<Blob>>(`/knowledge-base/${id}/download`, {
       params: tenantId === undefined ? undefined : { tenant_id: tenantId },
-    }),
+      responseType: 'blob',
+      requestOptions: { rawResponse: true },
+    })
+    return {
+      blob: response.data,
+      filename: downloadFilename(String(response.headers['content-disposition'] || '')),
+      recovered: response.headers['x-knowledge-document-recovered'] === 'true',
+    }
+  },
 }

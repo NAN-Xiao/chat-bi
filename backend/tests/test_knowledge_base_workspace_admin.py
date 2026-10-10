@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import HTTPException
 
 from apps.knowledge_base.api import knowledge_base as knowledge_base_api
 from apps.knowledge_base.context import KnowledgeContextTooLargeError
@@ -155,7 +155,6 @@ def test_save_allows_empty_usage_instruction(monkeypatch) -> None:
             knowledge_base_api.save_knowledge_base(
                 _Session(),
                 _user(tenant_id=23, tenant_role="admin"),
-                BackgroundTasks(),
                 id=None,
                 name="测试知识库",
                 description="  ",
@@ -188,7 +187,6 @@ def test_non_ready_document_cannot_be_activated(monkeypatch) -> None:
             knowledge_base_api.save_knowledge_base(
                 session,
                 _user(tenant_id=23, tenant_role="admin"),
-                BackgroundTasks(),
                 id=1,
                 name="测试知识库",
                 description="用于回答测试问题。",
@@ -256,7 +254,6 @@ def test_activation_preflights_capacity_and_returns_chinese_counts(monkeypatch) 
             knowledge_base_api.save_knowledge_base(
                 session,
                 _user(tenant_id=23, tenant_role="admin"),
-                BackgroundTasks(),
                 id=1,
                 name="测试知识库",
                 description="用于回答测试问题。",
