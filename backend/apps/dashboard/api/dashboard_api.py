@@ -13,7 +13,8 @@ from apps.dashboard.crud.dashboard_service import list_resource, load_resource, 
     move_resource, reorder_resources, \
     copy_dashboard_to_platform_template, list_platform_dashboard_templates, load_platform_dashboard_template, \
     update_platform_dashboard_template, delete_platform_dashboard_template, copy_platform_template_to_workspace_dashboard, \
-    refresh_platform_dashboard_template, list_chart_execution_datasources, get_chart_execution_datasource_metadata
+    refresh_platform_dashboard_template, list_chart_execution_datasources, get_chart_execution_datasource_metadata, \
+    update_chart_date_filter, refresh_chart_snapshot
 from apps.dashboard.crud.ai_sql_generator import generate_dashboard_ai_sql, compile_dashboard_sql, compile_distribution_dashboard_sql, compile_path_dashboard_sql, requested_analysis_model, DETERMINISTIC_SQL_MODELS
 from apps.dashboard.crud.sql_generation_lifecycle import (
     SqlGenerationDisconnected, SqlGenerationTimeout, run_sql_generation,
@@ -27,6 +28,8 @@ from apps.dashboard.models.dashboard_model import (
     DashboardDefaultSortRequest,
     DashboardExecutionDatasource,
     DashboardReorderRequest,
+    DashboardChartDateFilterUpdateRequest,
+    DashboardChartRefreshRequest,
     DashboardPlatformTemplateCopyRequest,
     DashboardPlatformTemplateUseRequest,
     DashboardAiSqlGenerateRequest,
@@ -382,6 +385,26 @@ async def create_canvas_api(session: SessionDep, user: CurrentUser, dashboard: C
     做了什么：创建或保存仪表盘需要的东西，让后续流程能继续往下走。
     """
     return create_canvas(session, user, dashboard)
+
+
+@router.post("/update_chart_date_filter", summary="保存图表日期配置")
+@system_log(LogConfig(
+    operation_type=OperationType.UPDATE,
+    module=OperationModules.DASHBOARD,
+    resource_id_expr="request.dashboard_id",
+))
+def update_chart_date_filter_api(session: SessionDep, user: CurrentUser, request: DashboardChartDateFilterUpdateRequest):
+    return update_chart_date_filter(session, user, request)
+
+
+@router.post("/refresh_chart_snapshot", summary="刷新图表并保存结果")
+@system_log(LogConfig(
+    operation_type=OperationType.UPDATE,
+    module=OperationModules.DASHBOARD,
+    resource_id_expr="request.dashboard_id",
+))
+def refresh_chart_snapshot_api(session: SessionDep, user: CurrentUser, request: DashboardChartRefreshRequest):
+    return refresh_chart_snapshot(session, user, request)
 
 
 @router.post("/update_canvas", response_model=BaseDashboard, summary=f"{PLACEHOLDER_PREFIX}update_canvas_api")

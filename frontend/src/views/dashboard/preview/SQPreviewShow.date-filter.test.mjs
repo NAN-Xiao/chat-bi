@@ -6,8 +6,8 @@ const source = readFileSync(fileURLToPath(new URL('./SQPreviewShow.vue', import.
 const editorSource = readFileSync(fileURLToPath(new URL('../editor/index.vue', import.meta.url)), 'utf8')
 
 assert.match(source, /dateFilterCapability/)
-assert.match(source, /function chartSqlPayload[\s\S]*buildDashboardDateFilterRequestForView/)
-assert.match(source, /date_filter:\s*buildDashboardDateFilterRequestForView/)
+assert.match(source, /function chartSqlPayload[\s\S]*buildDashboardDateFilterRequestForRefresh/)
+assert.match(source, /date_filter:\s*buildDashboardDateFilterRequestForRefresh/)
 assert.match(source, /CHART_DATABASE_REFRESH_CONCURRENCY\s*=\s*2/)
 assert.match(source, /DASHBOARD_MODE_DEFAULT/)
 assert.match(source, /getOrCreateDashboardDateFilterState\(viewInfo, viewInfo\.dateFilterCapability\)/)

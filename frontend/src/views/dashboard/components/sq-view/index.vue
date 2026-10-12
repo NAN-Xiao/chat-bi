@@ -83,7 +83,7 @@ const props = defineProps({
   },
 })
 
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type PropType } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, inject, type PropType } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
 import {
@@ -128,13 +128,12 @@ import {
 import {
   applyDashboardDateFilterCapability,
   beginDashboardChartRequest,
-  beginDashboardDateApply,
   buildDashboardDateFilterRequestForView,
+  buildDashboardDateFilterRequestForRefresh,
+  isDashboardDateFilterApplying,
   canShowDashboardDateFilter,
-  commitDashboardDateRange,
   createDashboardDateFilterState,
   dashboardDateFilterContext,
-  failDashboardDateRange,
   finishDashboardChartRequest,
   getOrCreateDashboardDateFilterState,
   isDashboardDateApplyDisabled,
@@ -144,6 +143,11 @@ import {
   shouldResetDashboardDateFilterState,
   type DashboardDateFilterCapability,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import {
+  applyDashboardDateExpressionTransaction,
+  DASHBOARD_DATE_FILTER_SAVER,
+} from '@/views/dashboard/utils/dashboardDateFilterPersistence.ts'
+import { DASHBOARD_CHART_SNAPSHOT_REFRESHER, queryDashboardChartWithPersistence, applySavedDashboardSnapshotMetadata } from '@/views/dashboard/utils/dashboardChartSnapshot.ts'
 import {
   INSIGHT_FRAME_CSS_PROPERTIES,
   parseCssPixel,
@@ -166,6 +170,8 @@ import {
 } from '@/views/dashboard/utils/distributionTable.ts'
 normalizeDistributionTableViewInfo(props.viewInfo)
 const { t, locale } = useI18n()
+const persistDateFilter = inject(DASHBOARD_DATE_FILTER_SAVER, undefined)
+const persistChartRefresh = inject(DASHBOARD_CHART_SNAPSHOT_REFRESHER, undefined)
 const containerRef = ref<HTMLElement | null>(null)
 const dashboardFilterControlsRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
@@ -1540,6 +1546,8 @@ function isCurrentRefreshRequest(requestSeq: number, requestVersion: number | nu
 }
 
 async function refreshData(options: RefreshDataOptions = {}) {
+  if (isDashboardDateFilterApplying(props.viewInfo)
+    && !options.dateFilterOverride && !options.dateFilterRangeOverride) return false
   const silent = options.silent === true
   const forceRefresh = options.forceRefresh === true
   const blocking = options.blocking === true || !silent
@@ -1784,15 +1792,18 @@ async function refreshData(options: RefreshDataOptions = {}) {
       ? dateFilterState.value.appliedRange
       : null)
   const dateFilterPayload = options.dateFilterOverride
-    ?? buildDashboardDateFilterRequestForView(props.viewInfo, dateFilterRange)
+    ?? (options.dateFilterRangeOverride
+      ? buildDashboardDateFilterRequestForView(props.viewInfo, dateFilterRange)
+      : buildDashboardDateFilterRequestForRefresh(props.viewInfo))
   let refreshSucceeded = false
   try {
-    const result = await previewChartSqlWithCacheFallback({
+    const result = await queryDashboardChartWithPersistence({
       datasource: props.viewInfo.datasource,
       sql: props.viewInfo.sql.trim(),
       pivot: pivotPayload,
       ...(dateFilterPayload ? { date_filter: dateFilterPayload } : {}),
-    }, forceRefresh)
+    }, forceRefresh, previewChartSqlWithCacheFallback, persistChartRefresh,
+    String(props.viewInfo.id), Boolean(options.dateFilterOverride))
     if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
       return false
     }
@@ -1840,8 +1851,9 @@ async function refreshData(options: RefreshDataOptions = {}) {
       props.viewInfo.dataState = 'ready'
       props.viewInfo.refreshState = ''
       markChartSnapshotRefreshed(props.viewInfo, resultRefreshedAt(result))
+      applySavedDashboardSnapshotMetadata(props.viewInfo, result)
       refreshSucceeded = true
-      if (!silent) {
+      if (!silent && !options.dateFilterOverride) {
         ElMessage.success(t('dashboard.chart_refresh_success'))
       }
     }
@@ -1885,22 +1897,9 @@ async function refreshData(options: RefreshDataOptions = {}) {
 async function applyDashboardDateRange() {
   if (dateFilterApplyDisabled.value) return
   dateFilterPanelVisible.value = false
-  beginDashboardDateApply(dateFilterState.value)
-  const pendingRange = dateFilterState.value.pendingRange
-  if (!pendingRange) {
-    failDashboardDateRange(dateFilterState.value, t('dashboard.chart_refresh_failed'))
-    return
-  }
-  const succeeded = await refreshData({
-    forceRefresh: true,
-    blocking: true,
-    dateFilterRangeOverride: pendingRange,
-  })
-  if (succeeded) {
-    commitDashboardDateRange(dateFilterState.value)
-  } else {
-    failDashboardDateRange(dateFilterState.value, t('dashboard.chart_refresh_failed'))
-  }
+  const [start, end] = dateFilterState.value.draftRange
+  await applyDashboardDateExpression({ version: 1, mode: 'range',
+    start: { mode: 'static', date: start }, end: { mode: 'static', date: end } })
 }
 
 async function applyDashboardDateExpression(value: DashboardDateExpression) {
@@ -1908,36 +1907,20 @@ async function applyDashboardDateExpression(value: DashboardDateExpression) {
   dashboardDateExpressionApplying.value = true
   const next = cloneDashboardDateExpression(value)
   try {
-    const succeeded = await refreshData({
-      forceRefresh: true,
-      blocking: true,
-      dateFilterOverride: buildDashboardDateFilterRequestForView(
-        {
-          ...props.viewInfo,
-          dateFilter: {
-            ...(props.viewInfo?.dateFilter || {}),
-            enabled: true,
-            parameterType: props.viewInfo?.dateFilter?.parameterType
-              || props.viewInfo?.dateFilterCapability?.parameterType,
-            expression: next,
-          },
-        },
-        null
-      ),
-      dateFilterRangeOverride: null,
+    const succeeded = await applyDashboardDateExpressionTransaction(props.viewInfo, next, {
+      refresh: (request) => refreshData({ forceRefresh: true, blocking: true,
+        dateFilterOverride: request, dateFilterRangeOverride: null }),
+      persist: persistChartRefresh ? undefined : persistDateFilter,
     })
     if (succeeded) {
       dashboardDateExpression.value = next
-      if (!props.viewInfo?.dateFilter && props.viewInfo?.dateFilterCapability?.parameterType) {
-        props.viewInfo.dateFilter = {
-          enabled: true,
-          parameterType: props.viewInfo.dateFilterCapability.parameterType,
-          expression: cloneDashboardDateExpression(next),
-        }
-      } else if (props.viewInfo?.dateFilter && typeof props.viewInfo.dateFilter === 'object') {
-        props.viewInfo.dateFilter.expression = cloneDashboardDateExpression(next)
-      }
+      pivotState.range = 'source'
+      pivotState.customStart = ''
+      pivotState.customEnd = ''
+      ElMessage.success(t('dashboard.chart_refresh_success'))
     }
+  } catch (error: any) {
+    ElMessage.error(error?.message || '日期设置未保存')
   } finally {
     dashboardDateExpressionApplying.value = false
   }
@@ -2616,7 +2599,7 @@ defineExpose({
         show-resolved-range
         :resolved-range="insightDateRange"
         timezone="Asia/Shanghai"
-        :disabled="dashboardDateExpressionApplying"
+        :disabled="dashboardDateExpressionApplying || dateFilterState.applying"
         @apply="applyDashboardDateExpression"
       />
       </div>

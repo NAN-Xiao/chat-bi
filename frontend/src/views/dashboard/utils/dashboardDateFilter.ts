@@ -65,7 +65,8 @@ export function beginDashboardChartRequest(
   }
   if (mode === 'background') {
     dashboardChartRequestStates.set(viewInfo, state)
-    return state.foregroundActive ? null : state.version
+    return state.foregroundActive || dashboardDateFilterStates.get(viewInfo)?.applying
+      ? null : state.version
   }
   state.version += 1
   state.foregroundActive = true
@@ -254,6 +255,20 @@ export function buildDashboardDateFilterRequestForView(
         expression: capability?.expression as Record<string, unknown> | undefined,
       }
   return buildDashboardDateFilterRequest(config, range)
+}
+
+// Resolved dates are a query result, not a custom override of a saved expression.
+export function buildDashboardDateFilterRequestForRefresh(
+  viewInfo: DashboardDateFilterViewInfo & object
+): Record<string, unknown> | undefined {
+  const expression = viewInfo.dateFilter?.expression ?? viewInfo.dateFilterCapability?.expression
+  const range = expression ? null
+    : getOrCreateDashboardDateFilterState(viewInfo, viewInfo.dateFilterCapability).appliedRange
+  return buildDashboardDateFilterRequestForView(viewInfo, range)
+}
+
+export function isDashboardDateFilterApplying(viewInfo: object): boolean {
+  return dashboardDateFilterStates.get(viewInfo)?.applying === true
 }
 
 export function buildAppliedDashboardDatePivot(

@@ -10,6 +10,7 @@ import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import router from '@/router'
 import { load_resource_prepare } from '@/views/dashboard/utils/canvasUtils.ts'
 import { dashboardApi } from '@/api/dashboard.ts'
+import { hasSavedDashboardChartSnapshot } from '@/views/dashboard/utils/dashboardChartSnapshot.ts'
 import { useI18n } from 'vue-i18n'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import {
@@ -40,9 +41,7 @@ import {
 import {
   applyDashboardDateFilterCapability,
   beginDashboardChartRequest,
-  buildDashboardDateFilterRequestForView,
-  canShowDashboardDateFilter,
-  getOrCreateDashboardDateFilterState,
+  buildDashboardDateFilterRequestForRefresh,
   isDashboardChartRequestCurrent,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
 import {
@@ -265,14 +264,11 @@ function normalizePermissionDeniedChart(viewInfo: any) {
 }
 
 function chartSqlPayload(viewInfo: any) {
-  const dateFilterState = canShowDashboardDateFilter(viewInfo.dateFilterCapability)
-    ? getOrCreateDashboardDateFilterState(viewInfo, viewInfo.dateFilterCapability)
-    : null
   return {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
     pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
-    date_filter: buildDashboardDateFilterRequestForView(viewInfo, dateFilterState?.appliedRange),
+    date_filter: buildDashboardDateFilterRequestForRefresh(viewInfo),
   }
 }
 
@@ -511,7 +507,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
   const chartEntries = collectDashboardCharts(componentData.value)
     .filter(
       (entry) =>
-        !permissionDeniedCharts.has(entry) &&
+        !permissionDeniedCharts.has(entry) && !hasSavedDashboardChartSnapshot(entry.viewInfo) &&
         Boolean(
           isMixedChart(entry.viewInfo)
             ? canRefreshMixedChart(entry.viewInfo)

@@ -6,8 +6,8 @@ import { dirname, join } from 'node:path'
 const currentDir = dirname(fileURLToPath(import.meta.url))
 const source = readFileSync(join(currentDir, 'SQComponentWrapper.vue'), 'utf8')
 
-assert.match(source, /buildDashboardDateFilterRequestForView/)
-assert.match(source, /date_filter:\s*buildDashboardDateFilterRequestForView/)
+assert.match(source, /buildDashboardDateFilterRequestForRefresh/)
+assert.match(source, /date_filter:\s*buildDashboardDateFilterRequestForRefresh/)
 assert.doesNotMatch(source, /buildAppliedDashboardDatePivot/)
 
 const refreshChartDataMatch = source.match(
