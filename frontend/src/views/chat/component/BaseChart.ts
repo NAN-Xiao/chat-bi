@@ -1,6 +1,5 @@
 import type { ChartLayoutContext } from '@/views/chat/component/chartLayout.ts'
 import { ChartValidationError, trendDimensionError } from '@/views/chat/component/chartValidation.ts'
-import type { LocalTableGroupingState } from './charts/localChartGrouping.ts'
 
 export interface ChartAxis {
   name?: string
@@ -73,9 +72,6 @@ export abstract class BaseChart {
   hideValueAxis: boolean = false
   forecast?: ChartForecastConfig
   layoutContext?: ChartLayoutContext
-  localTableGrouping?: LocalTableGroupingState
-
-  getVisibleData(): ChartData[] { return this.data }
 
   constructor(mountTarget: ChartMountTarget, name: string) {
     this.mountTarget = mountTarget

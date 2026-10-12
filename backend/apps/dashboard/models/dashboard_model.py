@@ -443,12 +443,6 @@ class DashboardPivotRequest(BaseModel):
         return normalized
 
 
-class DashboardLocalGroupingRequest(BaseModel):
-    """Existing SQL text only; local aggregation never queries a datasource."""
-    sql: str = Field(max_length=200000)
-    dialect: str = Field(default='', max_length=64)
-
-
 class DashboardSqlPreview(BaseModel):
     """
     类说明：DashboardSqlPreview 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。

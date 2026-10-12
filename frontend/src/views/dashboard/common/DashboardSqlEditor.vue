@@ -9551,7 +9551,6 @@ const analysisModelFormContext = {
           :y="toAxes(chartPreviewYFields, { metrics: true })"
           :series="toAxes(chartPreviewSeriesFields)"
           :data="previewDisplayData"
-          :sql="isMixedSource || isExternalSnapshot ? undefined : lastPreviewSql"
           :multi-quota-name="form.y.length > 1 && !effectiveSeriesField ? form.multiQuotaName : undefined"
           :forecast="buildForecastConfig()"
         />

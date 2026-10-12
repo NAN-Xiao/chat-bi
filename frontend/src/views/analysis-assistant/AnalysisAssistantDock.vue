@@ -1403,7 +1403,6 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                       :y="getChartYAxis(block.chart)"
                       :series="getChartSeries(block.chart)"
                       :data="block.data"
-                      :sql="block.sql"
                       :multi-quota-name="getMultiQuotaName()"
                       :forecast="block.chart.forecast"
                     />

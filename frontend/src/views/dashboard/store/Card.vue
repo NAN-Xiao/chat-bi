@@ -100,7 +100,6 @@ onMounted(() => {
           :y="chartInfo?.chart?.yAxis || []"
           :series="chartInfo?.chart?.series || []"
           :data="chartInfo?.data?.data || []"
-          :sql="chartInfo?.sql"
           :multi-quota-name="chartInfo?.chart?.multiQuotaName"
           :forecast="chartInfo?.chart?.forecast"
         />

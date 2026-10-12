@@ -103,11 +103,6 @@ const insightLayout = computed(() =>
 )
 
 const chartRef = ref()
-const localVisibleChartData = ref<{ data: Record<string, any>[]; excludedFields: string[] }>()
-const insightDisplayData = computed(() => localVisibleChartData.value?.data ?? props.data)
-const insightDisplaySeries = computed(() => series.value.filter((axis) =>
-  !localVisibleChartData.value?.excludedFields.includes(axis.value)
-))
 
 function onTypeChange() {
   nextTick(() => {
@@ -155,11 +150,11 @@ defineExpose({
     <ChartInsightHeader
       v-if="showInsightHeader && insightLayout === 'top'"
       :chart-type="chartType"
-      :data="insightDisplayData"
+      :data="data"
       :columns="[...(chartObject?.columns || []), ...insightColumns]"
       :x="xAxis"
       :y="yAxis"
-      :series="insightDisplaySeries"
+      :series="series"
       :sql="message.record?.sql"
       :insight="chartObject?.insight"
     />
@@ -173,11 +168,11 @@ defineExpose({
         layout="side"
         :max-stats="4"
         :chart-type="chartType"
-        :data="insightDisplayData"
+        :data="data"
         :columns="[...(chartObject?.columns || []), ...insightColumns]"
         :x="xAxis"
         :y="yAxis"
-        :series="insightDisplaySeries"
+        :series="series"
         :sql="message.record?.sql"
         :insight="chartObject?.insight"
       />
@@ -190,11 +185,9 @@ defineExpose({
         :y="yAxis"
         :series="series"
         :data="data"
-        :sql="message.record?.sql"
         :multi-quota-name="multiQuotaName"
         :show-label="showLabel"
         :forecast="chartObject?.forecast"
-        @visible-data-change="localVisibleChartData = $event"
       />
     </div>
     <el-empty v-else :description="loadingData ? t('chat.loading_data') : t('chat.no_data')" />

@@ -354,11 +354,6 @@ const renderChart = () => {
 const chartComponentKey = computed(
   () => props.outerId || props.viewInfo?.id || 'chart'
 )
-const localVisibleChartData = ref<{ data: Record<string, any>[]; excludedFields: string[] }>()
-const insightDisplayData = computed(() => localVisibleChartData.value?.data ?? displayData.value)
-const insightDisplaySeries = computed(() => renderSeries.value.filter((axis) =>
-  !localVisibleChartData.value?.excludedFields.includes(axis.value)
-))
 
 function handleChartRenderReady() {
   chartFrameReady.value = true
@@ -935,16 +930,13 @@ function reportAxisFields(axes: ChartAxis[]) {
 }
 
 function getReportContextSnapshot() {
-  const chart = chartRef.value as any
-  const visibleRows = chart?.getExcelData?.()?.data
-  const rows = Array.isArray(visibleRows) ? visibleRows : Array.isArray(displayData.value) ? displayData.value : []
+  const rows = Array.isArray(displayData.value) ? displayData.value : []
   const availableGroupValues = new Set(pivotGroupValueOptions.value.map((option) => option.value))
   const selectedGroupValues = pivotGroupValueFilterEnabled.value
     ? Array.from(selectedPivotGroupValueSet.value).filter((value) => availableGroupValues.has(value))
     : []
 
   return {
-    localGrouping: chart?.getLocalGroupingContext?.(),
     fields: unique([
       ...(Array.isArray(props.viewInfo?.data?.fields) ? props.viewInfo.data.fields : []),
       ...(Array.isArray(props.viewInfo?.fields) ? props.viewInfo.fields : []),
@@ -2874,8 +2866,8 @@ defineExpose({
         :columns="chartRenderColumns"
         :x="renderXAxis"
         :y="renderYAxis"
-        :series="insightDisplaySeries"
-        :data="insightDisplayData"
+        :series="renderSeries"
+        :data="displayData"
         :sql="viewInfo.sql"
         :date-range="insightDateRange"
         :insight="viewInfo.chart?.insight"
@@ -2895,8 +2887,8 @@ defineExpose({
           :columns="chartRenderColumns"
           :x="renderXAxis"
           :y="renderYAxis"
-          :series="insightDisplaySeries"
-          :data="insightDisplayData"
+          :series="renderSeries"
+          :data="displayData"
           :sql="viewInfo.sql"
           :date-range="insightDateRange"
           :insight="viewInfo.chart?.insight"
@@ -2914,12 +2906,10 @@ defineExpose({
           :y="renderYAxis"
           :series="renderSeries"
           :data="displayData"
-          :sql="isMixedChart(viewInfo) || isExternalSnapshotChart(viewInfo) ? undefined : viewInfo.sql"
           :multi-quota-name="renderMultiQuotaName"
           :show-label="showLabel"
           :forecast="renderForecast"
           @render-ready="handleChartRenderReady"
-          @visible-data-change="localVisibleChartData = $event"
         />
       </div>
     </div>

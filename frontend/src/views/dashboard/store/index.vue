@@ -312,7 +312,6 @@ watch(currentWorkspaceId, () => {
             :y="previewChartInfo?.chart?.yAxis || []"
             :series="previewChartInfo?.chart?.series || []"
             :data="previewChartInfo?.data?.data || []"
-            :sql="previewChartInfo?.sql"
             :multi-quota-name="previewChartInfo?.chart?.multiQuotaName"
             :forecast="previewChartInfo?.chart?.forecast"
           />

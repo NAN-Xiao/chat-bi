@@ -16,8 +16,6 @@ import {
   type ChartForecastConfig,
 } from '@/views/chat/component/BaseChart.ts'
 import { useEmitt } from '@/utils/useEmitt.ts'
-import { dashboardApi } from '@/api/dashboard.ts'
-import { resolveLocalTableData, type LocalGroupingPlan, type LocalTableGroupingState } from './charts/localChartGrouping.ts'
 
 const params = withDefaults(
   defineProps<{
@@ -35,7 +33,6 @@ const params = withDefaults(
     forecast?: ChartForecastConfig
     surface?: ChartSurface
     hasOuterTitle?: boolean
-    sql?: string
   }>(),
   {
     data: () => [],
@@ -50,12 +47,10 @@ const params = withDefaults(
     forecast: undefined,
     surface: 'preview',
     hasOuterTitle: false,
-    sql: undefined,
   }
 )
 const emit = defineEmits<{
   (event: 'render-ready'): void
-  (event: 'visible-data-change', value: { data: ChartData[]; excludedFields: string[] }): void
 }>()
 const { t, te } = useI18n()
 
@@ -115,69 +110,6 @@ const stagingLayerRef = ref<HTMLElement>()
 const showInitialLoading = ref(true)
 const chartValidationErrorCode = ref<string>()
 const chartSize = ref({ width: 0, height: 0 })
-const localGroupingActive = ref(false)
-const localGroupingIssues = ref<Record<string, string>>({})
-const localRows = ref<ChartData[]>()
-let groupingPlanRequest = 0
-let groupingPlanController: AbortController | undefined
-const localGroupingState: LocalTableGroupingState = {
-  excludedFields: new Set(),
-  filters: new Map(),
-  onChange: (result) => {
-    localGroupingActive.value = localGroupingState.excludedFields.size > 0
-    localRows.value = localGroupingActive.value ? result.data : undefined
-    localGroupingIssues.value = result.issues
-    emit('visible-data-change', { data: result.data, excludedFields: Array.from(localGroupingState.excludedFields) })
-  },
-}
-
-watch(() => params.sql, async (sql) => {
-  const request = ++groupingPlanRequest
-  groupingPlanController?.abort()
-  localGroupingState.plan = undefined
-  localGroupingState.requiresPlan = Boolean(sql?.trim())
-  localGroupingState.loading = Boolean(sql?.trim())
-  localGroupingState.error = ''
-  localGroupingState.excludedFields.clear()
-  localGroupingState.filters.clear()
-  localRows.value = undefined
-  localGroupingActive.value = false
-  localGroupingIssues.value = {}
-  emit('visible-data-change', { data: params.data, excludedFields: [] })
-  void nextTick(() => scheduleRenderChart())
-  if (!sql?.trim()) return
-  groupingPlanController = new AbortController()
-  try {
-    // Parse existing SQL definitions only. Selection changes never call this
-    // endpoint, preview_sql, or any datasource query API.
-    const plan = await dashboardApi.local_grouping_plan({ sql }, { signal: groupingPlanController.signal }) as LocalGroupingPlan
-    if (request !== groupingPlanRequest) return
-    localGroupingState.plan = plan
-    localGroupingState.error = plan.reason || ''
-  } catch (error: any) {
-    if (request !== groupingPlanRequest || groupingPlanController?.signal.aborted) return
-    localGroupingState.error = error?.message || '无法读取本地汇总配置'
-  } finally {
-    if (request === groupingPlanRequest) {
-      localGroupingState.loading = false
-      scheduleRenderChart()
-    }
-  }
-}, { immediate: true })
-
-watch(() => params.data, () => {
-  localGroupingState.filters.clear()
-  if (localGroupingState.plan && localGroupingState.excludedFields.size) {
-    try {
-      localGroupingState.onChange?.(resolveLocalTableData(params.data, localGroupingState))
-    } catch (error: any) {
-      localGroupingState.excludedFields.clear()
-      localRows.value = undefined
-      localGroupingActive.value = false
-      localGroupingState.error = error?.message || '新的数据缺少本地汇总所需字段'
-    }
-  }
-}, { deep: true })
 const previousDensity = ref<ChartDensity>()
 let resizeObserver: ResizeObserver | undefined
 let renderTimer: number | undefined
@@ -305,10 +237,7 @@ function configureChart(instance: BaseChart) {
   instance.hideZeroLabel = params.hideZeroLabel
   instance.hideValueAxis = params.hideValueAxis
   instance.forecast = params.forecast
-  instance.localTableGrouping = localGroupingState
-  const renderAxes = params.type === 'table' ? axis.value
-    : axis.value.filter((item) => !localGroupingState.excludedFields.has(item.value))
-  instance.init(renderAxes, params.type === 'table' ? params.data : localRows.value ?? params.data)
+  instance.init(axis.value, params.data)
 }
 
 function destroyChartInstance(instance: BaseChart | undefined) {
@@ -501,7 +430,7 @@ watch(
 function getExcelData() {
   return {
     axis: axis.value,
-    data: chartInstance?.getVisibleData() ?? localRows.value ?? params.data,
+    data: params.data,
   }
 }
 
@@ -530,11 +459,6 @@ defineExpose({
   renderChart: () => scheduleRenderChart(),
   destroyChart,
   getExcelData,
-  getLocalGroupingContext: () => ({
-    excludedFields: Array.from(localGroupingState.excludedFields),
-    issues: { ...localGroupingIssues.value },
-    loadedRowsOnly: localGroupingActive.value,
-  }),
   getElement: () => chartContainerRef.value,
 })
 
@@ -556,8 +480,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  groupingPlanRequest++
-  groupingPlanController?.abort()
   if (renderTimer) {
     window.clearTimeout(renderTimer)
     renderTimer = undefined
