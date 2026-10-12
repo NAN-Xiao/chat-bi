@@ -19,10 +19,12 @@ import { i18n } from '@/i18n'
 import { formatCompactDateByAxis } from '@/views/chat/component/charts/compactDate.ts'
 import {
   collectTableFilterOptions,
-  refreshFilteredTableData,
+  applyTableFilters,
+  EMPTY_FILTER_VALUE,
   searchTableFilterOptions,
   type TableFilters,
 } from '@/views/chat/component/charts/tableFilter.ts'
+import { resolveLocalTableData } from './localChartGrouping.ts'
 import {
   TABLE_HEADER_ACTION_ICON_THEME,
   resolveTableHeaderActionIconFill,
@@ -177,6 +179,24 @@ export class Table extends BaseChart {
   private tableFilters: TableFilters = new Map()
 
   private filterSourceData: S2DataConfig['data'] = []
+  private visibleData: S2DataConfig['data'] = []
+  private groupedData: S2DataConfig['data'] = []
+  private groupingIssues: Record<string, string> = {}
+
+  getVisibleData() { return this.visibleData }
+
+  private resolveVisibleData() {
+    const grouping = this.localTableGrouping
+    const filtered = grouping ? undefined : applyTableFilters(this.filterSourceData, this.tableFilters)
+    const result = grouping
+      ? resolveLocalTableData(this.filterSourceData, grouping)
+      : { data: filtered!, groupedData: filtered!, issues: {} }
+    this.visibleData = result.data
+    this.groupedData = result.groupedData
+    this.groupingIssues = result.issues
+    grouping?.onChange?.(result)
+    return result.data
+  }
 
   private filterPopup: HTMLDivElement | null = null
 
@@ -264,13 +284,20 @@ export class Table extends BaseChart {
     this.closeFilterPopup()
 
     const fieldAxis = this.axis?.find((axisItem) => axisItem.value === field)
-    const options = collectTableFilterOptions(
-      this.filterSourceData,
+    const grouping = this.localTableGrouping
+    const isGroupingField = grouping?.plan?.dimensions.includes(field) === true
+    let options = collectTableFilterOptions(
+      grouping?.excludedFields.size && !isGroupingField ? this.groupedData : this.filterSourceData,
       field,
       (value) => resolveTableDisplayValue(value, fieldAxis)
     )
-    const allOptionKeys = new Set(options.map((option) => option.key))
-    let selectedValues = this.tableFilters.has(field)
+    if (isGroupingField) {
+      options = options.filter((option) => !option.isEmpty)
+      options.unshift({ key: EMPTY_FILTER_VALUE, label: '（空值：不分组）', count: 0, isEmpty: true })
+    }
+    const allOptionKeys = new Set(options.filter((option) => !isGroupingField || !option.isEmpty).map((option) => option.key))
+    let selectedValues = isGroupingField && grouping?.excludedFields.has(field)
+      ? new Set([EMPTY_FILTER_VALUE]) : this.tableFilters.has(field)
       ? new Set(this.tableFilters.get(field))
       : new Set(allOptionKeys)
 
@@ -319,20 +346,47 @@ export class Table extends BaseChart {
 
     const footer = document.createElement('div')
     footer.className = 'table-column-filter__footer'
-    footer.textContent = '候选值最多显示前 200 项'
+    footer.textContent = isGroupingField
+      ? '选择空值取消此列分组，仅汇总已加载数据；候选值最多显示前 200 项'
+      : '候选值最多显示前 200 项'
 
     const updateSelectionSummary = () => {
-      selectionSummary.textContent = `已选 ${selectedValues.size} / ${options.length}`
+      selectionSummary.textContent = isGroupingField && selectedValues.has(EMPTY_FILTER_VALUE)
+        ? '不分组' : `已选 ${selectedValues.size} / ${allOptionKeys.size}`
     }
 
+    let committedValues = new Set(selectedValues)
+    let selectionRequest = 0
     const commitSelection = () => {
-      if (selectedValues.size === allOptionKeys.size) {
+      const request = ++selectionRequest
+      const previousFilters = new Map(Array.from(this.tableFilters, ([key, values]) => [key, new Set(values)]))
+      const previousExcluded = new Set(grouping?.excludedFields)
+      if (isGroupingField && selectedValues.has(EMPTY_FILTER_VALUE)) {
+        grouping?.excludedFields.add(field)
+        this.tableFilters.delete(field)
+      } else if (selectedValues.size === allOptionKeys.size) {
+        grouping?.excludedFields.delete(field)
         this.tableFilters.delete(field)
       } else {
+        grouping?.excludedFields.delete(field)
         this.tableFilters.set(field, new Set(selectedValues))
       }
       updateSelectionSummary()
-      void this.filterDataUpdater?.()
+      const pendingValues = new Set(selectedValues)
+      void this.filterDataUpdater?.().then(() => {
+        if (request === selectionRequest) committedValues = pendingValues
+      }).catch((error) => {
+        if (request !== selectionRequest) return
+        this.tableFilters.clear()
+        previousFilters.forEach((values, key) => this.tableFilters.set(key, values))
+        grouping?.excludedFields.clear()
+        previousExcluded.forEach((key) => grouping?.excludedFields.add(key))
+        selectedValues = new Set(committedValues)
+        this.resolveVisibleData()
+        renderOptions()
+        updateSelectionSummary()
+        ElMessage.error(error?.message || '无法本地汇总，请检查分组和指标配置')
+      })
     }
 
     const renderOptions = () => {
@@ -353,13 +407,24 @@ export class Table extends BaseChart {
 
         const checkbox = document.createElement('input')
         checkbox.type = 'checkbox'
+        checkbox.dataset.filterKey = option.key
         checkbox.checked = selectedValues.has(option.key)
+        if (option.isEmpty && grouping?.requiresPlan && (grouping.loading || grouping.error)) {
+          checkbox.disabled = true
+          item.title = grouping.loading ? '正在读取本地汇总配置' : grouping.error || '无法读取本地汇总配置'
+        }
         checkbox.addEventListener('change', () => {
-          if (checkbox.checked) {
+          if (isGroupingField && option.isEmpty) {
+            selectedValues = checkbox.checked ? new Set([EMPTY_FILTER_VALUE]) : new Set(allOptionKeys)
+          } else if (checkbox.checked) {
+            if (isGroupingField) selectedValues.delete(EMPTY_FILTER_VALUE)
             selectedValues.add(option.key)
           } else {
             selectedValues.delete(option.key)
           }
+          optionList.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((input) => {
+            input.checked = selectedValues.has(input.dataset.filterKey || '')
+          })
           commitSelection()
         })
 
@@ -369,7 +434,7 @@ export class Table extends BaseChart {
 
         const count = document.createElement('span')
         count.className = 'table-column-filter__option-count'
-        count.textContent = String(option.count)
+        count.textContent = isGroupingField && option.isEmpty ? '' : String(option.count)
 
         item.append(checkbox, label, count)
         optionList.appendChild(item)
@@ -435,12 +500,13 @@ export class Table extends BaseChart {
 
   init(axis: Array<ChartAxis>, data: Array<ChartData>) {
     this.closeFilterPopup()
-    this.tableFilters.clear()
+    this.tableFilters = this.localTableGrouping?.filters ?? new Map()
     super.init(
       filter(axis, (a) => !a.hidden), //隐藏多指标的other-info列
       data
     )
     this.filterSourceData = [...(this.data as S2DataConfig['data'])]
+    this.resolveVisibleData()
 
     const s2DataConfig: S2DataConfig = {
       sortParams:
@@ -458,11 +524,12 @@ export class Table extends BaseChart {
             field: a.value,
             name: axisLabel(a),
             formatter: (value: any) => {
+              if ((value === null || value === undefined) && this.groupingIssues[a.value]) return '无法本地计算'
               return resolveTableDisplayValue(value, a)
             },
           }
         }) ?? [],
-      data: this.data,
+      data: this.visibleData,
     }
 
     const sortState: Record<string, string> = {}
@@ -472,12 +539,8 @@ export class Table extends BaseChart {
       if (!this.table) {
         return
       }
-      await refreshFilteredTableData(
-        this.table,
-        { ...s2DataConfig, sortParams: currentSortParams },
-        this.filterSourceData,
-        this.tableFilters
-      )
+      this.table.setDataCfg({ ...s2DataConfig, sortParams: currentSortParams, data: this.resolveVisibleData() })
+      await this.table.render(true)
     }
 
     const handleSortClick = (params: any) => {
@@ -554,10 +617,10 @@ export class Table extends BaseChart {
               return false
             }
             if (iconName === TABLE_FILTER_ACTIVE_ICON) {
-              return this.tableFilters.has(node.field)
+              return this.tableFilters.has(node.field) || this.localTableGrouping?.excludedFields.has(node.field) === true
             }
             if (iconName === TABLE_FILTER_ICON) {
-              return !this.tableFilters.has(node.field)
+              return !this.tableFilters.has(node.field) && !this.localTableGrouping?.excludedFields.has(node.field)
             }
             if (iconName === TABLE_SORT_DESC_ICON) {
               return sortState[node.field] === 'desc'
@@ -617,7 +680,10 @@ export class Table extends BaseChart {
             container.style.whiteSpace = 'pre-wrap'
 
             const axis = this.axis?.find((axisItem) => axisItem.value === meta.field)
-            const formattedValue = resolveTableDisplayValue(meta.fieldValue, axis)
+            const field = String(meta.field)
+            const formattedValue = meta.fieldValue == null && this.groupingIssues[field]
+              ? `无法本地计算：${this.groupingIssues[field]}`
+              : resolveTableDisplayValue(meta.fieldValue, axis)
             const text = document.createTextNode(String(formattedValue))
             container.appendChild(text)
 
@@ -679,7 +745,7 @@ export class Table extends BaseChart {
 
   destroy() {
     this.closeFilterPopup()
-    this.tableFilters.clear()
+    if (!this.localTableGrouping) this.tableFilters.clear()
     this.filterSourceData = []
     this.filterDataUpdater = null
     this.debounceRender?.cancel?.()

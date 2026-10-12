@@ -10,6 +10,8 @@ export const dashboardApi = {
   check_name: (params: any) => request.post('/dashboard/check_name', params),
   preview_sql: (params: any, config?: any) =>
     request.post('/dashboard/sql_preview', params, { timeout: 180000, ...config }),
+  local_grouping_plan: (params: { sql: string }, config?: any) =>
+    request.post('/dashboard/local_grouping_plan', params, config),
   execution_datasources: () => request.get('/dashboard/execution-datasources'),
   execution_datasource_metadata: (id: number) => request.get(`/dashboard/execution-datasource-metadata/${id}`),
   compile_sql: (params: any, config?: any) => request.post('/dashboard/sql_compile', params, {

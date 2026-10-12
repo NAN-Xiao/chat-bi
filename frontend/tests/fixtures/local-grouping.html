@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<title>本地表格汇总交互验证</title>
+<style>
+  body { margin: 24px; font-family: sans-serif; background: white; }
+  :root { --workspace-control-bg:#e8efff; --workspace-card-bg:white;
+    --workspace-border:#dce5f8; --workspace-text-primary:#15233b;
+    --workspace-text-secondary:#65758c; --workspace-text-tertiary:#9aa6b7;
+    --workspace-control-hover-bg:#eff4ff; --workspace-active-bg:#e8efff; }
+  #table { width: 1100px; height: 360px; }
+  #notice { height: 30px; font-size: 13px; }
+</style>
+<div id="notice">原始结果</div>
+<div id="table"></div>
+<script type="module">
+  import { Table } from '/src/views/chat/component/charts/Table.ts'
+  const plan = {
+    dimensions: ['day', 'region'],
+    metrics: {
+      value: { kind: 'aggregate', aggregation: 'sum' },
+      units: { kind: 'aggregate', aggregation: 'sum' },
+      price: { kind: 'formula', expression: { op: 'divide', args: [{ field: 'value' }, { field: 'units' }] } },
+      people: { kind: 'unavailable', reason: '缺少去重明细' },
+    },
+    summary: { field: 'day', value: '汇总' },
+  }
+  const rows = [
+    { day: '汇总', region: null, value: 160, units: 14, price: 11.43, people: 3 },
+    { day: '2026-09-01', region: 'A', value: 10, units: 1, price: 10, people: 1 },
+    { day: '2026-09-01', region: 'B', value: 90, units: 9, price: 10, people: 1 },
+    { day: '2026-09-02', region: null, value: 20, units: 2, price: 10, people: 1 },
+    { day: '2026-09-02', region: 'B', value: 40, units: 2, price: 20, people: 1 },
+  ]
+  const table = new Table(document.getElementById('table'))
+  const state = {
+    plan, excludedFields: new Set(), filters: new Map(),
+    onChange: (result) => {
+      document.getElementById('notice').textContent = state.excludedFields.size
+        ? '仅汇总当前已加载数据；' + Object.entries(result.issues).map(([name, reason]) => name + '：' + reason).join('；')
+        : '原始结果'
+    },
+  }
+  table.localTableGrouping = state
+  table.init([
+    { name: '日期', value: 'day' }, { name: '分组', value: 'region' },
+    { name: '金额', value: 'value' }, { name: '数量', value: 'units' },
+    { name: '均值', value: 'price' }, { name: '去重人数', value: 'people' },
+  ], rows)
+  await table.render()
+  window.fixture = { table, rows, state }
+</script>
+</html>

@@ -32,6 +32,7 @@ from apps.dashboard.models.dashboard_model import (
     DashboardAiSqlGenerateRequest,
     DashboardAiSqlGenerateResponse,
     DashboardSqlPreview,
+    DashboardLocalGroupingRequest,
     DashboardShareRequest,
     DashboardShareListQuery,
     SharedDashboardQuery,
@@ -407,6 +408,12 @@ async def check_name_api(session: SessionDep, user: CurrentUser, dashboard: Quer
     做了什么：检查仪表盘里的数据、权限或配置是否合法，不对就及时拦住。
     """
     return validate_name(session, user, dashboard)
+
+
+@router.post('/local_grouping_plan', summary='解析已有 SQL 的本地汇总规则，不执行查询')
+async def local_grouping_plan_api(current_user: CurrentUser, request: DashboardLocalGroupingRequest):
+    from apps.dashboard.crud.local_chart_grouping import build_local_grouping_plan
+    return await asyncio.to_thread(build_local_grouping_plan, request.sql, request.dialect)
 
 
 @router.post("/sql_preview", summary=f"{PLACEHOLDER_PREFIX}dashboard_sql_preview")

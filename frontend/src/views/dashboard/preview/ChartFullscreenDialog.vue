@@ -158,6 +158,7 @@ function closeDialog() {
                 :y="yAxis"
                 :series="seriesAxis"
                 :data="rows"
+                :sql="viewInfo.sql"
                 :multi-quota-name="chartConfig?.multiQuotaName"
                 :show-label="showLabel"
                 :forecast="chartConfig?.forecast"
