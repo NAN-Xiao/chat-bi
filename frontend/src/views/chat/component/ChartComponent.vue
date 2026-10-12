@@ -117,7 +117,6 @@ const chartValidationErrorCode = ref<string>()
 const chartSize = ref({ width: 0, height: 0 })
 const localGroupingActive = ref(false)
 const localGroupingIssues = ref<Record<string, string>>({})
-const localGroupingError = ref('')
 const localRows = ref<ChartData[]>()
 let groupingPlanRequest = 0
 let groupingPlanController: AbortController | undefined
@@ -131,10 +130,6 @@ const localGroupingState: LocalTableGroupingState = {
     emit('visible-data-change', { data: result.data, excludedFields: Array.from(localGroupingState.excludedFields) })
   },
 }
-const localGroupingNotice = computed(() => {
-  const errors = Object.entries(localGroupingIssues.value).map(([field, reason]) => `${field}：${reason}`)
-  return '基于当前已加载数据汇总' + (errors.length ? `；无法本地计算：${errors.join('；')}` : '')
-})
 
 watch(() => params.sql, async (sql) => {
   const request = ++groupingPlanRequest
@@ -148,7 +143,6 @@ watch(() => params.sql, async (sql) => {
   localRows.value = undefined
   localGroupingActive.value = false
   localGroupingIssues.value = {}
-  localGroupingError.value = ''
   emit('visible-data-change', { data: params.data, excludedFields: [] })
   void nextTick(() => scheduleRenderChart())
   if (!sql?.trim()) return
@@ -159,12 +153,10 @@ watch(() => params.sql, async (sql) => {
     const plan = await dashboardApi.local_grouping_plan({ sql }, { signal: groupingPlanController.signal }) as LocalGroupingPlan
     if (request !== groupingPlanRequest) return
     localGroupingState.plan = plan
-    localGroupingError.value = plan.reason || ''
-    localGroupingState.error = localGroupingError.value
+    localGroupingState.error = plan.reason || ''
   } catch (error: any) {
     if (request !== groupingPlanRequest || groupingPlanController?.signal.aborted) return
-    localGroupingError.value = error?.message || '无法读取本地汇总配置'
-    localGroupingState.error = localGroupingError.value
+    localGroupingState.error = error?.message || '无法读取本地汇总配置'
   } finally {
     if (request === groupingPlanRequest) {
       localGroupingState.loading = false
@@ -182,8 +174,7 @@ watch(() => params.data, () => {
       localGroupingState.excludedFields.clear()
       localRows.value = undefined
       localGroupingActive.value = false
-      localGroupingError.value = error?.message || '新的数据缺少本地汇总所需字段'
-      localGroupingState.error = localGroupingError.value
+      localGroupingState.error = error?.message || '新的数据缺少本地汇总所需字段'
     }
   }
 }, { deep: true })
@@ -593,10 +584,7 @@ function handleVisibilityChange() {
 </script>
 
 <template>
-  <div :id="chartId" ref="chartContainerRef" class="chart-container" :class="{ 'has-local-grouping': localGroupingActive || localGroupingError }">
-    <div v-if="localGroupingActive || localGroupingError" class="local-grouping-notice" role="status" :title="localGroupingError || localGroupingNotice">
-      {{ localGroupingError || localGroupingNotice }}
-    </div>
+  <div :id="chartId" ref="chartContainerRef" class="chart-container">
     <div v-if="chartValidationErrorCode" class="chart-component-validation-error" role="alert">
       {{ chartValidationMessage }}
     </div>
@@ -617,22 +605,6 @@ function handleVisibilityChange() {
   min-height: 0;
   position: relative;
   width: 100%;
-}
-
-.local-grouping-notice {
-  height: 28px;
-  line-height: 28px;
-  padding: 0 8px;
-  color: var(--theme-text-secondary);
-  font-size: 12px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.has-local-grouping .chart-render-host {
-  top: 28px;
-  height: calc(100% - 28px);
 }
 
 .chart-render-host,
