@@ -5,7 +5,7 @@ from sqlmodel import SQLModel, Field
 from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer, Index, UniqueConstraint
 from typing import Any, Optional, List, Literal, Dict
 from pydantic import BaseModel, model_validator
-from apps.dashboard.models.dashboard_chart_config import DashboardDateFilterRequest
+from apps.dashboard.models.dashboard_chart_config import DashboardDateFilterConfig, DashboardDateFilterRequest
 
 class CoreDashboard(SQLModel, table=True):
     """
@@ -393,6 +393,14 @@ class QueryDashboard(BaseDashboard):
     include_data: bool = True
 
 
+class DashboardChartDateFilterUpdateRequest(BaseModel):
+    dashboard_id: str = Field(min_length=1, max_length=50)
+    chart_id: str = Field(min_length=1, max_length=50)
+    expected_sql: str = Field(min_length=1)
+    expected_datasource: int = Field(gt=0)
+    date_filter: DashboardDateFilterConfig
+
+
 # 仪表盘创建对象
 class CreateDashboard(QueryDashboard):
     """
@@ -454,6 +462,16 @@ class DashboardSqlPreview(BaseModel):
     date_filter: DashboardDateFilterRequest | None = None
     cache_only: bool = False
     force_refresh: bool = False
+
+
+class DashboardChartRefreshRequest(BaseModel):
+    dashboard_id: str = Field(min_length=1, max_length=50)
+    chart_id: str = Field(min_length=1, max_length=50)
+    expected_sql: str = Field(min_length=1)
+    expected_datasource: int = Field(gt=0)
+    pivot: DashboardPivotRequest | None = None
+    date_filter: DashboardDateFilterRequest | None = None
+    apply_date_filter: bool = False
 
 
 class DashboardExecutionDatasource(BaseModel):

@@ -92,20 +92,18 @@ assert.match(source, /beginDashboardChartRequest\(props\.viewInfo\)/)
 assert.match(source, /isDashboardChartRequestCurrent\(props\.viewInfo, requestVersion\)/)
 
 const applyHandler = source.match(/async function applyDashboardDateRange\(\)[\s\S]*?\n}/)?.[0] || ''
-assert.match(applyHandler, /dateFilterPanelVisible\.value\s*=\s*false[\s\S]*await refreshData/)
-assert.match(applyHandler, /refreshData\([\s\S]*forceRefresh:\s*true/)
-assert.match(applyHandler, /blocking:\s*true/)
-assert.match(applyHandler, /commitDashboardDateRange/)
-assert.match(applyHandler, /failDashboardDateRange/)
+assert.match(applyHandler, /dateFilterPanelVisible\.value\s*=\s*false[\s\S]*await applyDashboardDateExpression/)
+assert.match(applyHandler, /mode: 'range'[\s\S]*mode: 'static'/)
 
 const expressionApplyHandler =
   source.match(/async function applyDashboardDateExpression\([\s\S]*?\n}/)?.[0] || ''
 assert.match(expressionApplyHandler, /dashboardDateExpressionApplying\.value\s*=\s*true/)
 assert.match(expressionApplyHandler, /refreshData\([\s\S]*forceRefresh:\s*true/)
 assert.match(expressionApplyHandler, /blocking:\s*true/)
-assert.match(expressionApplyHandler, /dateFilterOverride:\s*buildDashboardDateFilterRequestForView/)
+assert.match(expressionApplyHandler, /applyDashboardDateExpressionTransaction/)
+assert.match(expressionApplyHandler, /dateFilterOverride:\s*request/)
+assert.match(expressionApplyHandler, /persist:\s*persistChartRefresh\s*\?\s*undefined\s*:\s*persistDateFilter/)
 assert.match(expressionApplyHandler, /if \(succeeded\)[\s\S]*dashboardDateExpression\.value\s*=\s*next/)
-assert.match(expressionApplyHandler, /props\.viewInfo\?\.dateFilterCapability\?\.parameterType/)
 assert.match(expressionApplyHandler, /finally[\s\S]*dashboardDateExpressionApplying\.value\s*=\s*false/)
 
 const expressionSyncWatcher =

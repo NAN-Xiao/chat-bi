@@ -7,6 +7,12 @@ export const dashboardApi = {
   update_resource: (params: any) => request.post('/dashboard/update_resource', params),
   create_canvas: (params: any) => request.post('/dashboard/create_canvas', params),
   update_canvas: (params: any) => request.post('/dashboard/update_canvas', params),
+  update_chart_date_filter: (params: any) => request.post('/dashboard/update_chart_date_filter', params, {
+    requestOptions: { retryCount: 0 },
+  }),
+  refresh_chart_snapshot: (params: any) => request.post('/dashboard/refresh_chart_snapshot', params, {
+    timeout: 180000, requestOptions: { retryCount: 0 },
+  }),
   check_name: (params: any) => request.post('/dashboard/check_name', params),
   preview_sql: (params: any, config?: any) =>
     request.post('/dashboard/sql_preview', params, { timeout: 180000, ...config }),

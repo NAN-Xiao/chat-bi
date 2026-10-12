@@ -29,6 +29,8 @@ from apps.dashboard.models.dashboard_model import (
     DashboardDefaultSortRequest,
     DashboardExecutionDatasource,
     DashboardReorderRequest,
+    DashboardChartDateFilterUpdateRequest,
+    DashboardChartRefreshRequest,
     DashboardSqlPreview,
     DashboardShareRequest,
     DashboardShareListQuery,
@@ -38,6 +40,7 @@ from apps.dashboard.models.dashboard_model import (
 from apps.dashboard.crud.dashboard_date_filter import (
     has_dashboard_date_filter_parameters,
     prepare_dashboard_date_filter,
+    resolve_dashboard_date_expression,
 )
 from apps.dashboard.crud.dashboard_date_filter_legacy import (
     INVALID_TEMPLATE_ERROR,
@@ -2093,6 +2096,14 @@ def _prepare_dashboard_chart_query(
         date_filter=date_filter,
         require_time_field=require_time_field,
     )
+    # The date-filter contract owns the query range; pivot only groups that result.
+    # Keeping an older pivot range would silently apply a second, different date filter.
+    if date_filter is not None and prepared.capability.get("status") == "available" and pivot is not None:
+        date_range = {"range": "source", "custom_start": "", "custom_end": ""}
+        if isinstance(pivot, dict):
+            pivot = {**pivot, **date_range}
+        else:
+            pivot = pivot.model_copy(update=date_range)
     return PreparedDashboardChartQuery(
         source_sql=prepared.sql,
         pivot=pivot,
@@ -4302,6 +4313,8 @@ def _dashboard_payload(
                     _failed_chart_result("图表日期参数配置不完整", "dashboard_date_filter_unconfigured"),
                 )
                 continue
+            if _restore_saved_chart_snapshot(session, current_user, item_datasource, item, prepared_query):
+                continue
             if not include_data:
                 if item_datasource is not None:
                     permission_failure, permissions_apply = _dashboard_chart_permission_audit(
@@ -4713,6 +4726,214 @@ def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     session.commit()
     session.refresh(record)
     return record
+
+
+def update_chart_date_filter(
+        session: SessionDep, user: CurrentUser,
+        request: DashboardChartDateFilterUpdateRequest,
+) -> dict[str, Any]:
+    """Save one chart's successful date selection without replacing concurrent canvas edits."""
+    record = _load_dashboard_or_404(session, request.dashboard_id, user)
+    _require_edit_permission(session, user, record)
+    if record.node_type != "leaf":
+        raise HTTPException(status_code=400, detail="只有看板图表可以保存日期设置")
+    session.refresh(record, with_for_update=True)
+    record = _load_dashboard_or_404(session, request.dashboard_id, user)
+    _require_edit_permission(session, user, record)
+    canvas = _parse_canvas_view_info(record.canvas_view_info)
+    component_ids = set(_collect_canvas_view_component_ids(_parse_canvas_component_data(record.component_data)))
+    item = canvas.get(request.chart_id)
+    if request.chart_id not in component_ids or not isinstance(item, dict):
+        raise HTTPException(status_code=404, detail="图表不存在，请重新打开看板")
+    sql = _chart_sql_text(item)
+    if sql.strip() != request.expected_sql.strip():
+        raise HTTPException(status_code=409, detail="图表 SQL 已变更，请重新打开看板后修改日期")
+    config = request.date_filter.model_dump(by_alias=True)
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        resolve_dashboard_date_expression(
+            config["expression"], today=datetime.now(ZoneInfo(settings.DASHBOARD_BUSINESS_TIMEZONE)).date()
+        )
+    except (TypeError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail="日期表达式配置无效") from exc
+    if not config["enabled"]:
+        raise HTTPException(status_code=400, detail="日期筛选未启用")
+    datasource_id = resolve_chart_execution_datasource(session, user, _resolve_chart_datasource_config(item, require=True))
+    if datasource_id != request.expected_datasource:
+        raise HTTPException(status_code=409, detail="图表执行数据源已变更，请重新打开看板后修改日期")
+    datasource = session.get(CoreDatasource, datasource_id)
+    updated = copy.deepcopy(item)
+    updated["configVersion"] = 2
+    updated["dateFilter"] = config
+    pivot = updated.get("pivot")
+    if isinstance(pivot, dict):
+        pivot.update(date_expression=copy.deepcopy(config["expression"]), range="source", custom_start="", custom_end="")
+    sql_config = _chart_sql_config(updated)
+    if sql_config is not None:
+        builder = sql_config.get("builder")
+        if isinstance(builder, dict):
+            builder.update(timeRange="expression", timeExpression=copy.deepcopy(config["expression"]), timeCustomRange=[])
+    prepared = _prepare_dashboard_chart_item_query(
+        datasource, updated,
+        require_time_field=_dashboard_requires_pivot_time_field(session, user, datasource_id, updated.get("pivot")),
+    )
+    if prepared.date_filter_error_type or prepared.date_filter_capability.get("status") != "available":
+        raise HTTPException(status_code=400, detail="图表无法使用该日期配置")
+    failure, _ = _dashboard_chart_permission_audit(session, user, datasource_id, prepared.source_sql, prepared.pivot)
+    if failure is not None:
+        raise HTTPException(status_code=403, detail=failure.get("message") or "没有修改该图表日期的权限")
+    # A result from the old date range must not be served under the new label on reload.
+    fields = updated.get("fields") or (updated.get("data") or {}).get("fields") or []
+    updated["data"] = {"fields": fields, "data": []}
+    updated.update(snapshotRefreshedAt=0, status="loading", dataState="loading", loadingProgress=0,
+                   refreshState="waiting", message="")
+    for key in ("dateFilterCapability", "snapshotContext", "error_type", "reason", "externalSnapshot", "snapshot", "refreshed_at", "cache_refreshed_at"):
+        updated.pop(key, None)
+    if sql_config is not None:
+        sql_config.pop("lastResult", None)
+    canvas[request.chart_id] = updated
+    record.canvas_view_info = orjson.dumps(canvas).decode()
+    record.update_by = _asset_operator_id(session, user)
+    record.update_time = _now()
+    session.add(record)
+    session.commit()
+    return {"chart_id": request.chart_id, "dateFilter": config,
+            "date_filter_capability": prepared.date_filter_capability}
+
+
+def _chart_query_identity(item: dict[str, Any]) -> str:
+    sql_config = copy.deepcopy(_chart_sql_config(item) or {})
+    sql_config.pop("lastResult", None)
+    return json.dumps({
+        "sql": _chart_sql_text(item), "datasource": item.get("datasource"),
+        "configVersion": item.get("configVersion"), "dateFilter": item.get("dateFilter"),
+        "pivot": item.get("pivot"), "sql_config": sql_config,
+        "dataSourceType": item.get("dataSourceType"),
+    }, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def _chart_snapshot_fingerprint(user: CurrentUser, datasource_id: int, prepared: PreparedDashboardChartQuery) -> str:
+    return _dashboard_sql_preview_cache_key(
+        user, datasource_id, prepared.source_sql, prepared.pivot,
+        date_filter=prepared.date_filter, date_filter_capability=prepared.date_filter_capability,
+    ).fingerprint
+
+
+def _restore_saved_chart_snapshot(session: SessionDep, user: CurrentUser, datasource_id: int,
+                                  item: dict[str, Any], prepared: PreparedDashboardChartQuery) -> bool:
+    context = item.get("snapshotContext")
+    if not isinstance(context, dict) or context.get("version") != 1:
+        return False
+    failure, row_permissions_apply = _dashboard_chart_permission_audit(
+        session, user, datasource_id, prepared.source_sql, prepared.pivot)
+    if failure is not None:
+        item.pop("snapshotContext", None)
+        item["dateFilterCapability"] = {"status": "forbidden", "reason": "permission_denied"}
+        _apply_dashboard_chart_result(item, failure)
+        return True
+    if (row_permissions_apply or context.get("fingerprint") != _chart_snapshot_fingerprint(user, datasource_id, prepared)
+            or item.get("status") != "success" or not isinstance(item.get("data", {}).get("data"), list)):
+        item.pop("snapshotContext", None)
+        return False
+    _mark_dashboard_chart_snapshot_ready(item)
+    item["refreshState"] = ""
+    return True
+
+
+def refresh_chart_snapshot(session: SessionDep, user: CurrentUser, request: DashboardChartRefreshRequest) -> dict[str, Any]:
+    """Execute once, then atomically save the result with its query/date configuration."""
+    query_started_at = time.time_ns()
+    record = _load_dashboard_or_404(session, request.dashboard_id, user)
+    _require_edit_permission(session, user, record)
+    if record.node_type != "leaf":
+        raise HTTPException(400, "只有看板图表可以刷新并保存")
+    canvas = _parse_canvas_view_info(record.canvas_view_info)
+    component_ids = set(_collect_canvas_view_component_ids(_parse_canvas_component_data(record.component_data)))
+    item = canvas.get(request.chart_id)
+    if request.chart_id not in component_ids or not isinstance(item, dict):
+        raise HTTPException(404, "图表不存在，请重新打开看板")
+    if _chart_sql_text(item).strip() != request.expected_sql.strip():
+        raise HTTPException(409, "图表 SQL 已变更，请重新打开看板")
+    datasource_id = resolve_chart_execution_datasource(session, user, _resolve_chart_datasource_config(item, require=True))
+    if datasource_id != request.expected_datasource:
+        raise HTTPException(409, "图表执行数据源已变更，请重新打开看板")
+    identity = _chart_query_identity(item)
+    updated = copy.deepcopy(item)
+    if request.pivot is not None:
+        updated["pivot"] = {**dict(updated.get("pivot") or {}), **request.pivot.model_dump(exclude_unset=True)}
+    if request.apply_date_filter:
+        date_filter = request.date_filter
+        if date_filter is None or date_filter.expression is None or date_filter.custom_start or date_filter.custom_end:
+            raise HTTPException(400, "保存日期必须使用完整日期表达式")
+        config = {"enabled": True, "parameterType": date_filter.parameter_type, "expression": copy.deepcopy(date_filter.expression)}
+        updated.update(configVersion=2, dateFilter=config)
+        if isinstance(updated.get("pivot"), dict):
+            updated["pivot"].update(date_expression=config["expression"], range="source", custom_start="", custom_end="")
+        builder = (_chart_sql_config(updated) or {}).get("builder")
+        if isinstance(builder, dict):
+            builder.update(timeRange="expression", timeExpression=copy.deepcopy(config["expression"]), timeCustomRange=[])
+    datasource = session.get(CoreDatasource, datasource_id)
+    # Store the normalized execution pivot so the snapshot matches the configuration on reload.
+    if isinstance(updated.get("pivot"), dict):
+        from apps.dashboard.models.dashboard_model import DashboardPivotRequest
+        updated["pivot"] = {**updated["pivot"], **DashboardPivotRequest.model_validate(updated["pivot"]).model_dump()}
+    prepared = _prepare_dashboard_chart_item_query(
+        datasource, updated, require_time_field=_dashboard_requires_pivot_time_field(session, user, datasource_id, updated.get("pivot")))
+    if prepared.date_filter_error_type or (has_dashboard_date_filter_parameters(request.expected_sql)
+                                           and prepared.date_filter_capability.get("status") != "available"):
+        raise HTTPException(400, "图表日期配置无效，未刷新保存")
+    if prepared.date_filter_capability.get("reason") == "non_sql_chart":
+        raise HTTPException(400, "该图表不是独立 SQL 图表，无法保存 SQL 刷新结果")
+    if request.date_filter is not None and not request.apply_date_filter:
+        if request.date_filter.model_dump() != (prepared.date_filter.model_dump() if prepared.date_filter else None):
+            raise HTTPException(409, "查询日期与已保存日期不一致，请重新打开看板")
+    updated["pivot"] = _dashboard_sql_preview_pivot_payload(prepared.pivot)
+    result = preview_sql(session, user, DashboardSqlPreview(
+        datasource=datasource_id, sql=_chart_sql_text(updated), pivot=prepared.pivot,
+        execution_contract=_dashboard_pivot_value(prepared.pivot, "execution_contract", None),
+        date_filter=prepared.date_filter, force_refresh=True,
+    ))
+    if result.get("status") != "success" or result.get("refresh_deferred") or result.get("cache_stale"):
+        return {**result, "status": "failed", "message": result.get("message") or "刷新未完成，未保存数据", "snapshot_saved": False}
+    session.refresh(record, with_for_update=True)
+    record = _load_dashboard_or_404(session, request.dashboard_id, user)
+    _require_edit_permission(session, user, record)
+    latest_canvas = _parse_canvas_view_info(record.canvas_view_info)
+    latest = latest_canvas.get(request.chart_id)
+    latest_ids = set(_collect_canvas_view_component_ids(_parse_canvas_component_data(record.component_data)))
+    if request.chart_id not in latest_ids or not isinstance(latest, dict) or _chart_query_identity(latest) != identity:
+        raise HTTPException(409, "刷新期间图表配置已变更，未保存旧结果，请重新打开看板")
+    if int((latest.get("snapshotContext") or {}).get("queryStartedAt", 0)) > query_started_at:
+        raise HTTPException(409, "已有更新的刷新结果，未保存旧结果")
+    latest = copy.deepcopy(latest)
+    latest["pivot"] = updated["pivot"]
+    if request.apply_date_filter:
+        latest.update(configVersion=2, dateFilter=updated["dateFilter"])
+        sql_config = _chart_sql_config(latest)
+        if sql_config and isinstance(sql_config.get("builder"), dict):
+            sql_config["builder"].update(timeRange="expression", timeExpression=updated["dateFilter"]["expression"], timeCustomRange=[])
+    failure, _ = _dashboard_chart_permission_audit(session, user, datasource_id, prepared.source_sql, prepared.pivot)
+    if failure is not None:
+        raise HTTPException(403, failure.get("message") or "没有保存查询结果的权限")
+    refreshed_at = int(time.time() * 1000)
+    latest["data"] = {}
+    _apply_dashboard_chart_result(latest, result)
+    latest.update(snapshotRefreshedAt=refreshed_at, refreshState="",
+                  dateFilterCapability=copy.deepcopy(result.get("date_filter_capability") or prepared.date_filter_capability),
+                  snapshotContext={"version": 1, "fingerprint": _chart_snapshot_fingerprint(user, datasource_id, prepared),
+                                   "queryStartedAt": str(query_started_at)})
+    latest["data"]["snapshotRefreshedAt"] = refreshed_at
+    sql_config = _chart_sql_config(latest)
+    if sql_config is not None:
+        sql_config.pop("lastResult", None)
+    latest_canvas[request.chart_id] = latest
+    record.canvas_view_info = orjson.dumps(latest_canvas).decode()
+    record.update_by = _asset_operator_id(session, user)
+    record.update_time = _now()
+    session.add(record)
+    session.commit()
+    return {**result, "snapshot_saved": True, "snapshot_context": latest["snapshotContext"], "refreshed_at": refreshed_at}
 
 
 def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):

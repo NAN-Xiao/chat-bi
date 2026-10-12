@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, toRefs, computed, nextTick, reactive, onBeforeUnmount, type PropType } from 'vue'
+import { ref, toRefs, computed, nextTick, reactive, onBeforeUnmount, provide, inject, type PropType } from 'vue'
 import { findComponent } from '@/views/dashboard/components/component-list.ts'
 import {
   ChatLineSquare,
@@ -44,10 +44,14 @@ import {
 } from '@/views/dashboard/utils/mixedChartData'
 import {
   applyDashboardDateFilterCapability,
-  buildDashboardDateFilterRequestForView,
-  canShowDashboardDateFilter,
-  getOrCreateDashboardDateFilterState,
+  beginDashboardChartRequest,
+  buildDashboardDateFilterRequestForRefresh,
+  finishDashboardChartRequest,
+  isDashboardChartRequestCurrent,
+  isDashboardDateFilterApplying,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import { DASHBOARD_DATE_FILTER_SAVER } from '@/views/dashboard/utils/dashboardDateFilterPersistence.ts'
+import { DASHBOARD_CHART_SNAPSHOT_REFRESHER, queryDashboardChartWithPersistence, applySavedDashboardSnapshotMetadata, type DashboardChartSnapshotRefresher } from '@/views/dashboard/utils/dashboardChartSnapshot.ts'
 import {
   hasDashboardChartRows,
   hasDashboardChartSnapshot,
@@ -125,6 +129,43 @@ const props = defineProps({
   },
 })
 const emit = defineEmits(['chartMoved'])
+const inheritedSnapshotRefresher = inject(DASHBOARD_CHART_SNAPSHOT_REFRESHER, undefined)
+const refreshSavedChart: DashboardChartSnapshotRefresher | undefined =
+  props.showPosition === 'preview' && !props.readonlyTemplate && !props.platformTemplate
+  ? async (payload) => {
+    if (!props.dashboardInfo?.id) {
+      if (inheritedSnapshotRefresher) return inheritedSnapshotRefresher(payload)
+      throw new Error('看板尚未保存，无法保存刷新结果')
+    }
+    if (props.dashboardInfo.canEdit === false || props.dashboardInfo.can_edit === false) {
+      throw new Error('没有看板编辑权限，无法保存刷新结果')
+    }
+    return dashboardApi.refresh_chart_snapshot({
+      dashboard_id: String(props.dashboardInfo.id), chart_id: payload.chart_id,
+      expected_sql: payload.sql, expected_datasource: payload.datasource,
+      pivot: payload.pivot, date_filter: payload.date_filter,
+      apply_date_filter: payload.apply_date_filter === true,
+    })
+  } : undefined
+if (refreshSavedChart) provide(DASHBOARD_CHART_SNAPSHOT_REFRESHER, refreshSavedChart)
+const inheritedDateFilterSaver = inject(DASHBOARD_DATE_FILTER_SAVER, undefined)
+provide(DASHBOARD_DATE_FILTER_SAVER, async (payload) => {
+  if (props.showPosition !== 'preview' || props.readonlyTemplate || props.platformTemplate) return
+  // Tab previews inherit the owning dashboard's saver instead of creating a local-only selection.
+  if (!props.dashboardInfo?.id) {
+    if (inheritedDateFilterSaver) return inheritedDateFilterSaver(payload)
+    throw new Error('看板尚未保存，无法保存日期设置')
+  }
+  if (props.dashboardInfo.canEdit === false || props.dashboardInfo.can_edit === false) {
+    throw new Error('没有看板编辑权限，日期设置未保存')
+  }
+  const result = await dashboardApi.update_chart_date_filter({
+    dashboard_id: String(props.dashboardInfo.id), ...payload,
+  })
+  if (result?.chart_id !== payload.chart_id || !result?.dateFilter?.expression) {
+    throw new Error('日期保存结果无效，请重新打开看板')
+  }
+})
 const { configItem, showPosition } = toRefs(props)
 const component = ref(null)
 const wrapperRef = ref<HTMLElement | null>(null)
@@ -668,23 +709,16 @@ async function previewChartSql(viewInfo: any, config?: any, forceRefresh = false
       requestConfig: config,
     })
   }
-  const dateFilterState = canShowDashboardDateFilter(viewInfo.dateFilterCapability)
-    ? getOrCreateDashboardDateFilterState(viewInfo, viewInfo.dateFilterCapability)
-    : null
   const payload = {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
     pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
-    date_filter: buildDashboardDateFilterRequestForView(viewInfo, dateFilterState?.appliedRange),
+    date_filter: buildDashboardDateFilterRequestForRefresh(viewInfo),
   }
   if (forceRefresh) {
-    return dashboardApi.preview_sql(
-      {
-        ...payload,
-        force_refresh: true,
-      },
-      config
-    )
+    return queryDashboardChartWithPersistence(payload, true,
+      (request) => dashboardApi.preview_sql({ ...request, force_refresh: true }, config),
+      refreshSavedChart, String(viewInfo.id))
   }
   const cachedResult = await dashboardApi.preview_sql(
     {
@@ -775,6 +809,7 @@ function isExternalSnapshotChart(viewInfo: any) {
 }
 
 function canRefreshChart(viewInfo: any) {
+  if (isDashboardDateFilterApplying(viewInfo)) return false
   return isMixedChart(viewInfo)
     ? canRefreshMixedChart(viewInfo)
     : !!(viewInfo?.datasource && viewInfo?.sql?.trim())
@@ -1163,6 +1198,7 @@ async function refreshChartData() {
         failedCount += 1
         continue
       }
+      const requestVersion = beginDashboardChartRequest(viewInfo)
       try {
         const previousData = Array.isArray(viewInfo.data?.data) ? [...viewInfo.data.data] : []
         const previousDataFields = Array.isArray(viewInfo.data?.fields)
@@ -1177,6 +1213,7 @@ async function refreshChartData() {
           viewInfo.refreshState = 'loading'
         }
         const result = await previewChartSql(viewInfo, undefined, true)
+        if (!isDashboardChartRequestCurrent(viewInfo, requestVersion)) continue
         applyDashboardDateFilterCapability(viewInfo, result)
         const shapedResult = shapeDistributionTableResult(result, viewInfo)
         const fields = getResultFields(shapedResult)
@@ -1215,11 +1252,13 @@ async function refreshChartData() {
         } else {
           viewInfo.dataState = 'ready'
           viewInfo.refreshState = ''
+          applySavedDashboardSnapshotMetadata(viewInfo, result)
           markChartSnapshotRefreshed(viewInfo, resultRefreshedAt(result))
           successCount += 1
         }
         emitter.emit(`view-render-${viewInfo.id || entry?.component?.id}`)
       } catch (error: any) {
+        if (!isDashboardChartRequestCurrent(viewInfo, requestVersion)) continue
         viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
         if (hasDashboardChartRows(viewInfo)) {
           viewInfo.status = 'success'
@@ -1230,6 +1269,8 @@ async function refreshChartData() {
         }
         viewInfo.refreshState = ''
         failedCount += 1
+      } finally {
+        finishDashboardChartRequest(viewInfo, requestVersion)
       }
     }
   }

@@ -5,6 +5,7 @@ import { Loading } from '@element-plus/icons-vue'
 import { reactive, ref, toRefs, onBeforeMount, onBeforeUnmount, computed, watch, nextTick } from 'vue'
 import { load_resource_prepare } from '@/views/dashboard/utils/canvasUtils'
 import { dashboardApi } from '@/api/dashboard.ts'
+import { hasSavedDashboardChartSnapshot } from '@/views/dashboard/utils/dashboardChartSnapshot.ts'
 import ResourceTree from '@/views/dashboard/common/ResourceTree.vue'
 import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
 import SQPreviewHead from '@/views/dashboard/preview/SQPreviewHead.vue'
@@ -50,7 +51,8 @@ import {
 import {
   applyDashboardDateFilterCapability,
   beginDashboardChartRequest,
-  buildDashboardDateFilterRequestForView,
+  buildDashboardDateFilterRequestForRefresh,
+  isDashboardDateFilterApplying,
   canShowDashboardDateFilter,
   getOrCreateDashboardDateFilterState,
   isDashboardChartRequestCurrent,
@@ -316,6 +318,7 @@ function resultRefreshedAt(result: any) {
 }
 
 function canLookupChartCache(viewInfo: any) {
+  if (isDashboardDateFilterApplying(viewInfo)) return false
   return isMixedChart(viewInfo)
     ? canRefreshMixedChart(viewInfo)
     : !!(viewInfo?.datasource && viewInfo?.sql?.trim())
@@ -533,12 +536,12 @@ function prepareChartPreviewState(viewInfo: any) {
 }
 
 function chartSqlPayload(viewInfo: any) {
-  const dateFilterState = ensureChartDateFilterState(viewInfo)
+  ensureChartDateFilterState(viewInfo)
   return {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
     pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
-    date_filter: buildDashboardDateFilterRequestForView(viewInfo, dateFilterState?.appliedRange),
+    date_filter: buildDashboardDateFilterRequestForRefresh(viewInfo),
   }
 }
 
@@ -599,7 +602,7 @@ async function runChartQueue<T extends { component: any; viewInfo: any }>(
   )
 }
 
-async function refreshDashboardCharts(loadVersion: number, controller: AbortController) {
+async function refreshDashboardCharts(loadVersion: number, controller: AbortController, restoreSaved = false) {
   const allChartEntries = collectNormalizedDashboardCharts()
   allChartEntries.forEach((entry) => {
     const viewInfo = entry.viewInfo
@@ -619,7 +622,8 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
     }
   })
   const chartEntries = allChartEntries
-    .filter((entry) => canLookupChartCache(entry.viewInfo) && !permissionDeniedCharts.has(entry))
+    .filter((entry) => canLookupChartCache(entry.viewInfo) && !permissionDeniedCharts.has(entry)
+      && !(restoreSaved && hasSavedDashboardChartSnapshot(entry.viewInfo)))
     .flatMap((entry) => {
       const requestVersion = beginDashboardChartRequest(entry.viewInfo, 'background')
       return requestVersion === null ? [] : [{ ...entry, requestVersion }]
@@ -629,6 +633,7 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
     if (chartRefreshController === controller) {
       chartRefreshController = null
     }
+    scheduleNextDashboardAutoRefresh(loadVersion)
     return
   }
   await nextTick()
@@ -824,7 +829,7 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
   }
 }
 
-function scheduleDashboardChartRefresh(loadVersion: number, delay = CHART_CACHE_LOOKUP_START_DELAY_MS) {
+function scheduleDashboardChartRefresh(loadVersion: number, delay = CHART_CACHE_LOOKUP_START_DELAY_MS, restoreSaved = false) {
   cancelDashboardChartRefresh()
   const controller = new AbortController()
   chartRefreshController = controller
@@ -833,7 +838,7 @@ function scheduleDashboardChartRefresh(loadVersion: number, delay = CHART_CACHE_
     if (loadVersion !== dashboardLoadVersion || controller.signal.aborted) {
       return
     }
-    void refreshDashboardCharts(loadVersion, controller)
+    void refreshDashboardCharts(loadVersion, controller, restoreSaved)
   }, delay)
 }
 
@@ -889,7 +894,7 @@ const loadCanvasData = (params: any) => {
       prepareDashboardCharts(canvasDataResult)
       loadingDashboardId.value = null
       dataInitState.value = true
-      scheduleDashboardChartRefresh(loadVersion)
+      scheduleDashboardChartRefresh(loadVersion, CHART_CACHE_LOOKUP_START_DELAY_MS, true)
     },
     {
       defaultMode: dashboardMode === DASHBOARD_MODE_DEFAULT,
