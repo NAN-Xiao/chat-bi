@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 import orjson
 from sqlmodel import Session
 
@@ -84,6 +85,23 @@ def init_workflow_run(service: Any, workflow_key: str, run_id_prefix: str) -> st
     return run_id
 
 
+def _is_interrupted_llm_stream(error: BaseException) -> bool:
+    """识别流式响应的协议中断，沿实际异常链追溯 SDK 包装的原始异常。"""
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, httpx.RemoteProtocolError):
+            return True
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif not current.__suppress_context__:
+            current = current.__context__
+        else:
+            current = None
+    return False
+
+
 def classify_workflow_error(error: BaseException) -> str:
     """
     是什么：classify_workflow_error 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -108,6 +126,8 @@ def classify_workflow_error(error: BaseException) -> str:
     classified = classify_error(error).error_type
     if classified in {DATA_UNAVAILABLE_ERROR_TYPE, PERMISSION_DENIED_ERROR_TYPE}:
         return classified
+    if _is_interrupted_llm_stream(error):
+        return "llm_stream_interrupted"
     return "unexpected"
 
 
@@ -358,6 +378,13 @@ def format_workflow_error(
             "traceback": str(error),
             "type": "exec-sql-err",
         }).decode()
+
+    if _is_interrupted_llm_stream(error):
+        AppLogUtil.error(
+            f"{log_prefix} LLM stream interrupted record_id={record_id(service)}: {error}",
+            exc_info=True,
+        )
+        return "大模型服务连接中断，请稍后重试。"
 
     traceback.print_exc()
     return orjson.dumps({
