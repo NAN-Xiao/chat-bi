@@ -319,7 +319,6 @@ async function downloadCard(row: KnowledgeBaseItem) {
     link.remove()
     URL.revokeObjectURL(url)
     if (recovered) {
-      ElMessage.success(t('knowledge_base.download_recovered'))
       await loadCards()
     }
   } catch (error) {

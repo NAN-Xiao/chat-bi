@@ -8,6 +8,10 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
+import pytest
+from openai import APIConnectionError
+
 from apps.chat.task.assistant_workflow import (
     AssistantWorkflowConfig,
     classify_workflow_error,
@@ -340,3 +344,84 @@ def test_emit_record_metadata_for_chart_insight_shape(monkeypatch) -> None:
     )
 
     assert _events(emitted) == [{"type": "id", "id": 1001}]
+
+
+@pytest.mark.parametrize("wrapper", ["direct", "cause", "context", "cycle"])
+def test_workflow_translates_interrupted_llm_stream(wrapper: str) -> None:
+    error = httpx.RemoteProtocolError(
+        "peer closed connection without sending complete message body (incomplete chunked read)"
+    )
+    if wrapper != "direct":
+        wrapped = APIConnectionError(request=httpx.Request("POST", "https://model.test/v1"))
+        if wrapper == "context":
+            wrapped.__context__ = error
+        else:
+            wrapped.__cause__ = error
+        if wrapper == "cycle":
+            error.__context__ = wrapped
+        error = wrapped
+
+    message = format_workflow_error(
+        error,
+        service=FakeWorkflowService(),
+        log_prefix=CONFIG.log_prefix,
+    )
+
+    assert message == "大模型服务连接中断，请稍后重试。"
+    assert classify_workflow_error(error) == "llm_stream_interrupted"
+
+
+@pytest.mark.parametrize("in_chat,stream", [(True, True), (False, True), (False, False)])
+def test_workflow_returns_and_saves_chinese_llm_stream_error(in_chat: bool, stream: bool) -> None:
+    service = FakeWorkflowService()
+    graph = FakeWorkflowGraph(error=httpx.RemoteProtocolError("incomplete chunked read"))
+
+    chunks = list(
+        run_assistant_workflow(
+            config=CONFIG,
+            graph=graph,
+            service=service,
+            initial_state={
+                "service": service,
+                "in_chat": in_chat,
+                "stream": stream,
+                "json_result": {"success": True},
+            },
+            session_scope_factory=_fake_session_scope,
+        )
+    )
+
+    message = "大模型服务连接中断，请稍后重试。"
+    if in_chat:
+        assert _events(chunks) == [{"content": message, "type": "error"}]
+    elif stream:
+        assert chunks[-1] == f"> {message}\n"
+    else:
+        assert chunks == [{"success": False, "message": message}]
+    assert service.saved_errors == [message]
+    assert service.finished is True
+    assert service._unit_workflow_graph_error_type == "llm_stream_interrupted"
+
+
+@pytest.mark.parametrize("error", [httpx.ReadTimeout("upstream timed out"), ValueError("invalid response")])
+def test_workflow_does_not_label_other_errors_as_interrupted_stream(error: Exception) -> None:
+    payload = json.loads(format_workflow_error(
+        error,
+        service=FakeWorkflowService(),
+        log_prefix=CONFIG.log_prefix,
+    ))
+
+    assert payload["message"] == str(error)
+    assert classify_workflow_error(error) == "unexpected"
+
+
+def test_workflow_preserves_explicit_business_error_with_transport_context() -> None:
+    error = SingleMessageError("请先选择可访问的数据源。")
+    error.__cause__ = httpx.RemoteProtocolError("incomplete chunked read")
+
+    assert format_workflow_error(
+        error,
+        service=FakeWorkflowService(),
+        log_prefix=CONFIG.log_prefix,
+    ) == "请先选择可访问的数据源。"
+    assert classify_workflow_error(error) == "single_message"
